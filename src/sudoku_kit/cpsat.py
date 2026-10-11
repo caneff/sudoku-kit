@@ -11,18 +11,17 @@ for two different things:
 
 - **A committed proof** takes `solver(limit)` -- one worker, seed 0,
   reproducible run to run. CP-SAT's parallel portfolio races its workers, so
-  which solution comes back depends on thread timing, and a `regenerate +
-  git diff` gate over a portfolio search compares noise. One worker is slower,
-  and that is the price of a verdict that means the same thing twice.
+  which solution comes back depends on thread timing, and a check that
+  regenerates a committed result and diffs it then compares noise. One worker
+  is slower, and that is the price of a verdict that means the same thing
+  twice.
 - **A search for a fresh grid** takes `solver(limit, reproducible=False,
   seed=..., randomize=True)` -- the full portfolio, the caller's seed. Nothing
-  downstream re-derives that grid; it is written to a gen JSON and proved from
-  there.
+  downstream re-derives that grid; the caller saves it and proves it from
+  the saved copy.
 
-One proof takes the portfolio anyway: the isofill full-board check in
-sudokumaker-custom-constraints, whose 10x10 model a single worker cannot
-finish inside any usable limit. Its README carries the measurement and the
-argument.
+A proof too large for one worker inside any usable limit takes the portfolio
+anyway, and its caller says so where the proof is committed.
 """
 
 from ortools.sat.python import cp_model

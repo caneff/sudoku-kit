@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "CP-SAT helpers, the SudokuMaker link codec and a five-status uniqueness check"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["lzstring", "ortools"]
+# Floors are the versions the tests ran against; nothing older was tried.
+dependencies = ["lzstring>=1.0.4", "ortools>=9.15"]
 
 [dependency-groups]
 dev = ["pytest", "ruff"]

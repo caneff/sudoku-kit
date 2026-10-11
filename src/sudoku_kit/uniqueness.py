@@ -2,8 +2,8 @@
 re-solve, and expect infeasible. Works on any `CpModel` and list of decision
 variables, with no board structure assumed.
 
-`sudoku_kit.cpsat.solve_unique` is the older form of the same proof, kept for
-its callers: it raises on a timeout where this reports one, and it spends the
+`sudoku_kit.cpsat.solve_unique` runs the same proof with a different
+contract: it raises on a timeout where this reports one, and it spends the
 model where this leaves it alone.
 """
 

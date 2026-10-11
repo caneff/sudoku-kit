@@ -464,8 +464,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "lzstring" },
-    { name = "ortools" },
+    { name = "lzstring", specifier = ">=1.0.4" },
+    { name = "ortools", specifier = ">=9.15" },
 ]
 
 [package.metadata.requires-dev]
