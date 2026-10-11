@@ -7,9 +7,13 @@ its callers: it raises on a timeout where this reports one, and it spends the
 model where this leaves it alone.
 """
 
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from ortools.sat.python import cp_model
+
+from sudoku_kit.cpsat import forbid
+
+Status = Literal["unique", "not_unique", "infeasible", "timeout", "invalid"]
 
 
 class UniquenessResult(NamedTuple):
@@ -20,7 +24,7 @@ class UniquenessResult(NamedTuple):
     `check_uniqueness` -- with `second` set only when `status` is
     "not_unique"."""
 
-    status: str
+    status: Status
     first: tuple | None = None
     second: tuple | None = None
 
@@ -70,8 +74,8 @@ def _remap(retry_model, v):
 def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     """True (via `.unique`) iff `model` has exactly one solution over
     `variables`. A timeout or an invalid model is reported as such and
-    never as unique -- a stripper that trusted either would keep a clue
-    that isn't actually load-bearing: sound, never lean.
+    never as unique -- a caller stripping clues that trusted either would
+    drop a clue the puzzle needs.
 
     Never mutates `model`: the exclusion constraint that rules the first
     solution out is added to an internal copy, so the caller's model is
@@ -87,13 +91,7 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     retry_model = model.clone()
     retry_variables = [_remap(retry_model, v) for v in variables]
 
-    diffs = []
-    for v, value in zip(retry_variables, first, strict=True):
-        d = retry_model.NewBoolVar("")
-        retry_model.Add(v != value).OnlyEnforceIf(d)
-        retry_model.Add(v == value).OnlyEnforceIf(d.Not())
-        diffs.append(d)
-    retry_model.AddBoolOr(diffs)
+    forbid(retry_model, dict(enumerate(retry_variables)), dict(enumerate(first)))
 
     status, solver = _solve(retry_model, time_limit, workers)
     terminal = _terminal(status, first)

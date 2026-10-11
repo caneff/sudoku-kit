@@ -1,17 +1,18 @@
 """`check_uniqueness` on tiny CpModels, each of its five statuses reached
 through a real CP-SAT solve.
 
-One branch a real solve cannot reach deterministically is the second solve
-timing out or coming back invalid: that needs a model whose first solve is
-fast and whose second is slow on every machine. `_terminal`'s table is
-checked directly for it, because that branch is the one where a wrong answer
-reads as "unique".
+The second solve running out of time is the branch where a wrong answer reads
+as "unique". No model makes a first solve fast and a second slow on every
+machine, so that test spends the cap between the two solves. A second solve
+coming back invalid cannot be forced at all, and `_terminal`'s table is
+checked directly for it.
 """
 
 import random
 
 from ortools.sat.python import cp_model
 
+from sudoku_kit import uniqueness
 from sudoku_kit.uniqueness import _terminal, check_uniqueness
 
 
@@ -66,16 +67,34 @@ def test_an_invalid_model_is_invalid():
 
 
 def test_a_solve_that_runs_out_of_time_is_timeout():
-    # A subset-sum instance with a time limit far below what a first feasible
-    # solution takes: deterministic given the fixed seed and weights.
+    # A subset-sum instance under a cap of no time at all: the search has
+    # spent its limit before it starts, whatever the machine.
     m = cp_model.CpModel()
     rng = random.Random(1)
     xs = [m.NewBoolVar(f"x{i}") for i in range(60)]
     weights = [rng.randint(1, 1000) for _ in xs]
     m.Add(sum(w * x for w, x in zip(weights, xs, strict=True)) == sum(weights) // 2)
-    result = check_uniqueness(m, xs, time_limit=0.001, workers=1)
+    result = check_uniqueness(m, xs, time_limit=0.0, workers=1)
     assert result.status == "timeout"
     assert not result.unique
+
+
+def test_a_second_solve_that_runs_out_of_time_is_timeout_not_unique(monkeypatch):
+    # The model has one solution, so a second solve that finished would say
+    # "unique". It is handed a cap of no time instead, and must say so.
+    real, limits = uniqueness._solve, []
+
+    def stingy(model, time_limit, workers):
+        limits.append(time_limit)
+        return real(model, time_limit if len(limits) == 1 else 0.0, workers)
+
+    monkeypatch.setattr(uniqueness, "_solve", stingy)
+    m, variables = _pair(pin=True)
+    result = check_uniqueness(m, variables)
+    assert len(limits) == 2
+    assert result.status == "timeout"
+    assert not result.unique
+    assert result.first == (1, 1)
 
 
 def test_the_caller_s_model_is_left_untouched():
@@ -103,20 +122,20 @@ def test_a_negated_literal_among_the_variables_reads_as_its_own_value():
 WITNESS = (1, 2)
 
 
-def _is(result, status, first):
+def _result_is(result, status, first):
     return result.status == status and result.first == first and result.second is None
 
 
 def test_no_verdict_on_the_first_solve_carries_no_witness():
-    assert _is(_terminal(cp_model.MODEL_INVALID, None), "invalid", None)
-    assert _is(_terminal(cp_model.UNKNOWN, None), "timeout", None)
-    assert _is(_terminal(cp_model.INFEASIBLE, None), "infeasible", None)
+    assert _result_is(_terminal(cp_model.MODEL_INVALID, None), "invalid", None)
+    assert _result_is(_terminal(cp_model.UNKNOWN, None), "timeout", None)
+    assert _result_is(_terminal(cp_model.INFEASIBLE, None), "infeasible", None)
 
 
 def test_no_verdict_on_the_second_solve_is_never_unique():
-    assert _is(_terminal(cp_model.MODEL_INVALID, WITNESS), "invalid", WITNESS)
-    assert _is(_terminal(cp_model.UNKNOWN, WITNESS), "timeout", WITNESS)
-    assert _is(_terminal(cp_model.INFEASIBLE, WITNESS), "unique", WITNESS)
+    assert _result_is(_terminal(cp_model.MODEL_INVALID, WITNESS), "invalid", WITNESS)
+    assert _result_is(_terminal(cp_model.UNKNOWN, WITNESS), "timeout", WITNESS)
+    assert _result_is(_terminal(cp_model.INFEASIBLE, WITNESS), "unique", WITNESS)
 
 
 def test_a_solved_status_is_not_terminal():
