@@ -30,4 +30,5 @@ sudoku-kit = { git = "https://github.com/caneff/sudoku-kit", tag = "v0.1.0" }
 
 ## Develop
 
-`just check` runs ruff and the tests. It needs only `uv`.
+`just check` runs ruff and the tests. It needs only `uv`, and runs on Python
+3.11, the floor, which `.python-version` pins. CI runs it on 3.11 and 3.14.

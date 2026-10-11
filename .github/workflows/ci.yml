@@ -7,8 +7,17 @@ on:
   pull_request:
 
 jobs:
+  # The floor pyproject.toml declares and the newest Python uv ships: the two
+  # differ in ways the tests reach (a link handed to Path.is_file raises
+  # before 3.14 and answers False from it).
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    env:
+      UV_PYTHON: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v4
 
@@ -17,5 +26,5 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Gate
+      - name: Gate (Python ${{ matrix.python }})
         run: uvx --from rust-just just check
