@@ -1,0 +1,6 @@
+# The select sudokumaker-custom-constraints gates its Python with: the
+# bug-and-clarity core plus the formatter.
+line-length = 88
+
+[lint]
+select = ["F", "I", "B", "UP", "SIM", "C4", "PIE", "PERF", "RET", "PTH", "RUF"]
