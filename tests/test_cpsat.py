@@ -255,4 +255,3 @@ def test_sudoku_model_on_region_and_latin_boards():
     assert 0 < len(expected) < 12
     key = lambda a: sorted(a.items())
     assert sorted(sols, key=key) == sorted(expected, key=key)
-

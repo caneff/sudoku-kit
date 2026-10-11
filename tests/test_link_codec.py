@@ -73,4 +73,3 @@ def test_encode_refuses_a_document_whose_link_does_not_decode_back(monkeypatch):
     )
     with pytest.raises(ValueError, match="round-trip"):
         encode_link({"formatVersion": "1.5.0", "puzzle": {"width": 9}})
-
