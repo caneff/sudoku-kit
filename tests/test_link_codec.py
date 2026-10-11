@@ -73,3 +73,38 @@ def test_encode_refuses_a_document_whose_link_does_not_decode_back(monkeypatch):
     )
     with pytest.raises(ValueError, match="round-trip"):
         encode_link({"formatVersion": "1.5.0", "puzzle": {"width": 9}})
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        # An int key comes back as the string "1".
+        {"puzzle": {1: "a"}},
+        # Two keys JSON writes alike: one field is lost outright.
+        {"puzzle": {1: "a", "1": "b"}},
+        # NaN is not JSON, and comes back unequal to itself.
+        {"puzzle": {"width": float("nan")}},
+    ],
+)
+def test_encode_refuses_a_document_json_cannot_carry(doc):
+    with pytest.raises(ValueError, match="round-trip"):
+        encode_link(doc)
+
+
+def test_read_link_takes_a_path_object(tmp_path):
+    link = read_link(str(LINKS / "house-gac.txt"))
+    assert read_link(LINKS / "house-gac.txt") == link
+
+
+def test_read_link_names_an_empty_file(tmp_path):
+    empty = tmp_path / "link.txt"
+    empty.write_text("\n")
+    with pytest.raises(ValueError, match=r"link\.txt holds no link"):
+        read_link(str(empty))
+
+
+@pytest.mark.parametrize("source", ["examples/no-such/PUZZLE_LINK.txt", "", "N4Ig"])
+def test_decode_names_what_is_not_a_link(source):
+    # A mistyped path is not a file, so read_link hands it on as the link.
+    with pytest.raises(ValueError, match="not a SudokuMaker link"):
+        decode_puzzle(read_link(source))
