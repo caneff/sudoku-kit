@@ -83,18 +83,27 @@ def forbid(m, x, assignment, tag=""):
     m.AddBoolOr(lits)
 
 
+def _check_status(status, limit):
+    """Raise for a status that is no verdict: a spent cap or a broken model."""
+    if status == cp_model.UNKNOWN:
+        raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
+    if status == cp_model.MODEL_INVALID:
+        raise ValueError("CP-SAT rejected the model as invalid (MODEL_INVALID)")
+
+
 def has_second_solution(m, x, first, limit, reproducible=True, tag=""):
     """True when `m` has a solution other than `first`, False when it has none.
 
     Raises TimeoutError when the search hits `limit` without a verdict -- a
     timeout is never reported as "no second solution", which is the one way a
-    uniqueness proof can lie. Forbids `first` on `m` in place, so the model is
+    uniqueness proof can lie. Raises ValueError when CP-SAT rejects `m` as
+    invalid (MODEL_INVALID): a broken model is not "no second solution".
+    Forbids `first` on `m` in place, so the model is
     spent afterwards.
     """
     forbid(m, x, first, tag=tag)
     status = solver(limit, reproducible=reproducible).Solve(m)
-    if status == cp_model.UNKNOWN:
-        raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
+    _check_status(status, limit)
     return status in SOLVED
 
 
@@ -137,12 +146,13 @@ def solve_unique(m, x, limit, reproducible=True):
     `first` is a solution as {cell: digit}, or None when `m` has none, in which
     case is_unique is False. Raises TimeoutError when either solve spends
     `limit` without a verdict: a timeout is "don't know", never "infeasible"
-    and never "unique". Spends `m`, as has_second_solution does.
+    and never "unique". Raises ValueError when either solve meets a model
+    CP-SAT rejects as invalid (MODEL_INVALID), which is no "infeasible" either.
+    Spends `m`, as has_second_solution does.
     """
     s = solver(limit, reproducible=reproducible)
     status = s.Solve(m)
-    if status == cp_model.UNKNOWN:
-        raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
+    _check_status(status, limit)
     if status not in SOLVED:
         return None, False
     first = {k: s.Value(v) for k, v in x.items()}
