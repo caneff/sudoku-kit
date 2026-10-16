@@ -5,7 +5,7 @@ A small library of sudoku tooling, written to be shared by
 and grid-hunts. At v0.1.0 neither installs it yet.
 
 - `sudoku_kit.cpsat`: the CP-SAT calls every generator and uniqueness proof
-  makes. `solver`, `forbid`, `has_second_solution`, `sudoku_model` and
+  makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model` and
   `solve_unique`.
 - `sudoku_kit.link_codec`: the SudokuMaker link codec. `decode_puzzle`,
   `encode_link` and `read_link`. `decode_puzzle` reads both payload formats

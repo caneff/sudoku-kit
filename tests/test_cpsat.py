@@ -11,6 +11,7 @@ from ortools.sat.python import cp_model
 
 from sudoku_kit import cpsat
 from sudoku_kit.cpsat import (
+    boxes,
     forbid,
     has_second_solution,
     solve_unique,
@@ -206,66 +207,57 @@ def _houses_ok(a, n, houses):
 
 def test_sudoku_model_on_a_square_board():
     # 4x4 with 2x2 boxes: 288 grids, and every one is a valid sudoku.
-    m, x = sudoku_model(4, (2, 2))
+    m, x = sudoku_model(4, boxes(4, 2, 2))
     assert sorted(x) == [(r, c) for r in range(4) for c in range(4)]
-    boxes = [
-        [(br + i, bc + j) for i in range(2) for j in range(2)]
-        for br in (0, 2)
-        for bc in (0, 2)
-    ]
     sols = _solutions(m, x)
     assert len(sols) == 288
-    assert all(_houses_ok(a, 4, _lines(4) + boxes) for a in sols)
+    assert all(_houses_ok(a, 4, _lines(4) + boxes(4, 2, 2)) for a in sols)
 
 
 def test_sudoku_model_on_a_rectangular_box_board():
     # 6x6 with 2-row by 3-column boxes: a solution is checked house by house.
-    m, x = sudoku_model(6, (2, 3))
-    boxes = [
-        [(br + i, bc + j) for i in range(2) for j in range(3)]
-        for br in (0, 2, 4)
-        for bc in (0, 3)
-    ]
+    m, x = sudoku_model(6, boxes(6, 2, 3))
     found = _solve(m, x)
     assert found is not None
-    assert _houses_ok(found, 6, _lines(6) + boxes)
+    assert _houses_ok(found, 6, _lines(6) + boxes(6, 2, 3))
 
     # The pair is (height, width): (0,0) and (1,2) share a 2x3 box but not a
     # 3x2 one, and (0,0) and (2,1) share a 3x2 box but not a 2x3 one.
-    def pinned(box, cell):
-        m, x = sudoku_model(6, box)
+    def pinned(height, width, cell):
+        m, x = sudoku_model(6, boxes(6, height, width))
         m.Add(x[0, 0] == 1)
         m.Add(x[cell] == 1)
         return _feasible(m)[0]
 
-    assert not pinned((2, 3), (1, 2)) and pinned((3, 2), (1, 2))
-    assert not pinned((3, 2), (2, 1)) and pinned((2, 3), (2, 1))
+    assert not pinned(2, 3, (1, 2)) and pinned(3, 2, (1, 2))
+    assert not pinned(3, 2, (2, 1)) and pinned(2, 3, (2, 1))
 
 
-def test_sudoku_model_refuses_boxes_that_are_not_n_cells():
-    # (2, 2) boxes on a 6x6 divide it but hold 4 cells, a weaker rule than
-    # sudoku; (4, 2) does not even tile it.
-    for box in ((2, 2), (4, 2), (3, 1)):
-        with pytest.raises(ValueError, match="boxes do not hold 6 cells"):
-            sudoku_model(6, box)
-
-
-def test_sudoku_model_refuses_regions_with_latin():
-    with pytest.raises(ValueError, match="not both"):
-        sudoku_model(3, None, regions=[[(0, 0), (0, 1)]], latin=True)
+def test_boxes_refuses_boxes_that_are_not_n_cells():
+    # 2x2 boxes on a 6x6 divide it but hold 4 cells, a weaker rule than
+    # sudoku; 4x2 does not even tile it.
+    for height, width in ((2, 2), (4, 2), (3, 1)):
+        with pytest.raises(ValueError, match=f"{height}x{width} boxes do not hold 6"):
+            boxes(6, height, width)
 
 
 def test_sudoku_model_on_region_and_latin_boards():
-    # latin=True is rows and columns only: the 12 Latin squares of order 3.
-    m, x = sudoku_model(3, None, latin=True)
+    # no houses is rows and columns only: the 12 Latin squares of order 3.
+    m, x = sudoku_model(3, ())
     latin = _solutions(m, x)
     assert len(latin) == 12
     # A region replaces the boxes: it adds one pair, (0,1) and (1,0), to keep
     # apart, so the board's solutions are exactly the Latin squares that do.
     region = [(0, 0), (0, 1), (1, 0)]
-    m, x = sudoku_model(3, None, regions=[region])
+    m, x = sudoku_model(3, [region])
     sols = _solutions(m, x)
     expected = [a for a in latin if len({a[c] for c in region}) == 3]
     assert 0 < len(expected) < 12
     key = lambda a: sorted(a.items())
     assert sorted(sols, key=key) == sorted(expected, key=key)
+
+
+def test_has_second_solution_takes_no_tag():
+    m, x = _model(4)
+    with pytest.raises(TypeError):
+        has_second_solution(m, x, {"x": 1, "y": 3}, 10, tag=0)

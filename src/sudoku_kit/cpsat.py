@@ -91,7 +91,7 @@ def _check_status(status, limit):
         raise ValueError("CP-SAT rejected the model as invalid (MODEL_INVALID)")
 
 
-def has_second_solution(m, x, first, limit, reproducible=True, tag=""):
+def has_second_solution(m, x, first, limit, reproducible=True):
     """True when `m` has a solution other than `first`, False when it has none.
 
     Raises TimeoutError when the search hits `limit` without a verdict -- a
@@ -101,40 +101,42 @@ def has_second_solution(m, x, first, limit, reproducible=True, tag=""):
     Forbids `first` on `m` in place, so the model is
     spent afterwards.
     """
-    forbid(m, x, first, tag=tag)
+    forbid(m, x, first)
     status = solver(limit, reproducible=reproducible).Solve(m)
     _check_status(status, limit)
     return status in SOLVED
 
 
-def sudoku_model(n, box, *, regions=None, latin=False):
-    """(m, x) for an n x n sudoku: digits 1..n, rows and columns distinct.
+def boxes(n, height, width):
+    """The box houses of an n x n board, as cell lists of `height` x `width`.
 
-    `x` maps (row, column) to its variable. `box` is (height, width) of the
-    boxes, whose area must be n; a 6x6 board with boxes two rows tall and
-    three columns wide is `sudoku_model(6, (2, 3))`. `regions`, a list of cell
-    lists, replaces the boxes with houses of the caller's own shape, and
-    `latin=True` drops them altogether; either way `box` is not read, so pass
-    None. Givens and every other rule are the caller's to post on `m`.
+    A 6x6 board with boxes two rows tall and three columns wide is
+    `boxes(6, 2, 3)`. Raises ValueError when height x width is not n: a box
+    that holds fewer cells than n is a weaker rule than sudoku, and one that
+    does not tile the board leaves cells outside every box.
     """
-    if regions is not None and latin:
-        raise ValueError("a board has regions or is a plain Latin square, not both")
+    if height * width != n:
+        raise ValueError(f"{height}x{width} boxes do not hold {n} cells")
+    return [
+        [(br + dr, bc + dc) for dr in range(height) for dc in range(width)]
+        for br in range(0, n, height)
+        for bc in range(0, n, width)
+    ]
+
+
+def sudoku_model(n, regions):
+    """(m, x) for an n x n board: digits 1..n, rows and columns distinct.
+
+    `x` maps (row, column) to its variable. `regions`, a list of cell lists,
+    are the houses posted beside the rows and columns: `boxes(n, h, w)` for a
+    sudoku, `()` for a plain Latin square. Givens and every other rule are the
+    caller's to post on `m`.
+    """
     m = cp_model.CpModel()
     x = {(r, c): m.NewIntVar(1, n, f"x{r}{c}") for r in range(n) for c in range(n)}
     for i in range(n):
         m.AddAllDifferent([x[i, c] for c in range(n)])
         m.AddAllDifferent([x[r, i] for r in range(n)])
-    if latin:
-        return m, x
-    if regions is None:
-        bh, bw = box
-        if bh * bw != n:
-            raise ValueError(f"{bh}x{bw} boxes do not hold {n} cells")
-        regions = [
-            [(br + dr, bc + dc) for dr in range(bh) for dc in range(bw)]
-            for br in range(0, n, bh)
-            for bc in range(0, n, bw)
-        ]
     for house in regions:
         m.AddAllDifferent([x[cell] for cell in house])
     return m, x
