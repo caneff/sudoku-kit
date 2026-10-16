@@ -98,6 +98,12 @@ def table(cells: Iterable[Cell], tuples: Iterable[Iterable[int]]) -> Poster:
     )
 
 
+# A claim answers `claim_cells()`, the cells it names; `probes(candidates)`,
+# one function per solve it needs, each posting that solve's negation; and
+# `fixes(candidates)`, the (cell, digit) each propagation run fixes, or None
+# when the claim fails in one solve, which `post_negation(m, x)` then posts.
+
+
 class Order(NamedTuple):
     """A rising chain: cells[0] < cells[1] < ..."""
 
@@ -107,9 +113,7 @@ class Order(NamedTuple):
         return list(self.cells)
 
     def fixes(self, candidates):
-        """The (cell, digit) a run fixes, one per run; None when the claim
-        fails in one solve, by `post_negation`."""
-        return
+        return None
 
     def post_negation(self, m, x):
         """Post "the chain does not rise" on `m`."""
@@ -173,7 +177,7 @@ def _check_cells(cells, candidates, what):
             raise ValueError(f"{what} names cell {cell}, which is not on the board")
 
 
-def _check(candidates, registry, names, claim, given):
+def _step(candidates, registry, names, claim, given, **limits):
     if not isinstance(claim, Order | Place | Either):
         raise ValueError(f"unknown claim {claim!r}: expected Order, Place or Either")
     for cell, digits in candidates.items():
@@ -189,7 +193,7 @@ def _check(candidates, registry, names, claim, given):
     for chain in given:
         _check_cells(chain.cells, candidates, "a given chain")
     _check_cells(claim.claim_cells(), candidates, "the claim")
-    return Step(candidates, tuple(posters), given, claim)
+    return Step(candidates, tuple(posters), given, claim, **limits)
 
 
 def _post(m, x, name, poster):
@@ -227,8 +231,8 @@ class Step:
     posters: tuple[tuple[str, Poster], ...]
     given: tuple[Order, ...]
     claim: Order | Place | Either
-    time_limit: float = 10.0
-    workers: int = 1
+    time_limit: float
+    workers: int
 
     def without(self, pair):
         """This step with the named constraint `pair` left out."""
@@ -356,8 +360,8 @@ def prove(
     `candidates`, a constraint that touches a cell it does not declare, a claim
     that is not an `Order`, `Place` or `Either`, or a model CP-SAT rejects.
     """
-    step = _check(candidates, registry, names, claim, given)
-    return replace(step, time_limit=time_limit, workers=workers).prove()
+    limits = {"time_limit": time_limit, "workers": workers}
+    return _step(candidates, registry, names, claim, given, **limits).prove()
 
 
 def irreducible(
@@ -382,11 +386,8 @@ def irreducible(
     set is irreducible, not the smallest: another set may be shorter. Never
     changes `candidates`.
     """
-    step = replace(
-        _check(candidates, registry, names, claim, given),
-        time_limit=time_limit,
-        workers=workers,
-    )
+    limits = {"time_limit": time_limit, "workers": workers}
+    step = _step(candidates, registry, names, claim, given, **limits)
     result = step.prove()
     if result.status in ("refuted", "timeout"):
         return IrreducibleResult(result.status, None, result.witness)
@@ -431,11 +432,8 @@ def propagation(
     which propagation would empty a cell for any claim -- and TimeoutError
     when one solve spends `time_limit` seconds: a timeout is never a verdict.
     """
-    step = replace(
-        _check(candidates, registry, names, claim, given),
-        time_limit=time_limit,
-        workers=workers,
-    )
+    limits = {"time_limit": time_limit, "workers": workers}
+    step = _step(candidates, registry, names, claim, given, **limits)
     status, _, _ = step.solve(None)
     if status == UNKNOWN:
         raise TimeoutError(
