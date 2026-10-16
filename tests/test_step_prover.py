@@ -6,6 +6,7 @@ a cell no constraint or claim touches is visible as an extra key.
 """
 
 import pytest
+from ortools.sat.python import cp_model
 
 from sudoku_kit import cpsat, step_prover
 from sudoku_kit.step_prover import (
@@ -119,6 +120,15 @@ def test_an_either_claim_proved_and_refuted():
     result = prove(cands, {}, [], claim)
     assert result.status == "refuted"
     assert result.witness in ({A: 1, B: 1}, {A: 2, B: 2})
+
+
+def test_an_either_negation_tags_each_pattern_distinctly():
+    m = cp_model.CpModel()
+    x = {A: m.NewIntVar(1, 2, "a"), B: m.NewIntVar(1, 2, "b")}
+    Either([{A: 1, B: 2}, {A: 2, B: 1}]).post_negation(m, x)
+    names = [v.name for v in m.Proto().variables][2:]
+    assert len(names) == 4
+    assert len(set(names)) == 4
 
 
 def test_an_either_pattern_holds_only_when_all_its_equalities_do():

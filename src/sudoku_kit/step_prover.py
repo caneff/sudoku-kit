@@ -19,7 +19,7 @@ from typing import Literal, NamedTuple
 
 from ortools.sat.python import cp_model
 
-from sudoku_kit.cpsat import SOLVED, UNKNOWN, solver
+from sudoku_kit.cpsat import SOLVED, UNKNOWN, forbid, solver
 
 Cell = tuple[int, int]
 Status = Literal["proved", "refuted", "contradictory", "timeout"]
@@ -164,14 +164,7 @@ class Either(NamedTuple):
     def post_negation(self, m, x):
         """Post "every pattern fails" on `m`."""
         for i, pattern in enumerate(self.patterns):
-            # This pattern fails: some one of its equalities does.
-            misses = []
-            for cell, digit in pattern.items():
-                b = m.NewBoolVar(f"miss{i}_{cell}")
-                m.Add(x[cell] != digit).OnlyEnforceIf(b)
-                m.Add(x[cell] == digit).OnlyEnforceIf(b.Not())
-                misses.append(b)
-            m.AddBoolOr(misses)
+            forbid(m, x, pattern, tag=i)
 
     def probes(self, candidates):
         return [self.post_negation]
