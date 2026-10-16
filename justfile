@@ -1,9 +1,7 @@
-# Lint and every test: the gate CI runs. `.python-version` holds it to the
-# floor pyproject.toml declares; CI also runs it on the newest Python.
+# The gate CI runs: tests/all.sh holds the suite list. `.python-version` holds
+# it to the floor pyproject.toml declares; CI also runs it on the newest Python.
 check:
-    uv run ruff check
-    uv run ruff format --check
-    uv run pytest -q
+    bash tests/all.sh
 
 # Lint with auto-fix, then format.
 fmt:
