@@ -311,13 +311,14 @@ def test_irreducible_on_a_spent_time_limit_is_timeout_with_no_set():
     assert result == IrreducibleResult("timeout", None, None, False)
 
 
-def _starve_after(monkeypatch, n):
-    """Give every CP-SAT solve after the first `n` no time at all."""
+def _starve(monkeypatch, starved):
+    """Give the k-th CP-SAT solve (counting from 1) no time at all when
+    `starved(k)`."""
     calls = []
 
     def solver(limit):
         calls.append(limit)
-        return cpsat.solver(limit if len(calls) <= n else 0.0)
+        return cpsat.solver(0.0 if starved(len(calls)) else limit)
 
     monkeypatch.setattr(step_prover, "solver", solver)
 
@@ -341,10 +342,8 @@ def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):
     cands, registry, claim = _pair_step()
     registry["cd"] = house([C, D])
     names = ["ab", "cd", "bc"]
-    _starve_after(
-        monkeypatch,
-        _solves_made(monkeypatch, lambda: prove(cands, registry, names, claim)),
-    )
+    n = _solves_made(monkeypatch, lambda: prove(cands, registry, names, claim))
+    _starve(monkeypatch, lambda k: k > n)
     result = irreducible(cands, registry, names, claim)
     assert result == IrreducibleResult("proved", ("ab", "cd", "bc"), None, False)
 
@@ -462,17 +461,20 @@ def test_propagation_leaves_the_candidates_alone():
     assert cands == before
 
 
-def test_a_spent_time_limit_in_propagation_raises_timeout_error():
+def test_a_contradiction_check_that_times_out_raises_timeout_error(monkeypatch):
+    # Only the first solve, which checks that some grid is left, is starved;
+    # the support solves after it would settle the step.
     cands, registry, claim = _pair_step()
+    _starve(monkeypatch, lambda k: k == 1)
     with pytest.raises(TimeoutError, match="no verdict"):
-        propagation(cands, registry, ["ab", "bc"], claim, time_limit=0.0)
+        propagation(cands, registry, ["ab", "bc"], claim)
 
 
 def test_a_support_solve_that_times_out_raises_naming_its_constraint(monkeypatch):
     # The first solve checks that some grid is left; every support solve
     # after it gets no time.
     cands, registry, claim = _pair_step()
-    _starve_after(monkeypatch, 1)
+    _starve(monkeypatch, lambda k: k > 1)
     with pytest.raises(TimeoutError, match=r"'ab'"):
         propagation(cands, registry, ["ab", "bc"], claim)
 
