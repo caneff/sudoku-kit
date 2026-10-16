@@ -14,6 +14,7 @@ row, column and region and gives every cell the full domain.
 
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Literal, NamedTuple
 
 from ortools.sat.python import cp_model
@@ -93,7 +94,7 @@ def _post_negation(m, x, claim):
     """Post "the claim fails" on `m`, for the claims that fail in one solve."""
     if isinstance(claim, Order):
         breaks = []
-        for left, right in zip(claim.cells, claim.cells[1:], strict=False):
+        for left, right in pairwise(claim.cells):
             b = m.NewBoolVar(f"breaks_{left}_{right}")
             m.Add(x[left] >= x[right]).OnlyEnforceIf(b)
             m.Add(x[left] < x[right]).OnlyEnforceIf(b.Not())
@@ -148,8 +149,11 @@ def prove(
 
     Raises ValueError naming a cell with no candidates, a name missing from
     `registry`, or a cell of a constraint, claim or given chain that is not in
-    `candidates`.
+    `candidates`, a constraint that touches a cell it does not declare, a claim
+    that is not an `Order`, `Place` or `Either`, or a model CP-SAT rejects.
     """
+    if not isinstance(claim, Order | Place | Either):
+        raise ValueError(f"unknown claim {claim!r}: expected Order, Place or Either")
     for cell, digits in candidates.items():
         if not digits:
             raise ValueError(f"cell {cell} has no candidates")
@@ -158,13 +162,13 @@ def prove(
         if name not in registry:
             raise ValueError(f"constraint {name!r} is not in the registry")
         _check_cells(registry[name].cells, candidates, f"constraint {name!r}")
-        posters.append(registry[name])
+        posters.append((name, registry[name]))
     given = list(given)
     for chain in given:
         _check_cells(chain.cells, candidates, "a given chain")
     _check_cells(_claim_cells(claim), candidates, "the claim")
 
-    shown = {c for p in posters for c in p.cells}
+    shown = {c for _, p in posters for c in p.cells}
     shown.update(_claim_cells(claim))
     shown.update(c for chain in given for c in chain.cells)
 
@@ -177,10 +181,17 @@ def prove(
             )
             for cell, digits in candidates.items()
         }
-        for p in posters:
-            p.post(m, x)
+        for name, p in posters:
+            # A poster sees only the cells it declares, so one that reaches
+            # for another fails here instead of leaving it out of the witness.
+            try:
+                p.post(m, {c: x[c] for c in p.cells})
+            except KeyError as e:
+                raise ValueError(
+                    f"constraint {name!r} uses cell {e.args[0]}, which it does not declare"
+                ) from None
         for chain in given:
-            for left, right in zip(chain.cells, chain.cells[1:], strict=False):
+            for left, right in pairwise(chain.cells):
                 m.Add(x[left] < x[right])
         probe(m, x)
         s = solver(time_limit)
@@ -191,5 +202,9 @@ def prove(
         if status == UNKNOWN:
             timed_out = True
         elif status != cp_model.INFEASIBLE:
-            raise ValueError(f"CP-SAT rejected the step's model (status {status})")
+            names_posted = [name for name, _ in posters]
+            raise ValueError(
+                f"CP-SAT rejected the model for constraints {names_posted}: "
+                f"{cp_model.CpSolver().StatusName(status)}"
+            )
     return ProofResult("timeout" if timed_out else "proved")
