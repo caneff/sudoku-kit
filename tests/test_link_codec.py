@@ -1,7 +1,9 @@
 """The SudokuMaker link codec, on real links copied from the example link
 files of sudokumaker-custom-constraints (`tests/links/`)."""
 
+import io
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -108,3 +110,99 @@ def test_decode_names_what_is_not_a_link(source):
     # A mistyped path is not a file, so read_link hands it on as the link.
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
         decode_puzzle(read_link(source))
+
+
+# A real `D` link (base64url of deflate-raw JSON) fetched from
+# https://sudokumaker.app/api/puzzles/bWgLDdqJLQ on 2026-10-16, and the
+# document a stock zlib inflate of its payload gives.
+D_LINK = LINKS / "numbered-rooms-6x6.txt"
+D_DOC = LINKS / "numbered-rooms-6x6.json"
+
+
+def test_a_d_link_decodes_to_its_document():
+    expected = json.loads(D_DOC.read_text())
+    assert decode_puzzle(read_link(D_LINK)) == expected
+    assert expected["formatVersion"] == "1.6.0"
+
+
+def test_a_d_payload_decodes_without_its_link_prefix():
+    link = read_link(D_LINK)
+    assert decode_puzzle(link.split("puzzle=")[1]) == decode_puzzle(link)
+
+
+def test_a_d_link_round_trips_through_an_n_link():
+    doc = decode_puzzle(read_link(D_LINK))
+    n_link = encode_link(doc)
+    assert n_link.split("puzzle=")[1].startswith("N")
+    assert decode_puzzle(n_link) == doc
+
+
+@pytest.mark.parametrize("payload", ["Xabc", "d3Vpt", "D", "D!!not-base64!!", "DAAAA"])
+def test_decode_names_a_payload_it_cannot_read(payload):
+    with pytest.raises(ValueError, match="not a SudokuMaker link") as error:
+        decode_puzzle(f"https://sudokumaker.app/?puzzle={payload}")
+    assert payload[:1] in str(error.value)
+
+
+def test_decode_names_an_unknown_prefix():
+    with pytest.raises(ValueError, match="unknown format prefix 'X'"):
+        decode_puzzle("Xabc")
+
+
+class _Response(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _serve(monkeypatch, body=None, error=None):
+    """Replace the network: record the requested URL, answer `body` or raise."""
+    asked = []
+
+    def fake_urlopen(url, timeout=None):
+        asked.append(url)
+        if error:
+            raise error
+        return _Response(body)
+
+    monkeypatch.setattr(link_codec.urllib.request, "urlopen", fake_urlopen)
+    return asked
+
+
+def test_read_link_resolves_a_short_link(monkeypatch):
+    d_link = read_link(D_LINK)
+    payload = d_link.split("puzzle=")[1]
+    asked = _serve(monkeypatch, body=json.dumps({"puzzle": payload}).encode())
+    link = read_link("https://sudokumaker.app/p/bWgLDdqJLQ")
+    assert asked == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
+    assert decode_puzzle(link) == decode_puzzle(d_link)
+
+
+def test_read_link_names_a_short_link_with_no_puzzle(monkeypatch):
+    _serve(
+        monkeypatch,
+        error=urllib.error.HTTPError("u", 404, "Not Found", {}, None),
+    )
+    with pytest.raises(ValueError, match="no-such-id"):
+        read_link("https://sudokumaker.app/p/no-such-id")
+
+
+def test_read_link_names_a_short_link_it_could_not_reach(monkeypatch):
+    _serve(monkeypatch, error=urllib.error.URLError("offline"))
+    with pytest.raises(ValueError, match=r"abc123.*offline"):
+        read_link("https://sudokumaker.app/p/abc123")
+
+
+def test_read_link_names_a_short_link_answer_with_no_payload(monkeypatch):
+    _serve(monkeypatch, body=b'{"error": "gone"}')
+    with pytest.raises(ValueError, match="abc123"):
+        read_link("https://sudokumaker.app/p/abc123")
+
+
+def test_read_link_does_not_touch_the_network_for_a_full_link(monkeypatch):
+    asked = _serve(monkeypatch, error=AssertionError("network used"))
+    link = read_link(LINKS / "house-gac.txt")
+    assert read_link(link) == link
+    assert asked == []

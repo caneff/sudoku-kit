@@ -8,8 +8,11 @@ and grid-hunts. At v0.1.0 neither installs it yet.
   makes. `solver`, `forbid`, `has_second_solution`, `sudoku_model` and
   `solve_unique`.
 - `sudoku_kit.link_codec`: the SudokuMaker link codec. `decode_puzzle`,
-  `encode_link` and `read_link`. `encode_link` refuses a document whose link
-  does not decode back to it.
+  `encode_link` and `read_link`. `decode_puzzle` reads both payload formats
+  the app writes (`D`, base64url of deflate-raw, and the older lz-string `N`);
+  `encode_link` writes `N` and refuses a document whose link does not decode
+  back to it. `read_link` also resolves a short link
+  (`https://sudokumaker.app/p/<id>`) with one GET of the app's API.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
 

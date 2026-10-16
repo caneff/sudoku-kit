@@ -1,0 +1,827 @@
+{
+ "formatVersion": "1.6.0",
+ "puzzle": {
+  "author": "",
+  "cells": [
+   {
+    "value": 1
+   },
+   {
+    "value": 1
+   },
+   {
+    "value": 2
+   },
+   {
+    "value": 3
+   },
+   {
+    "value": 2
+   },
+   {
+    "value": 3
+   },
+   {
+    "value": 3
+   },
+   {
+    "value": 1
+   },
+   {
+    "value": 1
+   },
+   {
+    "value": 1
+   },
+   {
+    "candidates": 104
+   },
+   {
+    "candidates": 116
+   },
+   {
+    "candidates": 120
+   },
+   {
+    "candidates": 116
+   },
+   {
+    "candidates": 116
+   },
+   {
+    "candidates": 110
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 116
+   },
+   {
+    "candidates": 112
+   },
+   {
+    "candidates": 124
+   },
+   {
+    "candidates": 114
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 112
+   },
+   {
+    "candidates": 12
+   },
+   {
+    "candidates": 114
+   },
+   {
+    "candidates": 12
+   },
+   {
+    "candidates": 114
+   },
+   {
+    "candidates": 114
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 124
+   },
+   {
+    "candidates": 114
+   },
+   {
+    "candidates": 122
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 124
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 124
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 118
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "value": 1
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "candidates": 126
+   },
+   {
+    "value": 1
+   }
+  ],
+  "comment": "Normal sudoku rules apply on the inner grid. Numbered Rooms. Each outside clue reads inward along its line. The first cell holds an index k; the clue equals the digit in the k-th cell of that line. An index past the end of the line is illegal. Blank clues must be deduced.",
+  "constraints": [
+   {
+    "regions": [
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     -1,
+     -1,
+     0,
+     0,
+     0,
+     1,
+     1,
+     1,
+     -1,
+     -1,
+     2,
+     2,
+     2,
+     3,
+     3,
+     3,
+     -1,
+     -1,
+     2,
+     2,
+     2,
+     3,
+     3,
+     3,
+     -1,
+     -1,
+     4,
+     4,
+     4,
+     5,
+     5,
+     5,
+     -1,
+     -1,
+     4,
+     4,
+     4,
+     5,
+     5,
+     5,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1,
+     -1
+    ],
+    "type": 1
+   },
+   {
+    "type": 0
+   },
+   {
+    "definition": {
+     "backend": {
+      "code": "function frameLines (puzzle) {\n  const W = puzzle.spec.size.width\n  const H = puzzle.spec.size.height\n  const nw = W - 2\n  const nh = H - 2\n  const at = (r, c) => puzzle.getCellAt(c, r) | 0\n  const lines = []\n  for (let i = 0; i < nh; i++) {\n    const row = []\n    for (let c = 1; c <= nw; c++) row.push(at(i + 1, c))\n    lines.push({ side: 'L', clue: at(i + 1, 0), line: row })\n    lines.push({ side: 'R', clue: at(i + 1, W - 1), line: row.slice().reverse() })\n  }\n  for (let i = 0; i < nw; i++) {\n    const col = []\n    for (let r = 1; r <= nh; r++) col.push(at(r, i + 1))\n    lines.push({ side: 'T', clue: at(0, i + 1), line: col })\n    lines.push({ side: 'B', clue: at(H - 1, i + 1), line: col.slice().reverse() })\n  }\n  return lines\n}\nfor (const g of frameLines(puzzle)) {\n  const name = `the numbered-rooms clue at ${helpers.naming.getCellName(g.clue)}`\n  puzzle.addConstraintComponent(new NumberedRoomsComponent(name, g.clue, g.line))\n}\n",
+      "type": "code"
+     },
+     "components": [
+      {
+       "code": "function getAffectedCells (clue, line) {\n  return [clue, ...line]\n}\nfunction setParams (instance, clue, line) {\n  instance.clue = clue\n  instance.line = line\n}\nconst BARE = 0\nconst HOUSE = 1\nconst LINE_BARE = Object.freeze({ kind: BARE, oneToN: false })\nconst LINE_HOUSE = Object.freeze({ kind: HOUSE, oneToN: false })\nconst LINE_ONE_TO_N = Object.freeze({ kind: HOUSE, oneToN: true })\nfunction lineKind (instance, puzzle, cells) {\n  const answers = instance.repeatAnswers || (instance.repeatAnswers = new Map())\n  let canRepeat = answers.get(cells)\n  if (canRepeat === undefined) {\n    canRepeat = puzzle.getCellsCanHaveRepeats(cells)\n    answers.set(cells, canRepeat)\n  }\n  if (canRepeat) return LINE_BARE\n  let mask = 0\n  for (const c of cells) mask |= puzzle.getCandidatesBitMask(c)\n  return mask === (1 << (cells.length + 1)) - 2 ? LINE_ONE_TO_N : LINE_HOUSE\n}\nfunction * update (instance, puzzle) {\n  const { clue, line } = instance\n  const m = line.length\n  const house = lineKind(instance, puzzle, line).kind >= HOUSE\n  const clueM = puzzle.getCandidatesBitMask(clue)\n  const idxM = puzzle.getCandidatesBitMask(line[0])\n  const drop = (mask, cell) => puzzle.removeCandidatesFromCell(new SudokuDigitSet(mask), cell)\n  let K = 0\n  let reach = 0\n  for (let k = 1, bit = 2; k <= m; k++, bit <<= 1) {\n    if (!(idxM & bit)) continue\n    let t = puzzle.getCandidatesBitMask(line[k - 1]) & clueM\n    t = k === 1 ? t & bit : house ? t & ~bit : t\n    if (t) { K |= bit; reach |= t }\n  }\n  if (!K) {\n    yield puzzle.stop(`no index lets the line reach the clue of ${instance.name}`, [clue, line[0]])\n    return\n  }\n  if (idxM & ~K) yield drop(idxM & ~K, line[0])\n  if (clueM & ~reach) yield drop(clueM & ~reach, clue)\n  if (house && (clueM & (clueM - 1)) === 0) {\n    const dead = []\n    for (let k = 1, bit = 2; k <= m; k++, bit <<= 1) {\n      if (!(K & bit) && (puzzle.getCandidatesBitMask(line[k - 1]) & clueM)) dead.push(line[k - 1])\n    }\n    if (dead.length > 0) yield puzzle.removeCandidatesFromCells(clueM, dead)\n  }\n  if ((K & (K - 1)) === 0) {\n    const target = line[31 - Math.clz32(K) - 1]\n    const rm = puzzle.getCandidatesBitMask(target) & ~reach\n    if (rm) yield drop(rm, target)\n  }\n}\nfunction validate (instance, puzzle) {\n  const { clue, line } = instance\n  if (!puzzle.getCellsAreFilled([clue, ...line])) return true\n  const k = puzzle.getValue(line[0])\n  if (k < 1 || k > line.length) return false\n  return puzzle.getValue(line[k - 1]) === puzzle.getValue(clue)\n}\n",
+       "name": "NumberedRoomsComponent",
+       "type": "code"
+      }
+     ],
+     "input": [],
+     "name": "Numbered Rooms"
+    },
+    "input": {},
+    "name": "Numbered Rooms",
+    "style": {},
+    "type": 1000
+   },
+   {
+    "definition": {
+     "backend": {
+      "code": "function rowsAndColumns () {\n  return [\n    ['row', 'Row', helpers.geometry.getAllRows()],\n    ['column', 'Column', helpers.geometry.getAllColumns()]\n  ].flatMap(([kind, houseType, lines]) =>\n    [...lines].slice(1, -1).map((line, i) => ({\n      name: `${kind} ${i + 1}`,\n      houseType,\n      cells: line.slice(1, -1).map(cell => cell | 0)\n    }))\n  )\n}\nconst digitCount = helpers.digits.maxDigit - helpers.digits.minDigit + 1\nfor (const { name, houseType, cells } of rowsAndColumns()) {\n  puzzle.addConstraintComponent(cells.length === digitCount\n    ? new HouseComponent(name, cells, houseType)\n    : new DifferentDigitsComponent(name, cells))\n}\nfunction postprocessJSON (json) {\n  const { width: W, height: H } = helpers.cellIds\n  const toRC = cell => {\n    const { x, y } = helpers.cellIds.getCoordsFromId(cell)\n    return [y, x]\n  }\n  json.metadata.norowcol = true\n  json.cages.push(...rowsAndColumns().map(({ cells }) => ({\n    unique: true, type: 'rowcol', hidden: true, cells: cells.map(toRC)\n  })))\n  const corners = [0, W - 1, W * (H - 1), W * H - 1]\n  for (const cell of corners) {\n    const [r, c] = toRC(cell)\n    delete json.cells[r][c].value\n  }\n  const masked = new Set(corners)\n  json.metadata.solution = json.metadata.solution?.replace(/./g,\n    (digit, index) => masked.has(index) ? '.' : digit)\n}\n",
+      "type": "code"
+     },
+     "components": [],
+     "input": [],
+     "name": "Frame Rows and Columns"
+    },
+    "input": {},
+    "style": {},
+    "type": 1000
+   },
+   {
+    "definition": {
+     "backend": {
+      "code": "const { width: W, height: H } = helpers.cellIds\nconst corners = [0, W - 1, W * (H - 1), W * H - 1]\npuzzle.addConstraintComponent(new PredefinedCandidatesComponent(\n  'the frame corners', SudokuDigitSet.from([helpers.digits.minDigit]), corners))\n",
+      "type": "code"
+     },
+     "components": [],
+     "input": [],
+     "name": "Frame Corners"
+    },
+    "input": {},
+    "style": {},
+    "type": 1000
+   },
+   {
+    "lines": [
+     [
+      {
+       "x": 0,
+       "y": 1
+      },
+      {
+       "x": 0,
+       "y": 0
+      },
+      {
+       "x": 8,
+       "y": 0
+      },
+      {
+       "x": 8,
+       "y": 8
+      },
+      {
+       "x": 0,
+       "y": 8
+      },
+      {
+       "x": 0,
+       "y": 1
+      },
+      {
+       "x": 8,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 0,
+       "y": 2
+      },
+      {
+       "x": 1,
+       "y": 2
+      },
+      {
+       "x": 1,
+       "y": 0
+      }
+     ],
+     [
+      {
+       "x": 0,
+       "y": 3
+      },
+      {
+       "x": 1,
+       "y": 3
+      },
+      {
+       "x": 1,
+       "y": 2
+      }
+     ],
+     [
+      {
+       "x": 0,
+       "y": 4
+      },
+      {
+       "x": 1,
+       "y": 4
+      },
+      {
+       "x": 1,
+       "y": 3
+      }
+     ],
+     [
+      {
+       "x": 0,
+       "y": 5
+      },
+      {
+       "x": 1,
+       "y": 5
+      },
+      {
+       "x": 1,
+       "y": 4
+      }
+     ],
+     [
+      {
+       "x": 0,
+       "y": 6
+      },
+      {
+       "x": 1,
+       "y": 6
+      },
+      {
+       "x": 1,
+       "y": 5
+      }
+     ],
+     [
+      {
+       "x": 0,
+       "y": 7
+      },
+      {
+       "x": 8,
+       "y": 7
+      }
+     ],
+     [
+      {
+       "x": 1,
+       "y": 6
+      },
+      {
+       "x": 1,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 2,
+       "y": 0
+      },
+      {
+       "x": 2,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 2,
+       "y": 7
+      },
+      {
+       "x": 2,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 3,
+       "y": 0
+      },
+      {
+       "x": 3,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 3,
+       "y": 7
+      },
+      {
+       "x": 3,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 4,
+       "y": 0
+      },
+      {
+       "x": 4,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 4,
+       "y": 7
+      },
+      {
+       "x": 4,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 5,
+       "y": 0
+      },
+      {
+       "x": 5,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 5,
+       "y": 7
+      },
+      {
+       "x": 5,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 6,
+       "y": 0
+      },
+      {
+       "x": 6,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 6,
+       "y": 7
+      },
+      {
+       "x": 6,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 0
+      },
+      {
+       "x": 7,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 2
+      },
+      {
+       "x": 8,
+       "y": 2
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 3
+      },
+      {
+       "x": 8,
+       "y": 3
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 4
+      },
+      {
+       "x": 8,
+       "y": 4
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 5
+      },
+      {
+       "x": 8,
+       "y": 5
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 6
+      },
+      {
+       "x": 8,
+       "y": 6
+      }
+     ]
+    ],
+    "name": "White Lines (to hide outside cell borders)",
+    "style": {
+     "color": "#ffffffff",
+     "thickness": 0.05
+    },
+    "type": 2000
+   },
+   {
+    "lines": [
+     [
+      {
+       "x": 0,
+       "y": 5
+      },
+      {
+       "x": 0,
+       "y": 4
+      },
+      {
+       "x": 1,
+       "y": 4
+      },
+      {
+       "x": 1,
+       "y": 6
+      },
+      {
+       "x": 0,
+       "y": 6
+      },
+      {
+       "x": 0,
+       "y": 5
+      },
+      {
+       "x": 1,
+       "y": 5
+      }
+     ],
+     [
+      {
+       "x": 2,
+       "y": 7
+      },
+      {
+       "x": 1,
+       "y": 7
+      },
+      {
+       "x": 1,
+       "y": 8
+      },
+      {
+       "x": 3,
+       "y": 8
+      },
+      {
+       "x": 3,
+       "y": 7
+      },
+      {
+       "x": 2,
+       "y": 7
+      },
+      {
+       "x": 2,
+       "y": 8
+      }
+     ],
+     [
+      {
+       "x": 3,
+       "y": 0
+      },
+      {
+       "x": 2,
+       "y": 0
+      },
+      {
+       "x": 2,
+       "y": 1
+      },
+      {
+       "x": 4,
+       "y": 1
+      },
+      {
+       "x": 4,
+       "y": 0
+      },
+      {
+       "x": 3,
+       "y": 0
+      },
+      {
+       "x": 3,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 6,
+       "y": 0
+      },
+      {
+       "x": 5,
+       "y": 0
+      },
+      {
+       "x": 5,
+       "y": 1
+      },
+      {
+       "x": 7,
+       "y": 1
+      },
+      {
+       "x": 7,
+       "y": 0
+      },
+      {
+       "x": 6,
+       "y": 0
+      },
+      {
+       "x": 6,
+       "y": 1
+      }
+     ],
+     [
+      {
+       "x": 7,
+       "y": 3
+      },
+      {
+       "x": 7,
+       "y": 4
+      },
+      {
+       "x": 8,
+       "y": 4
+      },
+      {
+       "x": 8,
+       "y": 3
+      },
+      {
+       "x": 7,
+       "y": 3
+      }
+     ]
+    ],
+    "name": "Outside Cell Outlines",
+    "style": {
+     "color": "#d7d7d7ff",
+     "thickness": 0.03
+    },
+    "type": 2000
+   },
+   {
+    "lines": [
+     [
+      {
+       "x": 1,
+       "y": 1
+      },
+      {
+       "x": 1,
+       "y": 7
+      },
+      {
+       "x": 7,
+       "y": 7
+      },
+      {
+       "x": 7,
+       "y": 1
+      },
+      {
+       "x": 1,
+       "y": 1
+      }
+     ]
+    ],
+    "name": "Grid Outer Border",
+    "style": {
+     "color": "#000000ff",
+     "thickness": 0.07
+    },
+    "type": 2000
+   },
+   {
+    "cells": [
+     1,
+     2,
+     3,
+     4,
+     5,
+     6
+    ],
+    "style": {
+     "fill": "#ffffffff",
+     "size": 0.75,
+     "stroke": {
+      "color": "#000000ff",
+      "thickness": 0.02
+     }
+    },
+    "type": 306
+   }
+  ],
+  "export": {
+   "sudokuPad": {
+    "useIncompleteGridAsSolution": true
+   }
+  },
+  "height": 8,
+  "maxDigit": 6,
+  "name": "Numbered Rooms 6x6",
+  "type": "custom",
+  "width": 8
+ }
+}
