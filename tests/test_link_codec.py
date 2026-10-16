@@ -1,9 +1,12 @@
 """The SudokuMaker link codec, on real links copied from the example link
 files of sudokumaker-custom-constraints (`tests/links/`)."""
 
+import base64
+import http.client
 import io
 import json
 import urllib.error
+import zlib
 from pathlib import Path
 
 import pytest
@@ -137,72 +140,202 @@ def test_a_d_link_round_trips_through_an_n_link():
     assert decode_puzzle(n_link) == doc
 
 
-@pytest.mark.parametrize("payload", ["Xabc", "d3Vpt", "D", "D!!not-base64!!", "DAAAA"])
-def test_decode_names_a_payload_it_cannot_read(payload):
-    with pytest.raises(ValueError, match="not a SudokuMaker link") as error:
+def _d_payload(doc, *, pad=False):
+    """A `D` payload built with stock zlib and base64, apart from the codec."""
+    raw = zlib.compress(json.dumps(doc).encode(), wbits=-zlib.MAX_WBITS)
+    payload = base64.urlsafe_b64encode(raw).decode()
+    return "D" + (payload if pad else payload.rstrip("="))
+
+
+@pytest.mark.parametrize("extra", ["", "a", "ab", "abc"])
+def test_a_d_payload_decodes_whatever_its_unpadded_length(extra):
+    # The app writes no padding; the four names give bodies of differing
+    # lengths mod 4, so each padding amount is met.
+    doc = {"puzzle": {"name": "p" + extra}}
+    assert decode_puzzle(_d_payload(doc)) == doc
+    assert decode_puzzle(_d_payload(doc, pad=True)) == doc
+
+
+def test_the_unpadded_d_payloads_differ_in_length_mod_4():
+    lengths = {
+        len(_d_payload({"puzzle": {"name": "p" + extra}})) % 4
+        for extra in ["", "a", "ab", "abc"]
+    }
+    assert len(lengths) > 1
+
+
+@pytest.mark.parametrize("prefix", ["X", "d", "h"])
+def test_decode_names_an_unknown_prefix(prefix):
+    with pytest.raises(ValueError, match=f"unknown format prefix '{prefix}'"):
+        decode_puzzle(f"https://sudokumaker.app/?puzzle={prefix}3Vpt")
+
+
+_GOOD = _d_payload({"puzzle": {}})
+_WITH_JUNK = zlib.compress(b'{"puzzle": {}}', wbits=-zlib.MAX_WBITS) + b"junk"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "D",
+        "D!!not-base64!!",
+        # Valid base64 holding no deflate stream.
+        "DAAAA",
+        # One character outside the base64url alphabet inside a good body.
+        _GOOD[:5] + "*" + _GOOD[5:],
+        # A good stream with bytes after its end.
+        "D" + base64.urlsafe_b64encode(_WITH_JUNK).decode().rstrip("="),
+    ],
+)
+def test_decode_refuses_a_d_payload_that_is_not_one_clean_deflate_stream(payload):
+    with pytest.raises(ValueError, match="not a SudokuMaker link"):
         decode_puzzle(f"https://sudokumaker.app/?puzzle={payload}")
-    assert payload[:1] in str(error.value)
 
 
-def test_decode_names_an_unknown_prefix():
-    with pytest.raises(ValueError, match="unknown format prefix 'X'"):
-        decode_puzzle("Xabc")
+class _Network:
+    """Stands in for `urlopen`: records each request, answers or raises."""
+
+    def __init__(self, monkeypatch, body=None, error=None):
+        self.requests = []
+        self.timeouts = []
+        self._body, self._error = body, error
+        monkeypatch.setattr(link_codec.urllib.request, "urlopen", self)
+
+    def __call__(self, request, timeout=None):
+        self.requests.append(request)
+        self.timeouts.append(timeout)
+        if self._error:
+            raise self._error
+        return io.BytesIO(self._body)
+
+    @property
+    def urls(self):
+        return [request.full_url for request in self.requests]
 
 
-class _Response(io.BytesIO):
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
-
-
-def _serve(monkeypatch, body=None, error=None):
-    """Replace the network: record the requested URL, answer `body` or raise."""
-    asked = []
-
-    def fake_urlopen(url, timeout=None):
-        asked.append(url)
-        if error:
-            raise error
-        return _Response(body)
-
-    monkeypatch.setattr(link_codec.urllib.request, "urlopen", fake_urlopen)
-    return asked
+def _answer(puzzle):
+    return json.dumps({"puzzle": puzzle}).encode()
 
 
 def test_read_link_resolves_a_short_link(monkeypatch):
     d_link = read_link(D_LINK)
     payload = d_link.split("puzzle=")[1]
-    asked = _serve(monkeypatch, body=json.dumps({"puzzle": payload}).encode())
+    network = _Network(monkeypatch, body=_answer(payload))
     link = read_link("https://sudokumaker.app/p/bWgLDdqJLQ")
-    assert asked == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
+    assert network.urls == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
+    assert link == "https://sudokumaker.app/?puzzle=" + payload
     assert decode_puzzle(link) == decode_puzzle(d_link)
 
 
-def test_read_link_names_a_short_link_with_no_puzzle(monkeypatch):
-    _serve(
+def test_read_link_asks_the_api_as_sudoku_kit_not_as_urllib(monkeypatch):
+    # The API's CDN answers urllib's default User-Agent with a 403.
+    network = _Network(monkeypatch, body=_answer("Dx"))
+    read_link("https://sudokumaker.app/p/abc123")
+    assert network.requests[0].get_header("User-agent") == "sudoku-kit"
+    assert network.timeouts == [link_codec.FETCH_TIMEOUT_SECONDS]
+
+
+def test_read_link_resolves_a_short_link_held_in_a_file(monkeypatch, tmp_path):
+    network = _Network(monkeypatch, body=_answer("Dx"))
+    saved = tmp_path / "link.txt"
+    saved.write_text("# Renbanana\nhttps://sudokumaker.app/p/KkFHGqdkjd\n")
+    assert read_link(saved) == "https://sudokumaker.app/?puzzle=Dx"
+    assert network.urls == ["https://sudokumaker.app/api/puzzles/KkFHGqdkjd"]
+
+
+@pytest.mark.parametrize(
+    "short",
+    [
+        "http://sudokumaker.app/p/abc123",
+        "https://www.sudokumaker.app/p/abc123/",
+        "https://sudokumaker.app/p/abc123?utm=x",
+    ],
+)
+def test_read_link_resolves_the_other_spellings_of_a_short_link(monkeypatch, short):
+    network = _Network(monkeypatch, body=_answer("Dx"))
+    assert read_link(short) == "https://sudokumaker.app/?puzzle=Dx"
+    assert network.urls == ["https://sudokumaker.app/api/puzzles/abc123"]
+
+
+def test_read_link_resolves_a_dev_short_link_on_the_dev_host(monkeypatch):
+    network = _Network(monkeypatch, body=_answer("Dx"))
+    read_link("https://dev.sudokumaker.app/p/abc123")
+    assert network.urls == ["https://dev.sudokumaker.app/api/puzzles/abc123"]
+
+
+@pytest.mark.parametrize(
+    "short",
+    [
+        "https://sudokumaker.app/p/",
+        "https://sudokumaker.app/p/?x=1",
+        "https://sudokumaker.app/p/a%20b",
+    ],
+)
+def test_read_link_names_a_short_link_with_no_usable_id(monkeypatch, short):
+    network = _Network(monkeypatch, error=AssertionError("network used"))
+    with pytest.raises(ValueError, match="no usable id") as error:
+        read_link(short)
+    assert short in str(error.value)
+    assert network.urls == []
+
+
+def test_read_link_names_a_short_link_the_app_does_not_know(monkeypatch):
+    _Network(
         monkeypatch,
         error=urllib.error.HTTPError("u", 404, "Not Found", {}, None),
     )
-    with pytest.raises(ValueError, match="no-such-id"):
+    with pytest.raises(ValueError, match=r"no-such-id.*answered 404 Not Found"):
         read_link("https://sudokumaker.app/p/no-such-id")
 
 
 def test_read_link_names_a_short_link_it_could_not_reach(monkeypatch):
-    _serve(monkeypatch, error=urllib.error.URLError("offline"))
+    _Network(monkeypatch, error=urllib.error.URLError("offline"))
     with pytest.raises(ValueError, match=r"abc123.*offline"):
         read_link("https://sudokumaker.app/p/abc123")
 
 
-def test_read_link_names_a_short_link_answer_with_no_payload(monkeypatch):
-    _serve(monkeypatch, body=b'{"error": "gone"}')
-    with pytest.raises(ValueError, match="abc123"):
+@pytest.mark.parametrize(
+    "error",
+    [
+        ConnectionResetError("reset by peer"),
+        http.client.RemoteDisconnected("closed"),
+        http.client.IncompleteRead(b"par", 10),
+    ],
+)
+def test_read_link_names_a_short_link_whose_answer_broke_off(monkeypatch, error):
+    _Network(monkeypatch, error=error)
+    with pytest.raises(ValueError, match=r"abc123.*could not be read"):
+        read_link("https://sudokumaker.app/p/abc123")
+
+
+@pytest.mark.parametrize(
+    "error", [TimeoutError("slow"), urllib.error.URLError(TimeoutError("slow"))]
+)
+def test_read_link_raises_timeout_error_when_the_request_times_out(monkeypatch, error):
+    _Network(monkeypatch, error=error)
+    with pytest.raises(TimeoutError, match="abc123"):
+        read_link("https://sudokumaker.app/p/abc123")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"error": "gone"}',
+        b"not json",
+        b'{"puzzle": ""}',
+        b'{"puzzle": 5}',
+        b'{"puzzle": null}',
+        b"[]",
+    ],
+)
+def test_read_link_names_a_short_link_answer_with_no_payload(monkeypatch, body):
+    _Network(monkeypatch, body=body)
+    with pytest.raises(ValueError, match=r"abc123.*no puzzle payload"):
         read_link("https://sudokumaker.app/p/abc123")
 
 
 def test_read_link_does_not_touch_the_network_for_a_full_link(monkeypatch):
-    asked = _serve(monkeypatch, error=AssertionError("network used"))
+    network = _Network(monkeypatch, error=AssertionError("network used"))
     link = read_link(LINKS / "house-gac.txt")
     assert read_link(link) == link
-    assert asked == []
+    assert network.urls == []
