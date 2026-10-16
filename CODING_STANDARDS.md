@@ -26,9 +26,3 @@ nothing here restates them.
    limit.** A 1 ms limit is a race the solver sometimes wins, so the test
    passes or fails by machine load and the timeout branch goes unwitnessed
    on a fast run.
-
-5. **Check raises with `pytest.raises` and replace collaborators with
-   `monkeypatch`.** A hand-rolled `try`/`except` check passes when nothing
-   raises unless its author remembered the `else: fail`, and a manual
-   attribute swap leaks into every later test when an assertion fails before
-   the restore.
