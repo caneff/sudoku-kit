@@ -1,11 +1,13 @@
-"""`prove` on a made-up 4x4 board, checkable by hand.
+"""`prove`, `irreducible` and `propagation` on a made-up 4x4 board, checkable
+by hand.
 
-Every case reaches `prove` through a real CP-SAT solve. The board is 4x4 with
+Every case reaches them through a real CP-SAT solve. The board is 4x4 with
 every cell open to 1..4 except the few a case narrows, so a witness that names
 a cell no constraint or claim touches is visible as an extra key.
 """
 
 import pytest
+from ortools.sat.python import cp_model
 
 from sudoku_kit import cpsat, step_prover
 from sudoku_kit.step_prover import (
@@ -28,8 +30,6 @@ A, B, C, D = (0, 0), (0, 1), (0, 2), (0, 3)
 
 
 def _board(narrowed=None):
-    """Every cell of a 4x4 open to 1..4, except the cells in `narrowed`
-    ({cell: digits})."""
     cands = {(r, c): {1, 2, 3, 4} for r in range(4) for c in range(4)}
     for cell, digits in (narrowed or {}).items():
         cands[cell] = set(digits)
@@ -54,8 +54,6 @@ def test_the_same_step_naming_one_house_too_few_is_refuted_with_a_witness():
     cands, registry, claim = _pair_step()
     result = prove(cands, registry, ["bc"], claim)
     assert result.status == "refuted"
-    # The witness breaks the claim: C is not 3. It obeys the named house and
-    # the candidates, and it covers only the cells house bc and the claim touch.
     assert result.witness[C] != 3
     assert result.witness[B] != result.witness[C]
     assert set(result.witness) == {B, C}
@@ -96,8 +94,6 @@ def test_a_place_claim_proved_and_refuted():
 
 
 def test_a_place_claim_checks_every_candidate_it_removes():
-    # House ac leaves C open to 2 and 3. Removing 1 is infeasible, removing 2
-    # is not: the refutation comes from the second solve, not the first.
     cands = _board({A: {1}, C: {1, 2, 3}})
     registry = {"ac": house([A, C])}
     result = prove(cands, registry, ["ac"], Place(C, {3}))
@@ -121,8 +117,17 @@ def test_an_either_claim_proved_and_refuted():
     assert result.witness in ({A: 1, B: 1}, {A: 2, B: 2})
 
 
+def test_an_either_negation_tags_each_pattern_distinctly():
+    m = cp_model.CpModel()
+    x = {A: m.NewIntVar(1, 2, "a"), B: m.NewIntVar(1, 2, "b")}
+    cells = len(m.Proto().variables)
+    Either([{A: 1, B: 2}, {A: 2, B: 1}]).post_negation(m, x)
+    names = [v.name for v in m.Proto().variables][cells:]
+    assert len(names) == 4
+    assert len(set(names)) == 4
+
+
 def test_an_either_pattern_holds_only_when_all_its_equalities_do():
-    # Each pattern needs both cells; A = 1 with B = 1 matches neither.
     cands = _board({A: {1}, B: {1, 2}})
     claim = Either([{A: 1, B: 2}, {A: 2, B: 1}])
     result = prove(cands, {}, [], claim)
@@ -193,8 +198,13 @@ def test_a_claim_cell_off_the_board_raises_naming_it():
 
 
 def test_any_board_size_works():
-    cands = {(0, 0): {1, 2}, (0, 1): {2, 3}}
-    assert prove(cands, {}, [], Order([(0, 0), (0, 1)])).status == "refuted"
+    # (0, 2) is on the board but in no constraint or claim, so the witness
+    # must leave it out.
+    cands = {(0, 0): {1, 2}, (0, 1): {2, 3}, (0, 2): {1, 2, 3}}
+    result = prove(cands, {}, [], Order([(0, 0), (0, 1)]))
+    assert result.status == "refuted"
+    assert set(result.witness) == {(0, 0), (0, 1)}
+    assert result.witness[(0, 0)] >= result.witness[(0, 1)]
 
 
 def test_a_named_constraint_cell_off_the_board_raises_naming_it():
@@ -222,12 +232,7 @@ def test_a_claim_of_an_unknown_kind_raises_naming_it():
         prove(_board(), {}, [], "A < B")
 
 
-# --- Contradictory named constraints -----------------------------------------
-
-
 def test_named_constraints_that_admit_no_grid_are_contradictory_not_proved():
-    # A table with no allowed tuples rules out every grid, so every probe is
-    # infeasible: before #6 this made any claim, false ones too, "proved".
     registry = {"none": table([A, B], [])}
     for claim in (Place(A, {1}), Order([A, B]), Either([{A: 1}])):
         result = prove(_board(), registry, ["none"], claim)
@@ -235,7 +240,6 @@ def test_named_constraints_that_admit_no_grid_are_contradictory_not_proved():
 
 
 def test_houses_the_candidates_cannot_satisfy_are_contradictory():
-    # A and B both hold only 1, and house ab wants them different.
     cands = _board({A: {1}, B: {1}})
     result = prove(cands, {"ab": house([A, B])}, ["ab"], Place(C, {1}))
     assert result.status == "contradictory"
@@ -255,9 +259,6 @@ def test_a_spent_time_limit_on_the_contradiction_solve_is_timeout():
     assert result == ProofResult("timeout", None)
 
 
-# --- irreducible ---------------------------------------------------------------
-
-
 def test_irreducible_drops_a_named_constraint_the_proof_does_not_need():
     cands, registry, claim = _pair_step()
     registry["cd"] = house([C, D])
@@ -266,18 +267,14 @@ def test_irreducible_drops_a_named_constraint_the_proof_does_not_need():
 
 
 def test_irreducible_tries_earlier_names_first_so_a_later_one_is_kept():
-    # Either house alone shuts C out of 1: house ac through A, house bc
-    # through B. The pass drops whichever comes first.
     cands = _board({A: {1}, B: {1}, C: {1, 2}})
     registry = {"ac": house([A, C]), "bc": house([B, C])}
     claim = Place(C, {2})
-    assert irreducible(cands, registry, ["ac", "bc"], claim).names == ("bc",)
-    assert irreducible(cands, registry, ["bc", "ac"], claim).names == ("ac",)
+    assert irreducible(cands, registry, ["ac", "bc"], claim).irreducible_set == ("bc",)
+    assert irreducible(cands, registry, ["bc", "ac"], claim).irreducible_set == ("ac",)
 
 
 def test_irreducible_keeps_a_constraint_any_one_probe_of_a_place_needs():
-    # The claim removes 1 and 2 from C. House ac rules out 1 and house bc
-    # rules out 2: dropping either leaves one probe feasible.
     cands = _board({A: {1}, B: {2}, C: {1, 2, 3}})
     registry = {"ac": house([A, C]), "bc": house([B, C])}
     result = irreducible(cands, registry, ["ac", "bc"], Place(C, {3}))
@@ -301,7 +298,7 @@ def test_irreducible_on_a_refuted_claim_gives_the_witness_and_no_set():
     cands, registry, claim = _pair_step()
     result = irreducible(cands, registry, ["bc"], claim)
     assert result.status == "refuted"
-    assert result.names is None
+    assert result.irreducible_set is None
     assert result.witness[C] != 3
 
 
@@ -351,8 +348,6 @@ def test_prove_runs_every_solve_on_the_workers_it_was_given(monkeypatch):
 
 
 def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):
-    # Every solve after the ones `prove` makes, the deletion trials, gets no
-    # time at all.
     cands, registry, claim = _pair_step()
     registry["cd"] = house([C, D])
     names = ["ab", "cd", "bc"]
@@ -376,12 +371,7 @@ def test_irreducible_on_contradictory_constraints_posts_no_negation():
     assert result == IrreducibleResult("contradictory", ("ab", "bc", "ac"), None, True)
 
 
-# --- propagation ---------------------------------------------------------------
-
-
 def test_propagation_settles_a_step_one_constraint_at_a_time():
-    # Assume C = 2. House ab alone takes 1 from B, leaving B = 2, and house bc
-    # alone then has no completion for B and C.
     cands, registry, claim = _pair_step()
     result = propagation(cands, registry, ["ab", "bc"], claim)
     assert result == PropagationResult(
@@ -426,7 +416,6 @@ def test_propagation_does_not_settle_a_step_that_needs_constraints_together():
 
 
 def test_propagation_takes_the_negated_order_as_one_constraint():
-    # The negation A >= B leaves only A = B = 2, and house ab then empties.
     cands = _board({A: {1, 2}, B: {2, 3}})
     result = propagation(cands, {"ab": house([A, B])}, ["ab"], Order([A, B]))
     assert result == PropagationResult(
@@ -454,7 +443,6 @@ def test_propagation_takes_each_given_chain_as_one_constraint():
 
 
 def test_propagation_of_a_place_needs_every_run_to_empty_a_cell():
-    # Assuming C = 1, house ac empties; assuming C = 2, it has a completion.
     cands = _board({A: {1}, C: {1, 2, 3}})
     result = propagation(cands, {"ac": house([A, C])}, ["ac"], Place(C, {3}))
     assert result == PropagationResult(
@@ -485,8 +473,6 @@ def test_a_contradiction_check_that_times_out_raises_timeout_error(monkeypatch):
 
 
 def test_a_support_solve_that_times_out_raises_naming_its_constraint(monkeypatch):
-    # The first solve checks that some grid is left; every support solve
-    # after it gets no time.
     cands, registry, claim = _pair_step()
     _starve(monkeypatch, lambda k: k > 1)
     with pytest.raises(TimeoutError, match=r"'ab'"):
@@ -494,16 +480,12 @@ def test_a_support_solve_that_times_out_raises_naming_its_constraint(monkeypatch
 
 
 def test_propagation_on_contradictory_constraints_raises_instead_of_answering():
-    # Without the check, the empty table empties a cell and every claim,
-    # false ones too, would come back settled.
     registry = {"none": table([A, B], [])}
     with pytest.raises(ValueError, match=r"'none'.*contradictory"):
         propagation(_board(), registry, ["none"], Place(A, {1}))
 
 
 def test_a_place_run_opens_with_its_negated_claim_even_when_nothing_is_removed():
-    # C's only candidate is 2, the digit the claim removes: the run fixes C to
-    # 2 and removes nothing, but the log still marks where the run starts.
     cands = _board({C: {2}})
     result = propagation(cands, {}, [], Place(C, {3}))
     assert result == PropagationResult(False, (Elimination("negated claim", C, ()),))
