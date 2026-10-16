@@ -40,3 +40,13 @@ _Avoid_: Invalid, false
 **Witness**:
 A grid that breaks a claim, shown as the refutation's evidence.
 _Avoid_: Counterexample, solution
+
+**Contradictory**:
+The candidates, the named constraints and the given chains admit no grid at
+all, so every claim would pass; reported instead of proved.
+_Avoid_: Unsatisfiable premises, inconsistent
+
+**Irreducible set**:
+Named constraints that still give the verdict with none of them removable,
+found by one greedy deletion pass. Another set may be shorter.
+_Avoid_: Smallest set, minimum set, core
