@@ -90,15 +90,14 @@ def test_a_place_claim_proved_and_refuted():
 
 
 def test_a_place_claim_checks_every_candidate_it_removes():
-    # C could be 1 or 2, and only the removal of 2 holds: a refutation found
-    # by the second solve is still a refutation.
+    # House ac leaves C open to 2 and 3. Removing 1 is infeasible, removing 2
+    # is not: the refutation comes from the second solve, not the first.
     cands = _board(r0c0={1}, r0c2={1, 2, 3})
     registry = {"ac": house([A, C])}
-    result = prove(cands, registry, ["ac"], Place(C, {2, 3}))
-    assert result == ProofResult("proved", None)
-    result = prove(cands, registry, ["ac"], Place(C, {1, 3}))
+    result = prove(cands, registry, ["ac"], Place(C, {3}))
     assert result.status == "refuted"
     assert result.witness == {A: 1, C: 2}
+    assert prove(cands, registry, ["ac"], Place(C, {2, 3})).status == "proved"
 
 
 def test_a_place_claim_that_removes_nothing_is_proved():
