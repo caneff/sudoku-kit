@@ -36,17 +36,17 @@ class ProofResult(NamedTuple):
 
 
 class IrreducibleResult(NamedTuple):
-    """`status` as `prove` gives it. `names` is the irreducible set, in the
-    order given: on "proved", named constraints that still prove the claim
+    """`status` as `prove` gives it. `irreducible_set` is the irreducible set, in
+    the order given: on "proved", named constraints that still prove the claim
     with none of them removable; on "contradictory", named constraints that
     conflict with each other, the candidates and the given chains; None on
     "refuted" and "timeout". `witness` is set only on "refuted", as `prove`
     sets it. `irreducible_checked` is False when a deletion trial timed out
-    and kept its constraint, so `names` still holds but may not be
+    and kept its constraint, so `irreducible_set` still holds but may not be
     irreducible; it is False too when there is no set."""
 
     status: Status
-    names: tuple[str, ...] | None = None
+    irreducible_set: tuple[str, ...] | None = None
     witness: dict[Cell, int] | None = None
     irreducible_checked: bool = False
 
@@ -64,10 +64,10 @@ class Elimination(NamedTuple):
 
 
 class PropagationResult(NamedTuple):
-    """`refutes` is whether propagation alone emptied a cell, in every run
+    """`proves` is whether propagation alone emptied a cell, in every run
     for a `Place`. `log` is every elimination in the order made."""
 
-    refutes: bool
+    proves: bool
     log: tuple[Elimination, ...]
 
 
@@ -310,15 +310,15 @@ class Step:
             "contradictory" if status == cp_model.INFEASIBLE else "proved"
         )
 
-    def unsupported(self, by, cells, post, domains):
+    def unsupported(self, by, cells, post, candidates):
         """{cell: digits} of `cells` with no completion under `post` alone,
-        from the current `domains`. A completion found supports every digit in
+        from the current `candidates`. A completion found supports every digit in
         it, so only the digits no completion has used yet are solved for."""
         supported = {c: set() for c in cells}
         for cell in cells:
-            for digit in sorted(domains[cell] - supported[cell]):
+            for digit in sorted(candidates[cell] - supported[cell]):
                 m = cp_model.CpModel()
-                x = _variables(m, {c: domains[c] for c in cells})
+                x = _variables(m, {c: candidates[c] for c in cells})
                 post(m, x)
                 m.Add(x[cell] == digit)
                 status, s = self.run(m, repr(by))
@@ -331,24 +331,24 @@ class Step:
                         f"{digit} in {cell} against {by!r}; no verdict"
                     )
         return {
-            c: tuple(sorted(domains[c] - supported[c]))
+            c: tuple(sorted(candidates[c] - supported[c]))
             for c in cells
-            if domains[c] - supported[c]
+            if candidates[c] - supported[c]
         }
 
-    def propagate(self, domains, units, log):
+    def propagate(self, candidates, units, log):
         """Run each unit alone until none removes a digit. True when one
-        empties a cell. Changes `domains` and appends to `log`."""
+        empties a cell. Changes `candidates` and appends to `log`."""
         changed = True
         while changed:
             changed = False
             for by, cells, post in units:
-                removed = self.unsupported(by, cells, post, domains)
+                removed = self.unsupported(by, cells, post, candidates)
                 for cell, digits in removed.items():
-                    domains[cell] -= set(digits)
+                    candidates[cell] -= set(digits)
                     log.append(Elimination(by, cell, digits))
                     changed = True
-                if any(not domains[c] for c in cells):
+                if any(not candidates[c] for c in cells):
                     return True
         return False
 
@@ -438,7 +438,8 @@ def propagation(
     time_limit: float = 10.0,
     workers: int = 1,
 ) -> PropagationResult:
-    """Whether one-constraint propagation alone refutes the negated claim.
+    """Whether one-constraint propagation alone proves the claim, by emptying a
+    cell under its negation.
     Takes `prove`'s arguments and raises its ValueErrors.
 
     Each named constraint, given chain and the negated claim is taken alone:
@@ -487,11 +488,11 @@ def propagation(
     fixes = claim.fixes(candidates)
     if fixes is not None:
         for cell, digit in fixes:
-            domains = {c: set(d) for c, d in candidates.items()}
-            others = tuple(sorted(domains[cell] - {digit}))
-            domains[cell] = {digit}
+            remaining = {c: set(d) for c, d in candidates.items()}
+            others = tuple(sorted(remaining[cell] - {digit}))
+            remaining[cell] = {digit}
             log.append(Elimination("negated claim", cell, others))
-            if not step.propagate(domains, units, log):
+            if not step.propagate(remaining, units, log):
                 return PropagationResult(False, tuple(log))
         return PropagationResult(True, tuple(log))
 
@@ -502,5 +503,5 @@ def propagation(
             claim.post_negation,
         )
     )
-    domains = {c: set(d) for c, d in candidates.items()}
-    return PropagationResult(step.propagate(domains, units, log), tuple(log))
+    remaining = {c: set(d) for c, d in candidates.items()}
+    return PropagationResult(step.propagate(remaining, units, log), tuple(log))
