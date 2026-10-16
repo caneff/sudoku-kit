@@ -120,8 +120,9 @@ def test_an_either_claim_proved_and_refuted():
 def test_an_either_negation_tags_each_pattern_distinctly():
     m = cp_model.CpModel()
     x = {A: m.NewIntVar(1, 2, "a"), B: m.NewIntVar(1, 2, "b")}
+    cells = len(m.Proto().variables)
     Either([{A: 1, B: 2}, {A: 2, B: 1}]).post_negation(m, x)
-    names = [v.name for v in m.Proto().variables][2:]
+    names = [v.name for v in m.Proto().variables][cells:]
     assert len(names) == 4
     assert len(set(names)) == 4
 
@@ -197,7 +198,9 @@ def test_a_claim_cell_off_the_board_raises_naming_it():
 
 
 def test_any_board_size_works():
-    cands = {(0, 0): {1, 2}, (0, 1): {2, 3}}
+    # (0, 2) is on the board but in no constraint or claim, so the witness
+    # must leave it out.
+    cands = {(0, 0): {1, 2}, (0, 1): {2, 3}, (0, 2): {1, 2, 3}}
     result = prove(cands, {}, [], Order([(0, 0), (0, 1)]))
     assert result.status == "refuted"
     assert set(result.witness) == {(0, 0), (0, 1)}
@@ -401,7 +404,6 @@ def test_propagation_does_not_settle_a_step_that_needs_constraints_together():
     cands, registry, names, claim = _three_pairs_step()
     assert prove(cands, registry, names, claim).status == "proved"
     result = propagation(cands, registry, names, claim)
-    assert result.proves is False
     assert result == PropagationResult(
         False,
         (
@@ -416,7 +418,6 @@ def test_propagation_does_not_settle_a_step_that_needs_constraints_together():
 def test_propagation_takes_the_negated_order_as_one_constraint():
     cands = _board({A: {1, 2}, B: {2, 3}})
     result = propagation(cands, {"ab": house([A, B])}, ["ab"], Order([A, B]))
-    assert result.proves is True
     assert result == PropagationResult(
         True,
         (
