@@ -22,7 +22,7 @@ SUITES = [
 ]
 STUB_UV = """#!/usr/bin/env bash
 echo "$*" >>"$CALLS"
-if [ "$*" = "$FAIL_ON" ]; then echo "stub output for $*"; exit 1; fi
+if [ "$*" = "$FAIL_ON" ]; then echo "stub output for $*" >&2; exit 1; fi
 """
 
 
@@ -51,6 +51,7 @@ def seam(tmp_path):
             text=True,
             env=env,
             check=False,
+            timeout=30,
         )
 
     run.calls = lambda: calls.read_text().splitlines()
@@ -92,7 +93,16 @@ def test_changed_runs_the_whole_seam_and_says_it_widened(seam):
     )
 
 
-@pytest.mark.parametrize("args", [["--bogus"], ["--changed"], ["--list", "x"]])
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--bogus"],
+        ["--changed"],
+        ["--changed", ""],
+        ["--changed", "--list"],
+        ["--list", "x"],
+    ],
+)
 def test_a_bad_flag_exits_2_with_a_usage_line(seam, args):
     done = seam(*args)
     assert done.returncode == 2

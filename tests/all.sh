@@ -13,9 +13,6 @@
 # exits 1. The last line states what ran: `N of M suites passed`, or
 # `N of M suites passed, 1 failed: <suite>`.
 set -uf
-# A caller's GIT_DIR or GIT_INDEX_FILE (a git hook sets both) would point every
-# suite that calls git at that caller's repository.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
 suites=(
@@ -36,7 +33,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --list) list_only=1; shift ;;
     --changed)
-      [ $# -ge 2 ] || usage "$1 needs a value"
+      case ${2:-} in '' | -*) usage "$1 needs a base ref" ;; esac
       note=" (widened: the whole suite runs in seconds)"; shift 2 ;;
     *) usage "no flag named $1" ;;
   esac

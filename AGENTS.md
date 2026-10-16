@@ -16,8 +16,7 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 ## End-to-end seam
 
-`bash tests/all.sh` is the seam: ruff, the format check, `uv lock --check` and
-pytest, one suite per command, stopping at the first failure. `just check`
-calls it, so CI runs it too. `--list` prints the suites; `--changed <base>` is
-accepted and runs the whole seam, since the full run takes seconds. There is no
+`bash tests/all.sh` is the seam: one suite per command, stopping at the first
+failure; `--list` prints the suites. `just check` calls it, so CI runs it too.
+`--changed <base>` is accepted and runs the whole seam, since the full run takes seconds. There is no
 live layer.
