@@ -16,6 +16,8 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 
 ## End-to-end seam
 
-`bash tests/all.sh` runs the whole gate (ruff, format check, pytest); it is the
-same as `just check`. `--changed <ref>` is accepted and ignored: the suite is
-small enough to run whole every time.
+`bash tests/all.sh` is the seam: ruff, the format check, `uv lock --check` and
+pytest, one suite per command, stopping at the first failure. `just check`
+calls it, so CI runs it too. `--list` prints the suites; `--changed <base>` is
+accepted and runs the whole seam, since the full run takes seconds. There is no
+live layer.
