@@ -56,7 +56,9 @@ def solver(limit, reproducible=True, seed=0, randomize=False, workers=None):
         raise ValueError("a reproducible solver takes no seed and no randomize")
     s = cp_model.CpSolver()
     s.parameters.max_time_in_seconds = limit
-    s.parameters.num_workers = workers or (1 if reproducible else SEARCH_WORKERS)
+    if workers is None:
+        workers = 1 if reproducible else SEARCH_WORKERS
+    s.parameters.num_workers = workers
     s.parameters.random_seed = 0 if reproducible else seed
     s.parameters.randomize_search = randomize
     return s
