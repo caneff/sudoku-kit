@@ -1,17 +1,4 @@
 #!/usr/bin/env bash
-# The gate's one listing of suites; `just check` calls this. A suite is one
-# command, and it is its own label.
-#
-#   bash tests/all.sh [--list] [--changed <base>]
-#
-# `--list` prints the suites and runs none. `--changed <base>` is accepted and
-# runs the whole seam, its last line saying so: the full run takes seconds, so
-# a selector would be machinery with nothing to save.
-#
-# One line per suite as it finishes (`PASS <suite>`); a failing suite prints
-# `FAIL <suite>` and its whole output, no further suite starts, and the run
-# exits 1. The last line states what ran: `N of M suites passed`, or
-# `N of M suites passed, 1 failed: <suite>`.
 set -uf
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 
@@ -22,7 +9,7 @@ suites=(
   "uv run pytest -q"
 )
 
-usage() { # <what is wrong>
+usage() {
   echo "tests/all.sh: $1" >&2
   echo "usage: tests/all.sh [--list] [--changed <base>]" >&2
   exit 2

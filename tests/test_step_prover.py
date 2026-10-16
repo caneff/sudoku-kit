@@ -316,9 +316,9 @@ def _starve(monkeypatch, starved):
     `starved(k)`."""
     calls = []
 
-    def solver(limit):
+    def solver(limit, **kwargs):
         calls.append(limit)
-        return cpsat.solver(0.0 if starved(len(calls)) else limit)
+        return cpsat.solver(0.0 if starved(len(calls)) else limit, **kwargs)
 
     monkeypatch.setattr(step_prover, "solver", solver)
 
@@ -327,13 +327,27 @@ def _solves_made(monkeypatch, run):
     """How many CP-SAT solves `run()` makes."""
     calls = []
 
-    def solver(limit):
+    def solver(limit, **kwargs):
         calls.append(limit)
-        return cpsat.solver(limit)
+        return cpsat.solver(limit, **kwargs)
 
     monkeypatch.setattr(step_prover, "solver", solver)
     run()
     return len(calls)
+
+
+def test_prove_runs_every_solve_on_the_workers_it_was_given(monkeypatch):
+    threads = []
+
+    def solver(limit, **kwargs):
+        s = cpsat.solver(limit, **kwargs)
+        threads.append(s.parameters.num_workers)
+        return s
+
+    monkeypatch.setattr(step_prover, "solver", solver)
+    cands, registry, claim = _pair_step()
+    prove(cands, registry, ["ab", "bc"], claim, workers=3)
+    assert threads and set(threads) == {3}
 
 
 def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):

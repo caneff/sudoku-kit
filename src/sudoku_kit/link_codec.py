@@ -79,7 +79,6 @@ def read_link(source):
 
 
 def _resolve_short_link(host, link_id):
-    """The full link behind the short link `https://<host>/p/<link_id>`."""
     url = f"https://{host}/api/puzzles/{link_id}"
     where = f"short link {link_id!r}: {url}"
     # The API's CDN refuses urllib's default User-Agent with a 403.
@@ -102,7 +101,6 @@ def _resolve_short_link(host, link_id):
 
 
 def _payload_text(payload):
-    """The JSON text inside `payload`, read by its one-letter format prefix."""
     prefix = payload[:1]
     if prefix == "D":
         body = payload[1:]
@@ -144,12 +142,6 @@ def decode_puzzle(link):
 
 
 def _same_document(sent, back):
-    """Whether `back`, decoded from a link, is the document `sent` into it.
-
-    A tuple in `sent` matches the list JSON makes of it; nothing else is
-    forgiven. A key that is not a string comes back as one, and NaN comes
-    back unequal to itself, so a document holding either is not the same.
-    """
     if isinstance(sent, dict):
         return (
             isinstance(back, dict)

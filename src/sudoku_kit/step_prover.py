@@ -223,8 +223,7 @@ def _variables(m, candidates):
 def _run(m, time_limit, workers, what):
     """Solve `m`: (status, solver). Raises ValueError naming `what` on a model
     CP-SAT rejects."""
-    s = solver(time_limit)
-    s.parameters.num_workers = workers
+    s = solver(time_limit, workers=workers)
     status = s.Solve(m)
     if status not in (*SOLVED, UNKNOWN, cp_model.INFEASIBLE):
         raise ValueError(

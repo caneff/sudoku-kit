@@ -1,11 +1,5 @@
 """The CP-SAT calls the generators and uniqueness proofs all make.
 
-Every proof has one shape: solve, read the assignment back,
-forbid it, solve again. `forbid` posts that clause, `has_second_solution`
-posts it and solves, `solve_unique` runs the whole shape, `solver` is the
-configuration they run under, and `sudoku_model` is the standard board they
-run it on.
-
 The configuration is the part worth stating once, because a solver is asked
 for two different things:
 
@@ -37,21 +31,26 @@ UNKNOWN = cp_model.UNKNOWN
 SEARCH_WORKERS = 8
 
 
-def solver(limit, reproducible=True, seed=0, randomize=False):
+def solver(limit, reproducible=True, seed=0, randomize=False, workers=None):
     """A CpSolver capped at `limit` seconds.
 
     Reproducible by default: one worker and seed 0, so the same model gives
     the same answer on every run. `reproducible=False` opens the portfolio and
     takes the caller's `seed`, with `randomize` steering the search away from
     the dull grids the default order keeps returning.
+
+    `workers` overrides the thread count in either configuration. More than
+    one worker races CP-SAT's portfolio, so a reproducible solver given
+    several keeps seed 0 but is not run-to-run stable: the same model can
+    return a different solution each time.
     """
     if reproducible and (seed or randomize):
-        # Fail loud rather than accept a call whose seed cannot do anything:
-        # the reproducible configuration pins seed 0 and the default search.
         raise ValueError("a reproducible solver takes no seed and no randomize")
     s = cp_model.CpSolver()
     s.parameters.max_time_in_seconds = limit
-    s.parameters.num_workers = 1 if reproducible else SEARCH_WORKERS
+    if workers is None:
+        workers = 1 if reproducible else SEARCH_WORKERS
+    s.parameters.num_workers = workers
     s.parameters.random_seed = 0 if reproducible else seed
     s.parameters.randomize_search = randomize
     return s
@@ -76,49 +75,61 @@ def forbid(m, x, assignment, tag=""):
     m.AddBoolOr(lits)
 
 
-def has_second_solution(m, x, first, limit, reproducible=True, tag=""):
+def _check_status(status, limit, m):
+    """Raise for a status that is no verdict: a spent cap or a broken model."""
+    if status == cp_model.UNKNOWN:
+        raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
+    if status == cp_model.MODEL_INVALID:
+        raise ValueError(f"CP-SAT rejected the model as invalid: {m.Validate()}")
+
+
+def has_second_solution(m, x, first, limit, reproducible=True):
     """True when `m` has a solution other than `first`, False when it has none.
 
     Raises TimeoutError when the search hits `limit` without a verdict -- a
     timeout is never reported as "no second solution", which is the one way a
-    uniqueness proof can lie. Forbids `first` on `m` in place, so the model is
+    uniqueness proof can lie. Raises ValueError when CP-SAT rejects `m` as
+    invalid (MODEL_INVALID): a broken model is not "no second solution".
+    Forbids `first` on `m` in place, so the model is
     spent afterwards.
     """
-    forbid(m, x, first, tag=tag)
+    forbid(m, x, first)
     status = solver(limit, reproducible=reproducible).Solve(m)
-    if status == cp_model.UNKNOWN:
-        raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
+    _check_status(status, limit, m)
     return status in SOLVED
 
 
-def sudoku_model(n, box, *, regions=None, latin=False):
-    """(m, x) for an n x n sudoku: digits 1..n, rows and columns distinct.
+def boxes(n, height, width):
+    """The box houses of an n x n board, as cell lists of `height` x `width`.
 
-    `x` maps (row, column) to its variable. `box` is (height, width) of the
-    boxes, whose area must be n; a 6x6 board with boxes two rows tall and
-    three columns wide is `sudoku_model(6, (2, 3))`. `regions`, a list of cell
-    lists, replaces the boxes with houses of the caller's own shape, and
-    `latin=True` drops them altogether; either way `box` is not read, so pass
-    None. Givens and every other rule are the caller's to post on `m`.
+    A 6x6 board with boxes two rows tall and three columns wide is
+    `boxes(6, 2, 3)`. Raises ValueError when height x width is not n, or
+    either is not positive: a box that holds fewer cells than n is a weaker
+    rule than sudoku, and one that does not tile the board leaves cells
+    outside every box.
     """
-    if regions is not None and latin:
-        raise ValueError("a board has regions or is a plain Latin square, not both")
+    if height < 1 or width < 1 or height * width != n:
+        raise ValueError(f"{height}x{width} boxes do not hold {n} cells")
+    return [
+        [(br + dr, bc + dc) for dr in range(height) for dc in range(width)]
+        for br in range(0, n, height)
+        for bc in range(0, n, width)
+    ]
+
+
+def sudoku_model(n, regions):
+    """(m, x) for an n x n board: digits 1..n, rows and columns distinct.
+
+    `x` maps (row, column) to its variable. `regions`, a list of cell lists,
+    are the houses posted beside the rows and columns: `boxes(n, h, w)` for a
+    sudoku, `()` for a plain Latin square. Givens and every other rule are the
+    caller's to post on `m`.
+    """
     m = cp_model.CpModel()
     x = {(r, c): m.NewIntVar(1, n, f"x{r}{c}") for r in range(n) for c in range(n)}
     for i in range(n):
         m.AddAllDifferent([x[i, c] for c in range(n)])
         m.AddAllDifferent([x[r, i] for r in range(n)])
-    if latin:
-        return m, x
-    if regions is None:
-        bh, bw = box
-        if bh * bw != n:
-            raise ValueError(f"{bh}x{bw} boxes do not hold {n} cells")
-        regions = [
-            [(br + dr, bc + dc) for dr in range(bh) for dc in range(bw)]
-            for br in range(0, n, bh)
-            for bc in range(0, n, bw)
-        ]
     for house in regions:
         m.AddAllDifferent([x[cell] for cell in house])
     return m, x
@@ -130,12 +141,13 @@ def solve_unique(m, x, limit, reproducible=True):
     `first` is a solution as {cell: digit}, or None when `m` has none, in which
     case is_unique is False. Raises TimeoutError when either solve spends
     `limit` without a verdict: a timeout is "don't know", never "infeasible"
-    and never "unique". Spends `m`, as has_second_solution does.
+    and never "unique". Raises ValueError when either solve meets a model
+    CP-SAT rejects as invalid (MODEL_INVALID), which is no "infeasible" either.
+    Spends `m`, as has_second_solution does.
     """
     s = solver(limit, reproducible=reproducible)
     status = s.Solve(m)
-    if status == cp_model.UNKNOWN:
-        raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
+    _check_status(status, limit, m)
     if status not in SOLVED:
         return None, False
     first = {k: s.Value(v) for k, v in x.items()}
