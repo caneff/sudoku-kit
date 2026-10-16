@@ -4,8 +4,8 @@ through a real CP-SAT solve.
 The second solve running out of time is the branch where a wrong answer reads
 as "unique". No model makes a first solve fast and a second slow on every
 machine, so that test spends the cap between the two solves. A second solve
-coming back invalid cannot be forced at all, and `_terminal`'s table is
-checked directly for it.
+coming back invalid cannot be forced at all either, so that test swaps the
+solve for one that reports it.
 """
 
 import random
@@ -13,7 +13,7 @@ import random
 from ortools.sat.python import cp_model
 
 from sudoku_kit import uniqueness
-from sudoku_kit.uniqueness import _terminal, check_uniqueness
+from sudoku_kit.uniqueness import check_uniqueness
 
 
 def _pair(*, pin):
@@ -36,7 +36,7 @@ def test_a_one_solution_model_is_unique():
     assert result.second is None
 
 
-def test_a_two_solution_model_is_not_unique_with_both_witnesses():
+def test_a_two_solution_model_is_not_unique_with_both_solutions():
     m, variables = _pair(pin=False)
     result = check_uniqueness(m, variables)
     assert result.status == "not_unique"
@@ -64,6 +64,8 @@ def test_an_invalid_model_is_invalid():
     result = check_uniqueness(m, [bad])
     assert result.status == "invalid"
     assert not result.unique
+    assert result.first is None
+    assert result.second is None
 
 
 def test_a_solve_that_runs_out_of_time_is_timeout():
@@ -77,6 +79,8 @@ def test_a_solve_that_runs_out_of_time_is_timeout():
     result = check_uniqueness(m, xs, time_limit=0.0, workers=1)
     assert result.status == "timeout"
     assert not result.unique
+    assert result.first is None
+    assert result.second is None
 
 
 def test_a_second_solve_that_runs_out_of_time_is_timeout_not_unique(monkeypatch):
@@ -95,6 +99,25 @@ def test_a_second_solve_that_runs_out_of_time_is_timeout_not_unique(monkeypatch)
     assert result.status == "timeout"
     assert not result.unique
     assert result.first == (1, 1)
+    assert result.second is None
+
+
+def test_a_second_solve_that_is_invalid_is_invalid_not_unique(monkeypatch):
+    real, calls = uniqueness._solve, []
+
+    def broken(model, time_limit, workers):
+        calls.append(time_limit)
+        if len(calls) == 1:
+            return real(model, time_limit, workers)
+        return cp_model.MODEL_INVALID, None
+
+    monkeypatch.setattr(uniqueness, "_solve", broken)
+    m, variables = _pair(pin=True)
+    result = check_uniqueness(m, variables)
+    assert result.status == "invalid"
+    assert not result.unique
+    assert result.first == (1, 1)
+    assert result.second is None
 
 
 def test_the_caller_s_model_is_left_untouched():
@@ -108,7 +131,7 @@ def test_the_caller_s_model_is_left_untouched():
 
 
 def test_a_negated_literal_among_the_variables_reads_as_its_own_value():
-    # `a != b` has the witnesses (0, 1) and (1, 0) over (a, b); read through
+    # `a != b` has the solutions (0, 1) and (1, 0) over (a, b); read through
     # `[a, b.Not()]` they are (0, 0) and (1, 1).
     m = cp_model.CpModel()
     a = m.NewBoolVar("a")
@@ -117,27 +140,3 @@ def test_a_negated_literal_among_the_variables_reads_as_its_own_value():
     result = check_uniqueness(m, [a, b.Not()])
     assert result.status == "not_unique"
     assert {result.first, result.second} == {(0, 0), (1, 1)}
-
-
-WITNESS = (1, 2)
-
-
-def _result_is(result, status, first):
-    return result.status == status and result.first == first and result.second is None
-
-
-def test_no_verdict_on_the_first_solve_carries_no_witness():
-    assert _result_is(_terminal(cp_model.MODEL_INVALID, None), "invalid", None)
-    assert _result_is(_terminal(cp_model.UNKNOWN, None), "timeout", None)
-    assert _result_is(_terminal(cp_model.INFEASIBLE, None), "infeasible", None)
-
-
-def test_no_verdict_on_the_second_solve_is_never_unique():
-    assert _result_is(_terminal(cp_model.MODEL_INVALID, WITNESS), "invalid", WITNESS)
-    assert _result_is(_terminal(cp_model.UNKNOWN, WITNESS), "timeout", WITNESS)
-    assert _result_is(_terminal(cp_model.INFEASIBLE, WITNESS), "unique", WITNESS)
-
-
-def test_a_solved_status_is_not_terminal():
-    assert _terminal(cp_model.OPTIMAL, None) is None
-    assert _terminal(cp_model.FEASIBLE, WITNESS) is None
