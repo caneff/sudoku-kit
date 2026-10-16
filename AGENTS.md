@@ -14,6 +14,10 @@ Default six canonical triage roles, each label string equal to its name. See `do
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+## Coding standards
+
+`CODING_STANDARDS.md` holds the conventions no gate checks; read it before writing code.
+
 ## End-to-end seam
 
 `bash tests/all.sh` is the seam: one suite per command, stopping at the first
