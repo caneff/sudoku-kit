@@ -103,12 +103,50 @@ class Order(NamedTuple):
 
     cells: tuple[Cell, ...]
 
+    def claim_cells(self):
+        return list(self.cells)
+
+    def fixes(self, candidates):
+        """The (cell, digit) a run fixes, one per run; None when the claim
+        fails in one solve, by `post_negation`."""
+        return
+
+    def post_negation(self, m, x):
+        """Post "the chain does not rise" on `m`."""
+        breaks = []
+        for left, right in pairwise(self.cells):
+            b = m.NewBoolVar(f"breaks_{left}_{right}")
+            m.Add(x[left] >= x[right]).OnlyEnforceIf(b)
+            m.Add(x[left] < x[right]).OnlyEnforceIf(b.Not())
+            breaks.append(b)
+        m.AddBoolOr(breaks)
+
+    def probes(self, candidates):
+        """One function per solve the claim needs, each posting that solve's
+        negation."""
+        return [self.post_negation]
+
 
 class Place(NamedTuple):
     """`cell` keeps only `digits` of its candidates."""
 
     cell: Cell
     digits: Collection[int]
+
+    def claim_cells(self):
+        return [self.cell]
+
+    def removed(self, candidates):
+        """The candidates this claim removes, in order."""
+        return sorted(set(candidates[self.cell]) - set(self.digits))
+
+    def fixes(self, candidates):
+        return [(self.cell, d) for d in self.removed(candidates)]
+
+    def probes(self, candidates):
+        return [
+            lambda m, x, d=d: m.Add(x[self.cell] == d) for d in self.removed(candidates)
+        ]
 
 
 class Either(NamedTuple):
@@ -117,51 +155,26 @@ class Either(NamedTuple):
 
     patterns: tuple[Mapping[Cell, int], ...]
 
+    def claim_cells(self):
+        return [cell for pattern in self.patterns for cell in pattern]
 
-def _claim_cells(claim):
-    if isinstance(claim, Order):
-        return list(claim.cells)
-    if isinstance(claim, Place):
-        return [claim.cell]
-    return [cell for pattern in claim.patterns for cell in pattern]
+    def fixes(self, candidates):
+        return None
 
+    def post_negation(self, m, x):
+        """Post "every pattern fails" on `m`."""
+        for i, pattern in enumerate(self.patterns):
+            # This pattern fails: some one of its equalities does.
+            misses = []
+            for cell, digit in pattern.items():
+                b = m.NewBoolVar(f"miss{i}_{cell}")
+                m.Add(x[cell] != digit).OnlyEnforceIf(b)
+                m.Add(x[cell] == digit).OnlyEnforceIf(b.Not())
+                misses.append(b)
+            m.AddBoolOr(misses)
 
-def _post_negation(m, x, claim):
-    """Post "the claim fails" on `m`, for the claims that fail in one solve."""
-    if isinstance(claim, Order):
-        breaks = []
-        for left, right in pairwise(claim.cells):
-            b = m.NewBoolVar(f"breaks_{left}_{right}")
-            m.Add(x[left] >= x[right]).OnlyEnforceIf(b)
-            m.Add(x[left] < x[right]).OnlyEnforceIf(b.Not())
-            breaks.append(b)
-        m.AddBoolOr(breaks)
-        return
-    for i, pattern in enumerate(claim.patterns):
-        # This pattern fails: some one of its equalities does.
-        misses = []
-        for cell, digit in pattern.items():
-            b = m.NewBoolVar(f"miss{i}_{cell}")
-            m.Add(x[cell] != digit).OnlyEnforceIf(b)
-            m.Add(x[cell] == digit).OnlyEnforceIf(b.Not())
-            misses.append(b)
-        m.AddBoolOr(misses)
-
-
-def _removed(candidates, place):
-    """The candidates a `Place` removes, in order."""
-    return sorted(set(candidates[place.cell]) - set(place.digits))
-
-
-def _probes(candidates, claim):
-    """One function per solve the claim needs, each posting that solve's
-    negation: a `Place` is one solve per candidate it removes, the others one."""
-    if isinstance(claim, Place):
-        return [
-            lambda m, x, d=d: m.Add(x[claim.cell] == d)
-            for d in _removed(candidates, claim)
-        ]
-    return [lambda m, x: _post_negation(m, x, claim)]
+    def probes(self, candidates):
+        return [self.post_negation]
 
 
 def _check_cells(cells, candidates, what):
@@ -187,7 +200,7 @@ def _check(candidates, registry, names, claim, given):
     given = tuple(given)
     for chain in given:
         _check_cells(chain.cells, candidates, "a given chain")
-    _check_cells(_claim_cells(claim), candidates, "the claim")
+    _check_cells(claim.claim_cells(), candidates, "the claim")
     return Step(candidates, tuple(posters), given, claim)
 
 
@@ -237,7 +250,7 @@ class Step:
         """The cells a witness carries: those of a named constraint, the claim
         or a given chain."""
         shown = {c for _, p in self.posters for c in p.cells}
-        shown.update(_claim_cells(self.claim))
+        shown.update(self.claim.claim_cells())
         shown.update(c for chain in self.given for c in chain.cells)
         return shown
 
@@ -280,7 +293,7 @@ class Step:
         return (UNKNOWN if timed_out else cp_model.INFEASIBLE), None, None
 
     def prove(self):
-        probes = _probes(self.candidates, self.claim)
+        probes = self.claim.probes(self.candidates)
         status, s, x = self.first_grid(probes)
         if status in SOLVED:
             shown = sorted(self.shown())
@@ -401,7 +414,7 @@ def irreducible(
     result = step.prove()
     if result.status in ("refuted", "timeout"):
         return IrreducibleResult(result.status, None, result.witness)
-    probes = _probes(candidates, claim) if result.status == "proved" else [None]
+    probes = claim.probes(candidates) if result.status == "proved" else [None]
 
     kept, checked = step, True
     for pair in step.posters:
@@ -471,12 +484,13 @@ def propagation(
     ]
 
     log = []
-    if isinstance(claim, Place):
-        for digit in _removed(candidates, claim):
+    fixes = claim.fixes(candidates)
+    if fixes is not None:
+        for cell, digit in fixes:
             domains = {c: set(d) for c, d in candidates.items()}
-            others = tuple(sorted(domains[claim.cell] - {digit}))
-            domains[claim.cell] = {digit}
-            log.append(Elimination("negated claim", claim.cell, others))
+            others = tuple(sorted(domains[cell] - {digit}))
+            domains[cell] = {digit}
+            log.append(Elimination("negated claim", cell, others))
             if not step.propagate(domains, units, log):
                 return PropagationResult(False, tuple(log))
         return PropagationResult(True, tuple(log))
@@ -484,8 +498,8 @@ def propagation(
     units.append(
         (
             "negated claim",
-            tuple(dict.fromkeys(_claim_cells(claim))),
-            lambda m, x: _post_negation(m, x, claim),
+            tuple(dict.fromkeys(claim.claim_cells())),
+            claim.post_negation,
         )
     )
     domains = {c: set(d) for c, d in candidates.items()}
