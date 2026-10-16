@@ -145,6 +145,46 @@ def test_solve_unique_raises_when_only_the_second_solve_times_out(monkeypatch):
     assert len(calls) == 2, calls
 
 
+def _invalid_model():
+    """A model CP-SAT rejects outright: an integer variable with lower bound
+    above its upper bound."""
+    m = cp_model.CpModel()
+    return m, {"x": m.NewIntVar(3, 1, "x")}
+
+
+def test_solve_unique_raises_on_an_invalid_model_in_the_first_solve():
+    # MODEL_INVALID is a broken model, not a puzzle with no solution.
+    m, x = _invalid_model()
+    with pytest.raises(ValueError, match="invalid"):
+        solve_unique(m, x, 10)
+
+
+def test_has_second_solution_raises_on_an_invalid_model():
+    # The retry meets the invalid model; False would read as "unique".
+    m, x = _invalid_model()
+    with pytest.raises(ValueError, match="invalid"):
+        has_second_solution(m, x, {"x": 1}, 10)
+
+
+def test_solve_unique_raises_when_only_the_retry_is_invalid(monkeypatch):
+    # The first solve is fine; the retry's model comes back MODEL_INVALID.
+    real, calls = cpsat.solver, []
+
+    class Invalid:
+        def Solve(self, m):
+            return cp_model.MODEL_INVALID
+
+    def factory(limit, **kw):
+        calls.append(limit)
+        return real(limit, **kw) if len(calls) == 1 else Invalid()
+
+    monkeypatch.setattr(cpsat, "solver", factory)
+    m, x = _model(4)
+    with pytest.raises(ValueError, match="invalid"):
+        solve_unique(m, x, 10)
+    assert len(calls) == 2, calls
+
+
 def _solutions(m, x):
     """Every solution of (m, x), by forbid-and-resolve. Spends `m`."""
     found = []
