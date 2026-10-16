@@ -26,6 +26,17 @@ What a step concludes about the candidates: a rising chain, a cell keeping only
 some digits, or at least one of several patterns holding.
 _Avoid_: Conclusion, result
 
+**Given chain**:
+A rising chain of cells a step takes as already settled, passed beside the
+named constraints and never removed from them.
+_Avoid_: Assumed order, known chain
+
+**Propagation**:
+Removing a digit from a cell because one constraint, taken alone, has no
+completion using it, repeated until nothing changes. Each removal is one
+**elimination**.
+_Avoid_: Constraint propagation, GAC, simple deduction
+
 ### Proof outcomes
 
 **Proved**:
@@ -40,3 +51,13 @@ _Avoid_: Invalid, false
 **Witness**:
 A grid that breaks a claim, shown as the refutation's evidence.
 _Avoid_: Counterexample, solution
+
+**Contradictory**:
+The candidates, the named constraints and the given chains admit no grid at
+all, so every claim would pass; reported instead of proved.
+_Avoid_: Unsatisfiable premises, inconsistent
+
+**Irreducible set**:
+Named constraints that still give the verdict with none of them removable,
+found by one greedy deletion pass. Another set may be shorter.
+_Avoid_: Smallest set, minimum set, core
