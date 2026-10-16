@@ -18,11 +18,9 @@ Status = Literal["unique", "not_unique", "infeasible", "timeout", "invalid"]
 
 
 class UniquenessResult(NamedTuple):
-    """`status` is one of "unique", "not_unique", "infeasible", "timeout",
-    "invalid" -- five outcomes. `first`/`second` are
-    solutions -- tuples of values aligned with the `variables` passed to
-    `check_uniqueness` -- with `second` set only when `status` is
-    "not_unique"."""
+    """`first`/`second` are solutions -- tuples of values aligned with the
+    `variables` passed to `check_uniqueness` -- with `second` set only when
+    `status` is "not_unique"."""
 
     status: Status
     first: tuple | None = None

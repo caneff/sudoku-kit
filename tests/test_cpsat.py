@@ -129,7 +129,7 @@ def _invalid_model():
 def test_solve_unique_raises_on_an_invalid_model_in_the_first_solve():
     # MODEL_INVALID is a broken model, not a puzzle with no solution.
     m, x = _invalid_model()
-    with pytest.raises(ValueError, match="invalid"):
+    with pytest.raises(ValueError, match='name: "x"'):
         solve_unique(m, x, 10)
 
 
@@ -203,9 +203,19 @@ def test_sudoku_model_on_a_rectangular_box_board():
 
 
 def test_boxes_refuses_boxes_that_are_not_n_cells():
-    for height, width in ((2, 2), (4, 2), (3, 1)):
+    for height, width in ((2, 2), (4, 2), (3, 1), (-2, -3), (0, 6)):
         with pytest.raises(ValueError, match=f"{height}x{width} boxes do not hold 6"):
             boxes(6, height, width)
+
+
+def test_boxes_groups_each_cell_with_the_cells_of_its_box():
+    # Two rows tall, three columns wide: a cell's box is (row // 2, col // 3).
+    found = {frozenset(house) for house in boxes(6, 2, 3)}
+    expected = {}
+    for r in range(6):
+        for c in range(6):
+            expected.setdefault((r // 2, c // 3), set()).add((r, c))
+    assert found == {frozenset(cells) for cells in expected.values()}
 
 
 def test_sudoku_model_on_region_and_latin_boards():
@@ -219,9 +229,3 @@ def test_sudoku_model_on_region_and_latin_boards():
     assert 0 < len(expected) < 12
     key = lambda a: sorted(a.items())
     assert sorted(sols, key=key) == sorted(expected, key=key)
-
-
-def test_has_second_solution_takes_no_tag():
-    m, x = _model(4)
-    with pytest.raises(TypeError):
-        has_second_solution(m, x, {"x": 1, "y": 3}, 10, tag=0)

@@ -336,6 +336,20 @@ def _solves_made(monkeypatch, run):
     return len(calls)
 
 
+def test_prove_runs_every_solve_on_the_workers_it_was_given(monkeypatch):
+    threads = []
+
+    def solver(limit, **kwargs):
+        s = cpsat.solver(limit, **kwargs)
+        threads.append(s.parameters.num_workers)
+        return s
+
+    monkeypatch.setattr(step_prover, "solver", solver)
+    cands, registry, claim = _pair_step()
+    prove(cands, registry, ["ab", "bc"], claim, workers=3)
+    assert threads and set(threads) == {3}
+
+
 def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):
     # Every solve after the ones `prove` makes, the deletion trials, gets no
     # time at all.

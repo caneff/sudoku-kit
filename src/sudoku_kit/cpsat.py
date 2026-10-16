@@ -75,12 +75,12 @@ def forbid(m, x, assignment, tag=""):
     m.AddBoolOr(lits)
 
 
-def _check_status(status, limit):
+def _check_status(status, limit, m):
     """Raise for a status that is no verdict: a spent cap or a broken model."""
     if status == cp_model.UNKNOWN:
         raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
     if status == cp_model.MODEL_INVALID:
-        raise ValueError("CP-SAT rejected the model as invalid (MODEL_INVALID)")
+        raise ValueError(f"CP-SAT rejected the model as invalid: {m.Validate()}")
 
 
 def has_second_solution(m, x, first, limit, reproducible=True):
@@ -95,7 +95,7 @@ def has_second_solution(m, x, first, limit, reproducible=True):
     """
     forbid(m, x, first)
     status = solver(limit, reproducible=reproducible).Solve(m)
-    _check_status(status, limit)
+    _check_status(status, limit, m)
     return status in SOLVED
 
 
@@ -103,11 +103,12 @@ def boxes(n, height, width):
     """The box houses of an n x n board, as cell lists of `height` x `width`.
 
     A 6x6 board with boxes two rows tall and three columns wide is
-    `boxes(6, 2, 3)`. Raises ValueError when height x width is not n: a box
-    that holds fewer cells than n is a weaker rule than sudoku, and one that
-    does not tile the board leaves cells outside every box.
+    `boxes(6, 2, 3)`. Raises ValueError when height x width is not n, or
+    either is not positive: a box that holds fewer cells than n is a weaker
+    rule than sudoku, and one that does not tile the board leaves cells
+    outside every box.
     """
-    if height * width != n:
+    if height < 1 or width < 1 or height * width != n:
         raise ValueError(f"{height}x{width} boxes do not hold {n} cells")
     return [
         [(br + dr, bc + dc) for dr in range(height) for dc in range(width)]
@@ -146,7 +147,7 @@ def solve_unique(m, x, limit, reproducible=True):
     """
     s = solver(limit, reproducible=reproducible)
     status = s.Solve(m)
-    _check_status(status, limit)
+    _check_status(status, limit, m)
     if status not in SOLVED:
         return None, False
     first = {k: s.Value(v) for k, v in x.items()}
