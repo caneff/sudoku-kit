@@ -311,21 +311,56 @@ def test_irreducible_on_a_spent_time_limit_is_timeout_with_no_set():
     assert result == IrreducibleResult("timeout", None, None, False)
 
 
-def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):
-    # The pair step's proof takes two solves: its one probe and the check
-    # that a grid is left. Every solve after those, the deletion trials,
-    # gets no time at all.
+def _starve_after(monkeypatch, n):
+    """Give every CP-SAT solve after the first `n` no time at all."""
     calls = []
 
-    def solver_starving_the_trials(limit):
+    def solver(limit):
         calls.append(limit)
-        return cpsat.solver(limit if len(calls) <= 2 else 0.0)
+        return cpsat.solver(limit if len(calls) <= n else 0.0)
 
-    monkeypatch.setattr(step_prover, "solver", solver_starving_the_trials)
+    monkeypatch.setattr(step_prover, "solver", solver)
+
+
+def _solves_made(monkeypatch, run):
+    """How many CP-SAT solves `run()` makes."""
+    calls = []
+
+    def solver(limit):
+        calls.append(limit)
+        return cpsat.solver(limit)
+
+    monkeypatch.setattr(step_prover, "solver", solver)
+    run()
+    return len(calls)
+
+
+def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):
+    # Every solve after the ones `prove` makes, the deletion trials, gets no
+    # time at all.
     cands, registry, claim = _pair_step()
     registry["cd"] = house([C, D])
-    result = irreducible(cands, registry, ["ab", "cd", "bc"], claim)
+    names = ["ab", "cd", "bc"]
+    _starve_after(
+        monkeypatch,
+        _solves_made(monkeypatch, lambda: prove(cands, registry, names, claim)),
+    )
+    result = irreducible(cands, registry, names, claim)
     assert result == IrreducibleResult("proved", ("ab", "cd", "bc"), None, False)
+
+
+def test_irreducible_on_contradictory_constraints_posts_no_negation():
+    # Houses ab, bc and ac conflict; table a1 plays no part in that. Against
+    # the claim's probe (A = 2) instead, a1 alone would do and ab would go.
+    cands = _board({A: {1, 2}, B: {1, 2}, C: {1, 2}})
+    registry = {
+        "ab": house([A, B]),
+        "bc": house([B, C]),
+        "ac": house([A, C]),
+        "a1": table([A], [(1,)]),
+    }
+    result = irreducible(cands, registry, ["ab", "bc", "ac", "a1"], Place(A, {1}))
+    assert result == IrreducibleResult("contradictory", ("ab", "bc", "ac"), None, True)
 
 
 # --- propagation ---------------------------------------------------------------
@@ -429,11 +464,42 @@ def test_propagation_leaves_the_candidates_alone():
 
 def test_a_spent_time_limit_in_propagation_raises_timeout_error():
     cands, registry, claim = _pair_step()
-    with pytest.raises(TimeoutError, match="'ab'"):
+    with pytest.raises(TimeoutError, match="no verdict"):
         propagation(cands, registry, ["ab", "bc"], claim, time_limit=0.0)
 
 
+def test_a_support_solve_that_times_out_raises_naming_its_constraint(monkeypatch):
+    # The first solve checks that some grid is left; every support solve
+    # after it gets no time.
+    cands, registry, claim = _pair_step()
+    _starve_after(monkeypatch, 1)
+    with pytest.raises(TimeoutError, match=r"'ab'"):
+        propagation(cands, registry, ["ab", "bc"], claim)
+
+
+def test_propagation_on_contradictory_constraints_raises_instead_of_answering():
+    # Without the check, the empty table empties a cell and every claim,
+    # false ones too, would come back settled.
+    registry = {"none": table([A, B], [])}
+    with pytest.raises(ValueError, match=r"'none'.*contradictory"):
+        propagation(_board(), registry, ["none"], Place(A, {1}))
+
+
+def test_a_place_run_opens_with_its_negated_claim_even_when_nothing_is_removed():
+    # C's only candidate is 2, the digit the claim removes: the run fixes C to
+    # 2 and removes nothing, but the log still marks where the run starts.
+    cands = _board({C: {2}})
+    result = propagation(cands, {}, [], Place(C, {3}))
+    assert result == PropagationResult(False, (Elimination("negated claim", C, ()),))
+
+
 def test_irreducible_and_propagation_check_their_input_as_prove_does():
+    def post(m, x):
+        m.Add(x[A] != x[B])
+
+    registry = {"sneaky": Poster([A], post)}
     for helper in (irreducible, propagation):
         with pytest.raises(ValueError, match="no-such-house"):
             helper(_board(), {}, ["no-such-house"], Order([A, B]))
+        with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)"):
+            helper(_board(), registry, ["sneaky"], Order([A, C]))

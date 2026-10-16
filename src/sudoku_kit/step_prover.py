@@ -54,8 +54,9 @@ class IrreducibleResult(NamedTuple):
 class Elimination(NamedTuple):
     """`by` removed `digits` from `cell`. `by` is a constraint's name,
     "given chain <k>" for the k-th given chain counting from 1, or "negated
-    claim"; for a `Place` the negated claim fixes the cell to one removed
-    digit, and its entry opens each run."""
+    claim". For a `Place` every run opens with a "negated claim" entry that
+    fixes the cell to the run's digit; its `digits` are the cell's other
+    candidates, and empty when the run's digit was the only one."""
 
     by: str
     cell: Cell
@@ -147,12 +148,19 @@ def _post_negation(m, x, claim):
         m.AddBoolOr(misses)
 
 
+def _removed(candidates, place):
+    """The candidates a `Place` removes, in order."""
+    return sorted(set(candidates[place.cell]) - set(place.digits))
+
+
 def _probes(candidates, claim):
     """One function per solve the claim needs, each posting that solve's
     negation: a `Place` is one solve per candidate it removes, the others one."""
     if isinstance(claim, Place):
-        removed = sorted(set(candidates[claim.cell]) - set(claim.digits))
-        return [lambda m, x, d=d: m.Add(x[claim.cell] == d) for d in removed]
+        return [
+            lambda m, x, d=d: m.Add(x[claim.cell] == d)
+            for d in _removed(candidates, claim)
+        ]
     return [lambda m, x: _post_negation(m, x, claim)]
 
 
@@ -198,6 +206,11 @@ def _post(m, x, name, poster):
         ) from None
 
 
+def _post_chain(m, x, chain):
+    for left, right in pairwise(chain.cells):
+        m.Add(x[left] < x[right])
+
+
 def _variables(m, candidates):
     return {
         cell: m.NewIntVarFromDomain(
@@ -207,39 +220,54 @@ def _variables(m, candidates):
     }
 
 
+def _run(m, time_limit, workers, what):
+    """Solve `m`: (status, solver). Raises ValueError naming `what` on a model
+    CP-SAT rejects."""
+    s = solver(time_limit)
+    s.parameters.num_workers = workers
+    status = s.Solve(m)
+    if status not in (*SOLVED, UNKNOWN, cp_model.INFEASIBLE):
+        raise ValueError(
+            f"CP-SAT rejected the model for {what}: "
+            f"{cp_model.CpSolver().StatusName(status)}"
+        )
+    return status, s
+
+
 def _solve(candidates, posters, given, probe, time_limit, workers):
     """One solve of the candidates, `posters` and `given` chains, with `probe`
-    (or nothing, when None) posted. Returns (status, solver, x); raises
-    ValueError on a model CP-SAT rejects."""
+    (or nothing, when None) posted: (status, solver, x)."""
     m = cp_model.CpModel()
     x = _variables(m, candidates)
     for name, p in posters:
         _post(m, x, name, p)
     for chain in given:
-        for left, right in pairwise(chain.cells):
-            m.Add(x[left] < x[right])
+        _post_chain(m, x, chain)
     if probe is not None:
         probe(m, x)
-    s = solver(time_limit)
-    s.parameters.num_workers = workers
-    status = s.Solve(m)
-    if status not in (*SOLVED, UNKNOWN, cp_model.INFEASIBLE):
-        names_posted = [name for name, _ in posters]
-        raise ValueError(
-            f"CP-SAT rejected the model for constraints {names_posted}: "
-            f"{cp_model.CpSolver().StatusName(status)}"
-        )
-    return status, s, x
+    what = f"constraints {[name for name, _ in posters]}"
+    return (*_run(m, time_limit, workers, what), x)
+
+
+def _first_grid(candidates, posters, given, probes, time_limit, workers):
+    """(status, solver, x) of the first probe solve that finds a grid. With
+    none found, the status is UNKNOWN when a probe timed out, else INFEASIBLE,
+    and the solver and x are None."""
+    timed_out = False
+    for probe in probes:
+        status, s, x = _solve(candidates, posters, given, probe, time_limit, workers)
+        if status in SOLVED:
+            return status, s, x
+        timed_out = timed_out or status == UNKNOWN
+    return (UNKNOWN if timed_out else cp_model.INFEASIBLE), None, None
 
 
 def _prove(candidates, posters, given, claim, shown, time_limit, workers):
-    timed_out = False
-    for probe in _probes(candidates, claim):
-        status, s, x = _solve(candidates, posters, given, probe, time_limit, workers)
-        if status in SOLVED:
-            return ProofResult("refuted", {c: s.Value(x[c]) for c in sorted(shown)})
-        timed_out = timed_out or status == UNKNOWN
-    if timed_out:
+    probes = _probes(candidates, claim)
+    status, s, x = _first_grid(candidates, posters, given, probes, time_limit, workers)
+    if status in SOLVED:
+        return ProofResult("refuted", {c: s.Value(x[c]) for c in sorted(shown)})
+    if status == UNKNOWN:
         return ProofResult("timeout")
     # Every probe is infeasible. That proves the claim only if some grid is
     # left at all; none means the named constraints contradict themselves or
@@ -309,26 +337,16 @@ def irreducible(
         return IrreducibleResult(result.status, None, result.witness)
     probes = _probes(candidates, claim) if result.status == "proved" else [None]
 
-    def verdict(kept):
-        """ "infeasible" when every probe is, else "feasible" or "timeout"."""
-        timed_out = False
-        for probe in probes:
-            status, _, _ = _solve(candidates, kept, given, probe, time_limit, workers)
-            if status in SOLVED:
-                return "feasible"
-            timed_out = timed_out or status == UNKNOWN
-        return "timeout" if timed_out else "infeasible"
-
-    kept, checked = list(range(len(posters))), True
-    for i in range(len(posters)):
-        trial = [j for j in kept if j != i]
-        outcome = verdict([posters[j] for j in trial])
-        if outcome == "infeasible":
+    kept, checked = list(posters), True
+    for pair in posters:
+        trial = [p for p in kept if p is not pair]
+        status, _, _ = _first_grid(
+            candidates, trial, given, probes, time_limit, workers
+        )
+        if status == cp_model.INFEASIBLE:
             kept = trial
-        checked = checked and outcome != "timeout"
-    return IrreducibleResult(
-        result.status, tuple(posters[j][0] for j in kept), None, checked
-    )
+        checked = checked and status != UNKNOWN
+    return IrreducibleResult(result.status, tuple(n for n, _ in kept), None, checked)
 
 
 def _unsupported(by, cells, post, domains, time_limit, workers):
@@ -338,15 +356,11 @@ def _unsupported(by, cells, post, domains, time_limit, workers):
     supported = {c: set() for c in cells}
     for cell in cells:
         for digit in sorted(domains[cell] - supported[cell]):
-            if digit in supported[cell]:
-                continue
             m = cp_model.CpModel()
             x = _variables(m, {c: domains[c] for c in cells})
             post(m, x)
             m.Add(x[cell] == digit)
-            s = solver(time_limit)
-            s.parameters.num_workers = workers
-            status = s.Solve(m)
+            status, s = _run(m, time_limit, workers, repr(by))
             if status in SOLVED:
                 for c in cells:
                     supported[c].add(s.Value(x[c]))
@@ -354,11 +368,6 @@ def _unsupported(by, cells, post, domains, time_limit, workers):
                 raise TimeoutError(
                     f"CP-SAT hit the {time_limit}s limit testing {digit} in "
                     f"{cell} against {by!r}; no verdict"
-                )
-            elif status != cp_model.INFEASIBLE:
-                raise ValueError(
-                    f"CP-SAT rejected the model for {by!r}: "
-                    f"{cp_model.CpSolver().StatusName(status)}"
                 )
     return {
         c: tuple(sorted(domains[c] - supported[c]))
@@ -405,30 +414,43 @@ def propagation(
     and the answer is yes only when every run empties a cell; the first run
     that does not ends the search. Never changes `candidates`.
 
-    Raises TimeoutError when one support solve spends `time_limit` seconds:
-    a timeout is never a verdict.
+    Raises ValueError, too, when the named constraints, given chains and
+    candidates admit no grid -- the input `prove` calls "contradictory", on
+    which propagation would empty a cell for any claim -- and TimeoutError
+    when one solve spends `time_limit` seconds: a timeout is never a verdict.
     """
     posters, given, _ = _prepare(candidates, registry, names, claim, given)
+    status, _, _ = _solve(candidates, posters, given, None, time_limit, workers)
+    if status == UNKNOWN:
+        raise TimeoutError(
+            f"CP-SAT hit the {time_limit}s limit checking that the named "
+            "constraints admit a grid; no verdict"
+        )
+    if status == cp_model.INFEASIBLE:
+        raise ValueError(
+            f"the named constraints {[name for name, _ in posters]} admit no "
+            "grid with these candidates and given chains: they are contradictory"
+        )
     units = [
         (name, p.cells, lambda m, x, name=name, p=p: _post(m, x, name, p))
         for name, p in posters
     ]
-    for k, chain in enumerate(given, 1):
-
-        def rising(m, x, chain=chain):
-            for left, right in pairwise(chain.cells):
-                m.Add(x[left] < x[right])
-
-        units.append((f"given chain {k}", tuple(dict.fromkeys(chain.cells)), rising))
+    units += [
+        (
+            f"given chain {k}",
+            tuple(dict.fromkeys(chain.cells)),
+            lambda m, x, chain=chain: _post_chain(m, x, chain),
+        )
+        for k, chain in enumerate(given, 1)
+    ]
 
     log = []
     if isinstance(claim, Place):
-        for digit in sorted(set(candidates[claim.cell]) - set(claim.digits)):
+        for digit in _removed(candidates, claim):
             domains = {c: set(d) for c, d in candidates.items()}
             others = tuple(sorted(domains[claim.cell] - {digit}))
             domains[claim.cell] = {digit}
-            if others:
-                log.append(Elimination("negated claim", claim.cell, others))
+            log.append(Elimination("negated claim", claim.cell, others))
             if not _propagate(domains, units, log, time_limit, workers):
                 return PropagationResult(False, tuple(log))
         return PropagationResult(True, tuple(log))

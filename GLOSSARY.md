@@ -26,6 +26,17 @@ What a step concludes about the candidates: a rising chain, a cell keeping only
 some digits, or at least one of several patterns holding.
 _Avoid_: Conclusion, result
 
+**Given chain**:
+A rising chain of cells a step takes as already settled, passed beside the
+named constraints and never removed from them.
+_Avoid_: Assumed order, known chain
+
+**Propagation**:
+Removing a digit from a cell because one constraint, taken alone, has no
+completion using it, repeated until nothing changes. Each removal is one
+**elimination**.
+_Avoid_: Constraint propagation, GAC, simple deduction
+
 ### Proof outcomes
 
 **Proved**:
