@@ -13,3 +13,9 @@ Default six canonical triage roles, each label string equal to its name. See `do
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## End-to-end seam
+
+`bash tests/all.sh` runs the whole gate (ruff, format check, pytest); it is the
+same as `just check`. `--changed <ref>` is accepted and ignored: the suite is
+small enough to run whole every time.
