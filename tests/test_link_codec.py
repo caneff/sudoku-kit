@@ -1,6 +1,3 @@
-"""The SudokuMaker link codec, on real links copied from the example link
-files of sudokumaker-custom-constraints (`tests/links/`)."""
-
 import base64
 import http.client
 import io
@@ -51,7 +48,6 @@ def test_decode_reads_a_bare_payload_as_well_as_a_full_link():
 def test_read_link_accepts_a_file_or_the_link_itself(tmp_path):
     link = read_link(str(LINKS / "house-gac.txt"))
     assert link.startswith("https://sudokumaker.app/?puzzle=")
-    # A real link is far longer than a file name may be; it is the link.
     assert read_link(link) == link
     assert read_link(f"  {link}\n") == link
     commented = tmp_path / "link.txt"
@@ -60,8 +56,6 @@ def test_read_link_accepts_a_file_or_the_link_itself(tmp_path):
 
 
 def test_encode_takes_tuples_where_the_document_holds_lists():
-    # A builder writes cells as tuples; JSON has only lists, and the link
-    # carries the JSON. That is not a lost field.
     link = encode_link({"puzzle": {"cells": [(0, 1), (2, 3)]}})
     assert decode_puzzle(link) == {"puzzle": {"cells": [[0, 1], [2, 3]]}}
 
@@ -83,11 +77,8 @@ def test_encode_refuses_a_document_whose_link_does_not_decode_back(monkeypatch):
 @pytest.mark.parametrize(
     "doc",
     [
-        # An int key comes back as the string "1".
         {"puzzle": {1: "a"}},
-        # Two keys JSON writes alike: one field is lost outright.
         {"puzzle": {1: "a", "1": "b"}},
-        # NaN is not JSON, and comes back unequal to itself.
         {"puzzle": {"width": float("nan")}},
     ],
 )
@@ -110,7 +101,6 @@ def test_read_link_names_an_empty_file(tmp_path):
 
 @pytest.mark.parametrize("source", ["examples/no-such/PUZZLE_LINK.txt", "", "N4Ig"])
 def test_decode_names_what_is_not_a_link(source):
-    # A mistyped path is not a file, so read_link hands it on as the link.
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
         decode_puzzle(read_link(source))
 
@@ -128,11 +118,6 @@ def test_a_d_link_decodes_to_its_document():
     assert expected["formatVersion"] == "1.6.0"
 
 
-def test_a_d_payload_decodes_without_its_link_prefix():
-    link = read_link(D_LINK)
-    assert decode_puzzle(link.split("puzzle=")[1]) == decode_puzzle(link)
-
-
 def test_a_d_link_round_trips_through_an_n_link():
     doc = decode_puzzle(read_link(D_LINK))
     n_link = encode_link(doc)
@@ -141,27 +126,29 @@ def test_a_d_link_round_trips_through_an_n_link():
 
 
 def _d_payload(doc, *, pad=False):
-    """A `D` payload built with stock zlib and base64, apart from the codec."""
     raw = zlib.compress(json.dumps(doc).encode(), wbits=-zlib.MAX_WBITS)
     payload = base64.urlsafe_b64encode(raw).decode()
     return "D" + (payload if pad else payload.rstrip("="))
 
 
-@pytest.mark.parametrize("extra", ["", "a", "ab", "abc"])
+PADDING_EXTRAS = ["", "a", "ab", "abc"]
+
+
+@pytest.mark.parametrize("extra", PADDING_EXTRAS)
 def test_a_d_payload_decodes_whatever_its_unpadded_length(extra):
-    # The app writes no padding; the four names give bodies of differing
-    # lengths mod 4, so each padding amount is met.
     doc = {"puzzle": {"name": "p" + extra}}
     assert decode_puzzle(_d_payload(doc)) == doc
     assert decode_puzzle(_d_payload(doc, pad=True)) == doc
 
 
-def test_the_unpadded_d_payloads_differ_in_length_mod_4():
+def test_the_unpadded_d_payloads_meet_every_padding_amount():
+    # An unpadded base64 body is 0, 2 or 3 mod 4 long (1 cannot occur), which
+    # asks for 0, 2 or 1 characters of padding.
     lengths = {
-        len(_d_payload({"puzzle": {"name": "p" + extra}})) % 4
-        for extra in ["", "a", "ab", "abc"]
+        len(_d_payload({"puzzle": {"name": "p" + extra}})[1:]) % 4
+        for extra in PADDING_EXTRAS
     }
-    assert len(lengths) > 1
+    assert lengths == {0, 2, 3}
 
 
 @pytest.mark.parametrize("prefix", ["X", "d", "h"])
@@ -179,11 +166,8 @@ _WITH_JUNK = zlib.compress(b'{"puzzle": {}}', wbits=-zlib.MAX_WBITS) + b"junk"
     [
         "D",
         "D!!not-base64!!",
-        # Valid base64 holding no deflate stream.
         "DAAAA",
-        # One character outside the base64url alphabet inside a good body.
         _GOOD[:5] + "*" + _GOOD[5:],
-        # A good stream with bytes after its end.
         "D" + base64.urlsafe_b64encode(_WITH_JUNK).decode().rstrip("="),
     ],
 )
@@ -193,8 +177,6 @@ def test_decode_refuses_a_d_payload_that_is_not_one_clean_deflate_stream(payload
 
 
 class _Network:
-    """Stands in for `urlopen`: records each request, answers or raises."""
-
     def __init__(self, monkeypatch, body=None, error=None):
         self.requests = []
         self.timeouts = []
@@ -228,7 +210,6 @@ def test_read_link_resolves_a_short_link(monkeypatch):
 
 
 def test_read_link_asks_the_api_as_sudoku_kit_not_as_urllib(monkeypatch):
-    # The API's CDN answers urllib's default User-Agent with a 403.
     network = _Network(monkeypatch, body=_answer("Dx"))
     read_link("https://sudokumaker.app/p/abc123")
     assert network.requests[0].get_header("User-agent") == "sudoku-kit"

@@ -17,7 +17,6 @@ from sudoku_kit.uniqueness import check_uniqueness
 
 
 def _pair(*, pin):
-    """a == b over 0..1, with a pinned to 1 when `pin`: one solution or two."""
     m = cp_model.CpModel()
     a = m.NewIntVar(0, 1, "a")
     b = m.NewIntVar(0, 1, "b")
@@ -69,8 +68,6 @@ def test_an_invalid_model_is_invalid():
 
 
 def test_a_solve_that_runs_out_of_time_is_timeout():
-    # A subset-sum instance under a cap of no time at all: the search has
-    # spent its limit before it starts, whatever the machine.
     m = cp_model.CpModel()
     rng = random.Random(1)
     xs = [m.NewBoolVar(f"x{i}") for i in range(60)]
@@ -84,8 +81,6 @@ def test_a_solve_that_runs_out_of_time_is_timeout():
 
 
 def test_a_second_solve_that_runs_out_of_time_is_timeout_not_unique(monkeypatch):
-    # The model has one solution, so a second solve that finished would say
-    # "unique". It is handed a cap of no time instead, and must say so.
     real, limits = uniqueness._solve, []
 
     def stingy(model, time_limit, workers):
@@ -121,8 +116,6 @@ def test_a_second_solve_that_is_invalid_is_invalid_not_unique(monkeypatch):
 
 
 def test_the_caller_s_model_is_left_untouched():
-    # The exclusion clause goes on a copy, so a second call on the same model
-    # reports the same verdict rather than "unique".
     m, variables = _pair(pin=False)
     before = len(m.Proto().constraints)
     assert check_uniqueness(m, variables).status == "not_unique"

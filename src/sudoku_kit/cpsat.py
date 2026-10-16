@@ -1,11 +1,5 @@
 """The CP-SAT calls the generators and uniqueness proofs all make.
 
-Every proof has one shape: solve, read the assignment back,
-forbid it, solve again. `forbid` posts that clause, `has_second_solution`
-posts it and solves, `solve_unique` runs the whole shape, `solver` is the
-configuration they run under, and `sudoku_model` is the standard board they
-run it on.
-
 The configuration is the part worth stating once, because a solver is asked
 for two different things:
 
@@ -51,8 +45,6 @@ def solver(limit, reproducible=True, seed=0, randomize=False, workers=None):
     return a different solution each time.
     """
     if reproducible and (seed or randomize):
-        # Fail loud rather than accept a call whose seed cannot do anything:
-        # the reproducible configuration pins seed 0 and the default search.
         raise ValueError("a reproducible solver takes no seed and no randomize")
     s = cp_model.CpSolver()
     s.parameters.max_time_in_seconds = limit

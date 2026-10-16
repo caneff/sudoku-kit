@@ -1,11 +1,3 @@
-"""`sudoku_kit.cpsat`: the CP-SAT calls every generator and uniqueness proof shares.
-
-The forbid, solver and second-solution tests use two-variable toy models --
-what is under test there is the forbid clause, the solver configuration and
-the verdict, none of which care what the model says; the solve_unique tests
-use the same toys, and the sudoku_model tests run on real (small) boards.
-"""
-
 import pytest
 from ortools.sat.python import cp_model
 
@@ -21,7 +13,6 @@ from sudoku_kit.cpsat import (
 
 
 def _model(total):
-    """x + y == total over 1..3, and the two cell variables keyed like a board's."""
     m = cp_model.CpModel()
     x = {"x": m.NewIntVar(1, 3, "x"), "y": m.NewIntVar(1, 3, "y")}
     m.Add(x["x"] + x["y"] == total)
@@ -29,8 +20,6 @@ def _model(total):
 
 
 def _feasible(m):
-    """Whether `m` has a solution, and the solver that found it. A spent cap
-    fails the test instead of reading as "no solution"."""
     s = solver(30)
     status = s.Solve(m)
     assert status != cp_model.UNKNOWN, "the test model spent its 30s cap"
@@ -38,7 +27,6 @@ def _feasible(m):
 
 
 def _solve(m, x):
-    """One solution of (m, x) as {cell: digit}, or None when it has none."""
     ok, s = _feasible(m)
     return {k: s.Value(v) for k, v in x.items()} if ok else None
 
@@ -60,7 +48,6 @@ def test_forbid_rules_out_exactly_the_named_assignment():
 
 
 def test_has_second_solution_on_a_unique_and_an_ambiguous_model():
-    # total 6 admits only 3+3; total 4 admits three assignments.
     m, x = _model(6)
     assert has_second_solution(m, x, _solve(m, x), 10) is False
     m, x = _model(4)
@@ -68,7 +55,6 @@ def test_has_second_solution_on_a_unique_and_an_ambiguous_model():
 
 
 def test_has_second_solution_raises_rather_than_report_a_verdict():
-    # A time cap the search cannot meet is no verdict, never "unique".
     m, x = _model(4)
     first = _solve(m, x)
     with pytest.raises(TimeoutError):
@@ -76,8 +62,6 @@ def test_has_second_solution_raises_rather_than_report_a_verdict():
 
 
 def test_reproducible_pins_one_worker_and_seed_zero():
-    # The committed-proof configuration: CP-SAT's parallel portfolio is not
-    # reproducible run to run, so a proof that ships pins the search.
     s = solver(30)
     assert (s.parameters.num_workers, s.parameters.random_seed) == (1, 0)
     assert s.parameters.max_time_in_seconds == 30
@@ -85,16 +69,12 @@ def test_reproducible_pins_one_worker_and_seed_zero():
 
 
 def test_a_seed_handed_to_the_reproducible_solver_is_a_loud_mistake():
-    # The reproducible configuration pins seed 0, so a caller's seed could only
-    # be silently dropped. It is refused instead.
     for kwargs in ({"seed": 1234}, {"randomize": True}):
         with pytest.raises(ValueError, match="reproducible"):
             solver(30, **kwargs)
 
 
 def test_search_mode_leaves_the_portfolio_and_the_caller_s_seed_alone():
-    # Sampling a fresh grid wants variety, not reproducibility: the portfolio
-    # stays on and the caller's sub-seed drives randomize_search.
     s = solver(30, reproducible=False, seed=1234, randomize=True)
     assert s.parameters.num_workers > 1
     assert s.parameters.random_seed == 1234
@@ -110,8 +90,6 @@ def test_workers_sets_the_thread_count_in_both_configurations():
 
 
 def test_solve_unique_on_unique_nonunique_and_infeasible_models():
-    # total 6 admits only 3+3; total 4 admits three assignments; total 9
-    # admits none over 1..3.
     m, x = _model(6)
     assert solve_unique(m, x, 10) == ({"x": 3, "y": 3}, True)
     m, x = _model(4)
@@ -122,17 +100,12 @@ def test_solve_unique_on_unique_nonunique_and_infeasible_models():
 
 
 def test_solve_unique_raises_on_a_spent_cap_in_the_first_solve():
-    # A first solve that cannot finish is no verdict, not "infeasible".
     m, x = _model(4)
     with pytest.raises(TimeoutError):
         solve_unique(m, x, 0.0)
 
 
 def test_solve_unique_raises_when_only_the_second_solve_times_out(monkeypatch):
-    # The second solve is the only one that can hang a real proof; the first
-    # is cheap here. Hand solve_unique a cap the first solve meets and the
-    # second cannot by shrinking the cap between them through the solver
-    # factory.
     real, calls = cpsat.solver, []
 
     def stingy(limit, **kw):
@@ -187,7 +160,6 @@ def test_solve_unique_raises_when_only_the_retry_is_invalid(monkeypatch):
 
 
 def _solutions(m, x):
-    """Every solution of (m, x), by forbid-and-resolve. Spends `m`."""
     found = []
     while (a := _solve(m, x)) is not None:
         found.append(a)
@@ -196,7 +168,6 @@ def _solutions(m, x):
 
 
 def _lines(n):
-    """The rows and the columns of an n x n board, as cell lists."""
     rows = [[(r, c) for c in range(n)] for r in range(n)]
     return rows + [[(r, c) for r in range(n)] for c in range(n)]
 
@@ -206,7 +177,6 @@ def _houses_ok(a, n, houses):
 
 
 def test_sudoku_model_on_a_square_board():
-    # 4x4 with 2x2 boxes: 288 grids, and every one is a valid sudoku.
     m, x = sudoku_model(4, boxes(4, 2, 2))
     assert sorted(x) == [(r, c) for r in range(4) for c in range(4)]
     sols = _solutions(m, x)
@@ -215,7 +185,6 @@ def test_sudoku_model_on_a_square_board():
 
 
 def test_sudoku_model_on_a_rectangular_box_board():
-    # 6x6 with 2-row by 3-column boxes: a solution is checked house by house.
     m, x = sudoku_model(6, boxes(6, 2, 3))
     found = _solve(m, x)
     assert found is not None
@@ -234,20 +203,15 @@ def test_sudoku_model_on_a_rectangular_box_board():
 
 
 def test_boxes_refuses_boxes_that_are_not_n_cells():
-    # 2x2 boxes on a 6x6 divide it but hold 4 cells, a weaker rule than
-    # sudoku; 4x2 does not even tile it.
     for height, width in ((2, 2), (4, 2), (3, 1)):
         with pytest.raises(ValueError, match=f"{height}x{width} boxes do not hold 6"):
             boxes(6, height, width)
 
 
 def test_sudoku_model_on_region_and_latin_boards():
-    # no houses is rows and columns only: the 12 Latin squares of order 3.
     m, x = sudoku_model(3, ())
     latin = _solutions(m, x)
     assert len(latin) == 12
-    # A region replaces the boxes: it adds one pair, (0,1) and (1,0), to keep
-    # apart, so the board's solutions are exactly the Latin squares that do.
     region = [(0, 0), (0, 1), (1, 0)]
     m, x = sudoku_model(3, [region])
     sols = _solutions(m, x)
