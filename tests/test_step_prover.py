@@ -271,8 +271,8 @@ def test_irreducible_tries_earlier_names_first_so_a_later_one_is_kept():
     cands = _board({A: {1}, B: {1}, C: {1, 2}})
     registry = {"ac": house([A, C]), "bc": house([B, C])}
     claim = Place(C, {2})
-    assert irreducible(cands, registry, ["ac", "bc"], claim).names == ("bc",)
-    assert irreducible(cands, registry, ["bc", "ac"], claim).names == ("ac",)
+    assert irreducible(cands, registry, ["ac", "bc"], claim).irreducible_set == ("bc",)
+    assert irreducible(cands, registry, ["bc", "ac"], claim).irreducible_set == ("ac",)
 
 
 def test_irreducible_keeps_a_constraint_any_one_probe_of_a_place_needs():
@@ -301,7 +301,7 @@ def test_irreducible_on_a_refuted_claim_gives_the_witness_and_no_set():
     cands, registry, claim = _pair_step()
     result = irreducible(cands, registry, ["bc"], claim)
     assert result.status == "refuted"
-    assert result.names is None
+    assert result.irreducible_set is None
     assert result.witness[C] != 3
 
 
@@ -414,6 +414,7 @@ def test_propagation_does_not_settle_a_step_that_needs_constraints_together():
     cands, registry, names, claim = _three_pairs_step()
     assert prove(cands, registry, names, claim).status == "proved"
     result = propagation(cands, registry, names, claim)
+    assert result.proves is False
     assert result == PropagationResult(
         False,
         (
@@ -429,6 +430,7 @@ def test_propagation_takes_the_negated_order_as_one_constraint():
     # The negation A >= B leaves only A = B = 2, and house ab then empties.
     cands = _board({A: {1, 2}, B: {2, 3}})
     result = propagation(cands, {"ab": house([A, B])}, ["ab"], Order([A, B]))
+    assert result.proves is True
     assert result == PropagationResult(
         True,
         (
