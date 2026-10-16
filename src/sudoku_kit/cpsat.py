@@ -37,13 +37,18 @@ UNKNOWN = cp_model.UNKNOWN
 SEARCH_WORKERS = 8
 
 
-def solver(limit, reproducible=True, seed=0, randomize=False):
+def solver(limit, reproducible=True, seed=0, randomize=False, workers=None):
     """A CpSolver capped at `limit` seconds.
 
     Reproducible by default: one worker and seed 0, so the same model gives
     the same answer on every run. `reproducible=False` opens the portfolio and
     takes the caller's `seed`, with `randomize` steering the search away from
     the dull grids the default order keeps returning.
+
+    `workers` overrides the thread count in either configuration. More than
+    one worker races CP-SAT's portfolio, so a reproducible solver given
+    several keeps seed 0 but is not run-to-run stable: the same model can
+    return a different solution each time.
     """
     if reproducible and (seed or randomize):
         # Fail loud rather than accept a call whose seed cannot do anything:
@@ -51,7 +56,9 @@ def solver(limit, reproducible=True, seed=0, randomize=False):
         raise ValueError("a reproducible solver takes no seed and no randomize")
     s = cp_model.CpSolver()
     s.parameters.max_time_in_seconds = limit
-    s.parameters.num_workers = 1 if reproducible else SEARCH_WORKERS
+    if workers is None:
+        workers = 1 if reproducible else SEARCH_WORKERS
+    s.parameters.num_workers = workers
     s.parameters.random_seed = 0 if reproducible else seed
     s.parameters.randomize_search = randomize
     return s

@@ -100,6 +100,14 @@ def test_search_mode_leaves_the_portfolio_and_the_caller_s_seed_alone():
     assert s.parameters.randomize_search is True
 
 
+def test_workers_sets_the_thread_count_in_both_configurations():
+    # The worker count is the one knob both configurations share: a caller that
+    # wants more threads says so here instead of overwriting the parameter on
+    # the returned solver.
+    assert solver(30, workers=3).parameters.num_workers == 3
+    assert solver(30, reproducible=False, workers=3).parameters.num_workers == 3
+
+
 def test_solve_unique_on_unique_nonunique_and_infeasible_models():
     # total 6 admits only 3+3; total 4 admits three assignments; total 9
     # admits none over 1..3.
