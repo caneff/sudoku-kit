@@ -74,7 +74,7 @@ class PropagationResult(NamedTuple):
 @dataclass(frozen=True)
 class Poster:
     """A constraint: the `cells` it ranges over and `post(model, x)`, which
-    adds it to `model`, `x` mapping every cell to its variable."""
+    adds it to `model`, `x` mapping those `cells` to their variables."""
 
     cells: tuple[Cell, ...]
     post: Callable[[cp_model.CpModel, Mapping[Cell, cp_model.IntVar]], None]
@@ -122,8 +122,6 @@ class Order(NamedTuple):
         m.AddBoolOr(breaks)
 
     def probes(self, candidates):
-        """One function per solve the claim needs, each posting that solve's
-        negation."""
         return [self.post_negation]
 
 
@@ -137,7 +135,6 @@ class Place(NamedTuple):
         return [self.cell]
 
     def removed(self, candidates):
-        """The candidates this claim removes, in order."""
         return sorted(set(candidates[self.cell]) - set(self.digits))
 
     def fixes(self, candidates):
@@ -177,8 +174,6 @@ def _check_cells(cells, candidates, what):
 
 
 def _check(candidates, registry, names, claim, given):
-    """Check the input and return it as a `Step` with the default limits.
-    Raises the ValueErrors `prove` lists."""
     if not isinstance(claim, Order | Place | Either):
         raise ValueError(f"unknown claim {claim!r}: expected Order, Place or Either")
     for cell, digits in candidates.items():
@@ -248,8 +243,6 @@ class Step:
         return shown
 
     def run(self, m, what):
-        """Solve `m`: (status, solver). Raises ValueError naming `what` on a
-        model CP-SAT rejects."""
         s = solver(self.time_limit, workers=self.workers)
         status = s.Solve(m)
         if status not in (*SOLVED, UNKNOWN, cp_model.INFEASIBLE):
@@ -260,8 +253,6 @@ class Step:
         return status, s
 
     def solve(self, probe):
-        """One solve of the candidates, named constraints and given chains,
-        with `probe` (or nothing, when None) posted: (status, solver, x)."""
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
         for name, p in self.posters:
@@ -274,9 +265,6 @@ class Step:
         return (*self.run(m, what), x)
 
     def first_grid(self, probes):
-        """(status, solver, x) of the first probe solve that finds a grid.
-        With none found, the status is UNKNOWN when a probe timed out, else
-        INFEASIBLE, and the solver and x are None."""
         timed_out = False
         for probe in probes:
             status, s, x = self.solve(probe)
@@ -304,9 +292,6 @@ class Step:
         )
 
     def unsupported(self, by, cells, post, candidates):
-        """{cell: digits} of `cells` with no completion under `post` alone,
-        from the current `candidates`. A completion found supports every digit in
-        it, so only the digits no completion has used yet are solved for."""
         supported = {c: set() for c in cells}
         for cell in cells:
             for digit in sorted(candidates[cell] - supported[cell]):
@@ -330,8 +315,6 @@ class Step:
         }
 
     def propagate(self, candidates, units, log):
-        """Run each unit alone until none removes a digit. True when one
-        empties a cell. Changes `candidates` and appends to `log`."""
         changed = True
         while changed:
             changed = False
