@@ -316,9 +316,9 @@ def _starve(monkeypatch, starved):
     `starved(k)`."""
     calls = []
 
-    def solver(limit):
+    def solver(limit, **kwargs):
         calls.append(limit)
-        return cpsat.solver(0.0 if starved(len(calls)) else limit)
+        return cpsat.solver(0.0 if starved(len(calls)) else limit, **kwargs)
 
     monkeypatch.setattr(step_prover, "solver", solver)
 
@@ -327,9 +327,9 @@ def _solves_made(monkeypatch, run):
     """How many CP-SAT solves `run()` makes."""
     calls = []
 
-    def solver(limit):
+    def solver(limit, **kwargs):
         calls.append(limit)
-        return cpsat.solver(limit)
+        return cpsat.solver(limit, **kwargs)
 
     monkeypatch.setattr(step_prover, "solver", solver)
     run()
