@@ -102,9 +102,11 @@ def table(cells: Iterable[Cell], tuples: Iterable[Iterable[int]]) -> Poster:
 # one function per solve it needs, each posting that solve's negation; and
 # `fixes(candidates)`, the (cell, digit) each propagation run fixes, or None
 # when the claim fails in one solve, which `post_negation(m, x)` then posts.
+# `fixes()` returns None exactly when the claim has `post_negation`, which
+# `propagation` relies on.
 
 
-class Order(NamedTuple):
+class Chain(NamedTuple):
     """A rising chain: cells[0] < cells[1] < ..."""
 
     cells: tuple[Cell, ...]
@@ -178,23 +180,23 @@ def _check_cells(cells, candidates, what):
 
 
 def _step(candidates, registry, names, claim, given, *, time_limit, workers):
-    if not isinstance(claim, Order | Place | Either):
-        raise ValueError(f"unknown claim {claim!r}: expected Order, Place or Either")
+    if not isinstance(claim, Chain | Place | Either):
+        raise ValueError(f"unknown claim {claim!r}: expected Chain, Place or Either")
     for cell, digits in candidates.items():
         if not digits:
             raise ValueError(f"cell {cell} has no candidates")
-    posters = []
+    named = []
     for name in names:
         if name not in registry:
             raise ValueError(f"constraint {name!r} is not in the registry")
         _check_cells(registry[name].cells, candidates, f"constraint {name!r}")
-        posters.append((name, registry[name]))
+        named.append((name, registry[name]))
     chains = []
     for k, chain in enumerate(given, 1):
         _check_cells(chain.cells, candidates, "a given chain")
         chains.append((f"given chain {k}", _chain_poster(chain)))
     _check_cells(claim.claim_cells(), candidates, "the claim")
-    return Step(candidates, tuple(posters), tuple(chains), claim, time_limit, workers)
+    return Step(candidates, tuple(named), tuple(chains), claim, time_limit, workers)
 
 
 def _post(m, x, name, poster):
@@ -238,20 +240,20 @@ class Step:
     `claim`, and the limits every solve of it runs under."""
 
     candidates: Mapping[Cell, Collection[int]]
-    posters: tuple[tuple[str, Poster], ...]
+    named: tuple[tuple[str, Poster], ...]
     given: tuple[tuple[str, Poster], ...]
-    claim: Order | Place | Either
+    claim: Chain | Place | Either
     time_limit: float
     workers: int
 
     def _without(self, pair):
         """This step with the named constraint `pair` left out."""
-        return replace(self, posters=tuple(p for p in self.posters if p is not pair))
+        return replace(self, named=tuple(p for p in self.named if p is not pair))
 
     def shown(self):
         """The cells a witness carries: those of a named constraint, the claim
         or a given chain."""
-        shown = {c for _, p in self.posters for c in p.cells}
+        shown = {c for _, p in self.named for c in p.cells}
         shown.update(self.claim.claim_cells())
         shown.update(c for _, p in self.given for c in p.cells)
         return shown
@@ -266,7 +268,7 @@ class Step:
         """Solve the step with `probe` posted; a None probe asks whether any grid is left."""
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
-        for name, p in (*self.posters, *self.given):
+        for name, p in (*self.named, *self.given):
             _post(m, x, name, p)
         if probe is not None:
             probe(m, x)
@@ -311,14 +313,14 @@ class Step:
         probes = self._backing(result.status)
 
         kept, checked = self, True
-        for pair in self.posters:
+        for pair in self.named:
             trial = kept._without(pair)
             status, _, _ = trial._first_grid(probes)
             if status == cp_model.INFEASIBLE:
                 kept = trial
             checked = checked and status != UNKNOWN
         return IrreducibleResult(
-            result.status, tuple(n for n, _ in kept.posters), None, checked
+            result.status, tuple(n for n, _ in kept.named), None, checked
         )
 
     def propagation(self):
@@ -330,11 +332,11 @@ class Step:
             )
         if status == cp_model.INFEASIBLE:
             raise ValueError(
-                f"the named constraints {[name for name, _ in self.posters]} admit "
+                f"the named constraints {[name for name, _ in self.named]} admit "
                 "no grid with these candidates and given chains: they are "
                 "contradictory"
             )
-        units = [*self.posters, *self.given]
+        units = [*self.named, *self.given]
 
         log = []
         fixes = self.claim.fixes(self.candidates)
@@ -403,9 +405,9 @@ def prove(
     candidates: Mapping[Cell, Collection[int]],
     registry: Mapping[str, Poster],
     names: Iterable[str],
-    claim: Order | Place | Either,
+    claim: Chain | Place | Either,
     *,
-    given: Iterable[Order] = (),
+    given: Iterable[Chain] = (),
     time_limit: float = 10.0,
     workers: int = 1,
 ) -> ProofResult:
@@ -424,7 +426,7 @@ def prove(
     Raises ValueError naming a cell with no candidates, a name missing from
     `registry`, or a cell of a constraint, claim or given chain that is not in
     `candidates`, a constraint that touches a cell it does not declare, a claim
-    that is not an `Order`, `Place` or `Either`, or a model CP-SAT rejects.
+    that is not an `Chain`, `Place` or `Either`, or a model CP-SAT rejects.
     """
     return _step(
         candidates,
@@ -441,9 +443,9 @@ def irreducible(
     candidates: Mapping[Cell, Collection[int]],
     registry: Mapping[str, Poster],
     names: Iterable[str],
-    claim: Order | Place | Either,
+    claim: Chain | Place | Either,
     *,
-    given: Iterable[Order] = (),
+    given: Iterable[Chain] = (),
     time_limit: float = 10.0,
     workers: int = 1,
 ) -> IrreducibleResult:
@@ -474,9 +476,9 @@ def propagation(
     candidates: Mapping[Cell, Collection[int]],
     registry: Mapping[str, Poster],
     names: Iterable[str],
-    claim: Order | Place | Either,
+    claim: Chain | Place | Either,
     *,
-    given: Iterable[Order] = (),
+    given: Iterable[Chain] = (),
     time_limit: float = 10.0,
     workers: int = 1,
 ) -> PropagationResult:
