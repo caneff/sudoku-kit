@@ -227,6 +227,16 @@ def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
         prove(_board(), registry, ["sneaky"], Order([A, C]))
 
 
+def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
+    # MODEL_INVALID is a broken model, not a step with no grid.
+    def post(m, x):
+        m.NewIntVar(3, 1, "broken")
+
+    registry = {"broken": Poster([A], post)}
+    with pytest.raises(ValueError, match='name: "broken"'):
+        prove(_board(), registry, ["broken"], Order([A, B]))
+
+
 def test_a_claim_of_an_unknown_kind_raises_naming_it():
     with pytest.raises(ValueError, match="unknown claim 'A < B'"):
         prove(_board(), {}, [], "A < B")
