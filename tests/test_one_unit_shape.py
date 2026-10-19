@@ -5,9 +5,11 @@ is relabelled.
 
 Blind to: outside callers. grid-hunts and sudokumaker-custom-constraints pin
 v0.1.0 and import no step prover, so the `Order` -> `Chain` rename reaches
-them only when they bump their tag. Also blind to the spec's static
-criteria: `radon cc --min C src/sudoku_kit/step_prover.py` reporting nothing
-is checked by hand, since radon is not in the seam.
+them only when they bump their tag. Also blind to the spec's static and docs
+criteria, checked by hand: `radon cc --min C src/sudoku_kit/step_prover.py`
+reporting nothing, the `rg` checks on `docs/agents` (#42) and for the old
+names `Order` and `posters` (#44). The Either tag criterion (#41) is
+`tests/test_step_prover.py`'s, not driven here.
 """
 
 import pytest
@@ -26,7 +28,6 @@ from sudoku_kit.step_prover import (
 )
 
 A, B, C = (0, 0), (0, 1), (0, 2)
-ENTRY_POINTS = (prove, irreducible, propagation)
 
 
 def test_the_step_prover_end_to_end():
@@ -59,7 +60,7 @@ def test_the_step_prover_end_to_end():
         "buggy": Poster([A], buggy),
         "sneaky": Poster([A], sneaky),
     }
-    for entry in ENTRY_POINTS:
+    for entry in (prove, irreducible, propagation):
         with pytest.raises(ValueError, match='name: "broken"'):
             entry(cands, registry, ["broken"], Chain([A, B]))
         with pytest.raises(KeyError, match="missing"):

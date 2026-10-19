@@ -65,7 +65,7 @@ def test_a_spent_time_limit_is_timeout_never_proved():
     assert result == ProofResult("timeout", None)
 
 
-def test_an_order_claim_proved_and_refuted():
+def test_a_chain_claim_proved_and_refuted():
     cands = _board({A: {1, 2}, B: {3, 4}})
     assert prove(cands, {}, [], Chain([A, B])).status == "proved"
     cands = _board({A: {1, 3}, B: {2, 4}})
@@ -74,7 +74,7 @@ def test_an_order_claim_proved_and_refuted():
     assert result.witness == {A: 3, B: 2}
 
 
-def test_a_three_cell_order_breaks_on_its_second_link():
+def test_a_three_cell_chain_breaks_on_its_second_link():
     cands = _board({A: {1}, B: {3}, C: {2, 4}})
     result = prove(cands, {}, [], Chain([A, B, C]))
     assert result.status == "refuted"
@@ -440,7 +440,7 @@ def test_propagation_does_not_settle_a_step_that_needs_constraints_together():
     )
 
 
-def test_propagation_takes_the_negated_order_as_one_constraint():
+def test_propagation_takes_the_negated_chain_as_one_constraint():
     cands = _board({A: {1, 2}, B: {2, 3}})
     result = propagation(cands, {"ab": house([A, B])}, ["ab"], Chain([A, B]))
     assert result == PropagationResult(

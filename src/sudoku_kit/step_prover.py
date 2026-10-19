@@ -238,12 +238,12 @@ def _variables(m, candidates):
 @dataclass(frozen=True)
 class Step:
     """One prepared step: the `candidates`, the named constraints as
-    (name, `Poster`) pairs, the `given` chains as the same kind of pair, the
+    (name, `Poster`) pairs, the given `chains` as the same kind of pair, the
     `claim`, and the limits every solve of it runs under."""
 
     candidates: Mapping[Cell, Collection[int]]
     named: tuple[tuple[str, Poster], ...]
-    given: tuple[tuple[str, Poster], ...]
+    chains: tuple[tuple[str, Poster], ...]
     claim: Chain | Place | Either
     time_limit: float
     workers: int
@@ -257,7 +257,7 @@ class Step:
         or a given chain."""
         shown = {c for _, p in self.named for c in p.cells}
         shown.update(self.claim.claim_cells())
-        shown.update(c for _, p in self.given for c in p.cells)
+        shown.update(c for _, p in self.chains for c in p.cells)
         return shown
 
     def _run(self, m):
@@ -270,7 +270,7 @@ class Step:
         """Solve the step with `probe` posted; a None probe asks whether any grid is left."""
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
-        for name, p in (*self.named, *self.given):
+        for name, p in (*self.named, *self.chains):
             _post(m, x, name, p)
         if probe is not None:
             probe(m, x)
@@ -338,7 +338,7 @@ class Step:
                 "no grid with these candidates and given chains: they are "
                 "contradictory"
             )
-        units = [*self.named, *self.given]
+        units = [*self.named, *self.chains]
 
         log = []
         fixes = self.claim.fixes(self.candidates)
@@ -428,7 +428,7 @@ def prove(
     Raises ValueError naming a cell with no candidates, a name missing from
     `registry`, or a cell of a constraint, claim or given chain that is not in
     `candidates`, a constraint that touches a cell it does not declare, a claim
-    that is not an `Chain`, `Place` or `Either`, or a model CP-SAT rejects.
+    that is not a `Chain`, `Place` or `Either`, or a model CP-SAT rejects.
     """
     return _step(
         candidates,
