@@ -14,7 +14,7 @@ and grid-hunts. Both pin v0.1.0; neither imports the step prover.
   back to it. `read_link` also resolves a short link
   (`https://sudokumaker.app/p/<id>`) with one GET of the app's API.
 - `sudoku_kit.step_prover`: `prove`, which reports whether a step's claim
-  (`Order`, `Place` or `Either`) is `proved` from its named constraints,
+  (`Chain`, `Place` or `Either`) is `proved` from its named constraints,
   `refuted` with a witness, or `timeout`. `house` and `table` build the
   constraints; a caller registers its own with `Poster`.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
