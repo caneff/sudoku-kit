@@ -189,11 +189,12 @@ def _step(candidates, registry, names, claim, given, **limits):
             raise ValueError(f"constraint {name!r} is not in the registry")
         _check_cells(registry[name].cells, candidates, f"constraint {name!r}")
         posters.append((name, registry[name]))
-    given = tuple(given)
-    for chain in given:
+    chains = []
+    for k, chain in enumerate(given, 1):
         _check_cells(chain.cells, candidates, "a given chain")
+        chains.append((f"given chain {k}", _chain_poster(chain)))
     _check_cells(claim.claim_cells(), candidates, "the claim")
-    return Step(candidates, tuple(posters), given, claim, **limits)
+    return Step(candidates, tuple(posters), tuple(chains), claim, **limits)
 
 
 def _post(m, x, name, poster):
@@ -212,6 +213,12 @@ def _post_chain(m, x, chain):
         m.Add(x[left] < x[right])
 
 
+def _chain_poster(chain):
+    return Poster(
+        tuple(dict.fromkeys(chain.cells)), lambda m, x: _post_chain(m, x, chain)
+    )
+
+
 def _variables(m, candidates):
     return {
         cell: m.NewIntVarFromDomain(
@@ -224,12 +231,12 @@ def _variables(m, candidates):
 @dataclass(frozen=True)
 class Step:
     """One prepared step: the `candidates`, the named constraints as
-    (name, `Poster`) pairs, the `given` chains, the `claim`, and the limits
-    every solve of it runs under."""
+    (name, `Poster`) pairs, the `given` chains as the same kind of pair, the
+    `claim`, and the limits every solve of it runs under."""
 
     candidates: Mapping[Cell, Collection[int]]
     posters: tuple[tuple[str, Poster], ...]
-    given: tuple[Order, ...]
+    given: tuple[tuple[str, Poster], ...]
     claim: Order | Place | Either
     time_limit: float
     workers: int
@@ -243,7 +250,7 @@ class Step:
         or a given chain."""
         shown = {c for _, p in self.posters for c in p.cells}
         shown.update(self.claim.claim_cells())
-        shown.update(c for chain in self.given for c in chain.cells)
+        shown.update(c for _, p in self.given for c in p.cells)
         return shown
 
     def run(self, m):
@@ -255,10 +262,8 @@ class Step:
     def solve(self, probe):
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
-        for name, p in self.posters:
+        for name, p in (*self.posters, *self.given):
             _post(m, x, name, p)
-        for chain in self.given:
-            _post_chain(m, x, chain)
         if probe is not None:
             probe(m, x)
         return (*self.run(m), x)
@@ -290,13 +295,14 @@ class Step:
             "contradictory" if status == cp_model.INFEASIBLE else "proved"
         )
 
-    def unsupported(self, by, cells, post, candidates):
+    def unsupported(self, by, poster, candidates):
+        cells = poster.cells
         supported = {c: set() for c in cells}
         for cell in cells:
             for digit in sorted(candidates[cell] - supported[cell]):
                 m = cp_model.CpModel()
                 x = _variables(m, {c: candidates[c] for c in cells})
-                post(m, x)
+                poster.post(m, x)
                 m.Add(x[cell] == digit)
                 status, s = self.run(m)
                 if status in SOLVED:
@@ -317,13 +323,13 @@ class Step:
         changed = True
         while changed:
             changed = False
-            for by, cells, post in units:
-                removed = self.unsupported(by, cells, post, candidates)
+            for by, poster in units:
+                removed = self.unsupported(by, poster, candidates)
                 for cell, digits in removed.items():
                     candidates[cell] -= set(digits)
                     log.append(Elimination(by, cell, digits))
                     changed = True
-                if any(not candidates[c] for c in cells):
+                if any(not candidates[c] for c in poster.cells):
                     return True
         return False
 
@@ -440,18 +446,7 @@ def propagation(
             f"the named constraints {[name for name, _ in step.posters]} admit no "
             "grid with these candidates and given chains: they are contradictory"
         )
-    units = [
-        (name, p.cells, lambda m, x, name=name, p=p: _post(m, x, name, p))
-        for name, p in step.posters
-    ]
-    units += [
-        (
-            f"given chain {k}",
-            tuple(dict.fromkeys(chain.cells)),
-            lambda m, x, chain=chain: _post_chain(m, x, chain),
-        )
-        for k, chain in enumerate(step.given, 1)
-    ]
+    units = [*step.posters, *step.given]
 
     log = []
     fixes = claim.fixes(candidates)
@@ -468,8 +463,7 @@ def propagation(
     units.append(
         (
             "negated claim",
-            tuple(dict.fromkeys(claim.claim_cells())),
-            claim.post_negation,
+            Poster(tuple(dict.fromkeys(claim.claim_cells())), claim.post_negation),
         )
     )
     remaining = {c: set(d) for c, d in candidates.items()}
