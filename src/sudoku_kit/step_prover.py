@@ -202,14 +202,16 @@ def _step(candidates, registry, names, claim, given, *, time_limit, workers):
 def _post(m, x, name, poster):
     # A poster sees only the cells it declares, so one that reaches for
     # another fails here instead of leaving it out of the witness. Only a
-    # board cell is relabelled; any other KeyError is the poster's own bug.
+    # board cell the poster did not declare is relabelled; any other KeyError
+    # is the poster's own bug.
     try:
         poster.post(m, {c: x[c] for c in poster.cells})
     except KeyError as e:
-        if e.args[0] not in x:
+        cell = e.args[0] if e.args else None
+        if not (isinstance(cell, tuple) and cell in x and cell not in poster.cells):
             raise
         raise ValueError(
-            f"constraint {name!r} uses cell {e.args[0]}, which it does not declare"
+            f"constraint {name!r} uses cell {cell}, which it does not declare"
         ) from e
 
 

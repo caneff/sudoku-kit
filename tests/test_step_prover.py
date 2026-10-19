@@ -223,17 +223,24 @@ def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
         m.Add(x[A] != x[B])
 
     registry = {"sneaky": Poster([A], post)}
-    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)"):
+    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)") as raised:
         prove(_board(), registry, ["sneaky"], Chain([A, C]))
+    assert isinstance(raised.value.__cause__, KeyError)
 
 
-def test_a_poster_bug_raising_keyerror_on_a_non_cell_key_surfaces_as_itself():
+@pytest.mark.parametrize(
+    "error",
+    [KeyError("missing"), KeyError(A), KeyError(), KeyError([1])],
+    ids=["non-cell key", "declared cell", "no key", "unhashable key"],
+)
+def test_a_poster_bug_raising_keyerror_surfaces_as_itself(error):
     def post(m, x):
-        {}["missing"]
+        raise error
 
     registry = {"buggy": Poster([A], post)}
-    with pytest.raises(KeyError, match="missing"):
+    with pytest.raises(KeyError) as raised:
         prove(_board(), registry, ["buggy"], Chain([A, C]))
+    assert raised.value is error
 
 
 def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
