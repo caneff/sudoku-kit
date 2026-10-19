@@ -82,9 +82,6 @@ def test_search_mode_leaves_the_portfolio_and_the_caller_s_seed_alone():
 
 
 def test_workers_sets_the_thread_count_in_both_configurations():
-    # The worker count is the one knob both configurations share: a caller that
-    # wants more threads says so here instead of overwriting the parameter on
-    # the returned solver.
     assert solver(30, workers=3).parameters.num_workers == 3
     assert solver(30, reproducible=False, workers=3).parameters.num_workers == 3
 
@@ -127,21 +124,18 @@ def _invalid_model():
 
 
 def test_solve_unique_raises_on_an_invalid_model_in_the_first_solve():
-    # MODEL_INVALID is a broken model, not a puzzle with no solution.
     m, x = _invalid_model()
     with pytest.raises(ValueError, match='name: "x"'):
         solve_unique(m, x, 10)
 
 
 def test_has_second_solution_raises_on_an_invalid_model():
-    # The retry meets the invalid model; False would read as "unique".
     m, x = _invalid_model()
     with pytest.raises(ValueError, match="invalid"):
         has_second_solution(m, x, {"x": 1}, 10)
 
 
 def test_solve_unique_raises_when_only_the_retry_is_invalid(monkeypatch):
-    # The first solve is fine; the retry's model comes back MODEL_INVALID.
     real, calls = cpsat.solver, []
 
     class Invalid:
@@ -209,7 +203,6 @@ def test_boxes_refuses_boxes_that_are_not_n_cells():
 
 
 def test_boxes_groups_each_cell_with_the_cells_of_its_box():
-    # Two rows tall, three columns wide: a cell's box is (row // 2, col // 3).
     found = {frozenset(house) for house in boxes(6, 2, 3)}
     expected = {}
     for r in range(6):
