@@ -24,3 +24,9 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 failure; `--list` prints the suites. `just check` calls it, so CI runs it too.
 `--changed <base>` is accepted and runs the whole seam, since the full run takes seconds. There is no
 live layer.
+
+- **Seam**: `bash tests/all.sh`: ruff check, ruff format, the uv lock check
+  and pytest over `src/sudoku_kit`
+- **Blind to**: the consumers. grid-hunts and sudokumaker-custom-constraints
+  pin the `v0.1.0` tag, so a change here never runs against their code until
+  one of them bumps the pin.
