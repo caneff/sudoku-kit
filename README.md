@@ -2,7 +2,7 @@
 
 A small library of sudoku tooling, written to be shared by
 [sudokumaker-custom-constraints](https://github.com/caneff/sudokumaker-custom-constraints)
-and grid-hunts. At v0.1.0 neither installs it yet.
+and grid-hunts. Both pin v0.1.0; neither imports the step prover.
 
 - `sudoku_kit.cpsat`: the CP-SAT calls every generator and uniqueness proof
   makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model` and
