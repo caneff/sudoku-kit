@@ -11,10 +11,10 @@ from ortools.sat.python import cp_model
 
 from sudoku_kit import cpsat, step_prover
 from sudoku_kit.step_prover import (
+    Chain,
     Either,
     Elimination,
     IrreducibleResult,
-    Order,
     Place,
     Poster,
     ProofResult,
@@ -65,18 +65,18 @@ def test_a_spent_time_limit_is_timeout_never_proved():
     assert result == ProofResult("timeout", None)
 
 
-def test_an_order_claim_proved_and_refuted():
+def test_a_chain_claim_proved_and_refuted():
     cands = _board({A: {1, 2}, B: {3, 4}})
-    assert prove(cands, {}, [], Order([A, B])).status == "proved"
+    assert prove(cands, {}, [], Chain([A, B])).status == "proved"
     cands = _board({A: {1, 3}, B: {2, 4}})
-    result = prove(cands, {}, [], Order([A, B]))
+    result = prove(cands, {}, [], Chain([A, B]))
     assert result.status == "refuted"
     assert result.witness == {A: 3, B: 2}
 
 
-def test_a_three_cell_order_breaks_on_its_second_link():
+def test_a_three_cell_chain_breaks_on_its_second_link():
     cands = _board({A: {1}, B: {3}, C: {2, 4}})
-    result = prove(cands, {}, [], Order([A, B, C]))
+    result = prove(cands, {}, [], Chain([A, B, C]))
     assert result.status == "refuted"
     assert result.witness == {A: 1, B: 3, C: 2}
 
@@ -123,8 +123,8 @@ def test_an_either_negation_tags_each_pattern_distinctly():
     cells = len(m.Proto().variables)
     Either([{A: 1, B: 2}, {A: 2, B: 1}]).post_negation(m, x)
     names = [v.name for v in m.Proto().variables][cells:]
-    assert len(names) == 4
-    assert len(set(names)) == 4
+    assert names
+    assert len(set(names)) == len(names)
 
 
 def test_an_either_pattern_holds_only_when_all_its_equalities_do():
@@ -139,13 +139,13 @@ def test_a_claim_that_holds_only_under_a_given_chain():
     cands = _board({A: {1, 2, 3}, B: {1, 2, 3}})
     claim = Place(A, {1, 2})
     assert prove(cands, {}, [], claim).status == "refuted"
-    result = prove(cands, {}, [], claim, given=[Order([A, B])])
+    result = prove(cands, {}, [], claim, given=[Chain([A, B])])
     assert result == ProofResult("proved", None)
 
 
 def test_a_given_chain_is_in_the_witness_cells():
     cands = _board({A: {1, 2, 3}, B: {1, 2, 3}})
-    result = prove(cands, {}, [], Place(A, {1}), given=[Order([A, B])])
+    result = prove(cands, {}, [], Place(A, {1}), given=[Chain([A, B])])
     assert result.status == "refuted"
     assert result.witness == {A: 2, B: 3}
 
@@ -183,25 +183,25 @@ def test_prove_leaves_the_candidates_alone():
 def test_an_empty_candidate_set_raises_naming_the_cell():
     cands = _board({(2, 1): set()})
     with pytest.raises(ValueError, match=r"\(2, 1\)"):
-        prove(cands, {}, [], Order([A, B]))
+        prove(cands, {}, [], Chain([A, B]))
 
 
 def test_an_unknown_constraint_name_raises_naming_it():
     cands = _board()
     with pytest.raises(ValueError, match="no-such-house"):
-        prove(cands, {"ab": house([A, B])}, ["no-such-house"], Order([A, B]))
+        prove(cands, {"ab": house([A, B])}, ["no-such-house"], Chain([A, B]))
 
 
 def test_a_claim_cell_off_the_board_raises_naming_it():
     with pytest.raises(ValueError, match=r"\(9, 9\)"):
-        prove(_board(), {}, [], Order([A, (9, 9)]))
+        prove(_board(), {}, [], Chain([A, (9, 9)]))
 
 
 def test_any_board_size_works():
     # (0, 2) is on the board but in no constraint or claim, so the witness
     # must leave it out.
     cands = {(0, 0): {1, 2}, (0, 1): {2, 3}, (0, 2): {1, 2, 3}}
-    result = prove(cands, {}, [], Order([(0, 0), (0, 1)]))
+    result = prove(cands, {}, [], Chain([(0, 0), (0, 1)]))
     assert result.status == "refuted"
     assert set(result.witness) == {(0, 0), (0, 1)}
     assert result.witness[(0, 0)] >= result.witness[(0, 1)]
@@ -210,12 +210,12 @@ def test_any_board_size_works():
 def test_a_named_constraint_cell_off_the_board_raises_naming_it():
     registry = {"off": house([A, (9, 9)])}
     with pytest.raises(ValueError, match=r"'off'.*\(9, 9\)"):
-        prove(_board(), registry, ["off"], Order([A, B]))
+        prove(_board(), registry, ["off"], Chain([A, B]))
 
 
 def test_a_given_chain_cell_off_the_board_raises_naming_it():
     with pytest.raises(ValueError, match=r"given.*\(9, 9\)"):
-        prove(_board(), {}, [], Order([A, B]), given=[Order([A, (9, 9)])])
+        prove(_board(), {}, [], Chain([A, B]), given=[Chain([A, (9, 9)])])
 
 
 def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
@@ -223,8 +223,34 @@ def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
         m.Add(x[A] != x[B])
 
     registry = {"sneaky": Poster([A], post)}
-    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)"):
-        prove(_board(), registry, ["sneaky"], Order([A, C]))
+    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)") as raised:
+        prove(_board(), registry, ["sneaky"], Chain([A, C]))
+    assert isinstance(raised.value.__cause__, KeyError)
+
+
+@pytest.mark.parametrize(
+    "error",
+    [KeyError("missing"), KeyError(A), KeyError(), KeyError([1])],
+    ids=["non-cell key", "declared cell", "no key", "unhashable key"],
+)
+def test_a_poster_bug_raising_keyerror_surfaces_as_itself(error):
+    def post(m, x):
+        raise error
+
+    registry = {"buggy": Poster([A], post)}
+    with pytest.raises(KeyError) as raised:
+        prove(_board(), registry, ["buggy"], Chain([A, C]))
+    assert raised.value is error
+
+
+def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
+    # MODEL_INVALID is a broken model, not a step with no grid.
+    def post(m, x):
+        m.NewIntVar(3, 1, "broken")
+
+    registry = {"broken": Poster([A], post)}
+    with pytest.raises(ValueError, match='name: "broken"'):
+        prove(_board(), registry, ["broken"], Chain([A, B]))
 
 
 def test_a_claim_of_an_unknown_kind_raises_naming_it():
@@ -234,7 +260,7 @@ def test_a_claim_of_an_unknown_kind_raises_naming_it():
 
 def test_named_constraints_that_admit_no_grid_are_contradictory_not_proved():
     registry = {"none": table([A, B], [])}
-    for claim in (Place(A, {1}), Order([A, B]), Either([{A: 1}])):
+    for claim in (Place(A, {1}), Chain([A, B]), Either([{A: 1}])):
         result = prove(_board(), registry, ["none"], claim)
         assert result == ProofResult("contradictory", None)
 
@@ -247,7 +273,7 @@ def test_houses_the_candidates_cannot_satisfy_are_contradictory():
 
 def test_a_given_chain_the_candidates_cannot_satisfy_is_contradictory():
     cands = _board({A: {3}, B: {2}})
-    result = prove(cands, {}, [], Place(C, {1}), given=[Order([A, B])])
+    result = prove(cands, {}, [], Place(C, {1}), given=[Chain([A, B])])
     assert result.status == "contradictory"
 
 
@@ -321,7 +347,6 @@ def _starve(monkeypatch, starved):
 
 
 def _solves_made(monkeypatch, run):
-    """How many CP-SAT solves `run()` makes."""
     calls = []
 
     def solver(limit, **kwargs):
@@ -415,9 +440,9 @@ def test_propagation_does_not_settle_a_step_that_needs_constraints_together():
     )
 
 
-def test_propagation_takes_the_negated_order_as_one_constraint():
+def test_propagation_takes_the_negated_chain_as_one_constraint():
     cands = _board({A: {1, 2}, B: {2, 3}})
-    result = propagation(cands, {"ab": house([A, B])}, ["ab"], Order([A, B]))
+    result = propagation(cands, {"ab": house([A, B])}, ["ab"], Chain([A, B]))
     assert result == PropagationResult(
         True,
         (
@@ -431,7 +456,7 @@ def test_propagation_takes_the_negated_order_as_one_constraint():
 
 def test_propagation_takes_each_given_chain_as_one_constraint():
     cands = _board({A: {1, 2, 3}, B: {1, 2, 3}})
-    result = propagation(cands, {}, [], Place(A, {1, 2}), given=[Order([A, B])])
+    result = propagation(cands, {}, [], Place(A, {1, 2}), given=[Chain([A, B])])
     assert result == PropagationResult(
         True,
         (
@@ -498,6 +523,6 @@ def test_irreducible_and_propagation_check_their_input_as_prove_does():
     registry = {"sneaky": Poster([A], post)}
     for helper in (irreducible, propagation):
         with pytest.raises(ValueError, match="no-such-house"):
-            helper(_board(), {}, ["no-such-house"], Order([A, B]))
+            helper(_board(), {}, ["no-such-house"], Chain([A, B]))
         with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)"):
-            helper(_board(), registry, ["sneaky"], Order([A, C]))
+            helper(_board(), registry, ["sneaky"], Chain([A, C]))

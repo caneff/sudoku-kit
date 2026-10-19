@@ -2,11 +2,11 @@
 
 A small library of sudoku tooling, written to be shared by
 [sudokumaker-custom-constraints](https://github.com/caneff/sudokumaker-custom-constraints)
-and grid-hunts. At v0.1.0 neither installs it yet.
+and grid-hunts. Both pin v0.1.0; neither imports the step prover.
 
 - `sudoku_kit.cpsat`: the CP-SAT calls every generator and uniqueness proof
-  makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model` and
-  `solve_unique`.
+  makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model`,
+  `solve_unique` and `check_valid`.
 - `sudoku_kit.link_codec`: the SudokuMaker link codec. `decode_puzzle`,
   `encode_link` and `read_link`. `decode_puzzle` reads both payload formats
   the app writes (`D`, base64url of deflate-raw, and the older lz-string `N`);
@@ -14,7 +14,7 @@ and grid-hunts. At v0.1.0 neither installs it yet.
   back to it. `read_link` also resolves a short link
   (`https://sudokumaker.app/p/<id>`) with one GET of the app's API.
 - `sudoku_kit.step_prover`: `prove`, which reports whether a step's claim
-  (`Order`, `Place` or `Either`) is `proved` from its named constraints,
+  (`Chain`, `Place` or `Either`) is `proved` from its named constraints,
   `refuted` with a witness, or `timeout`. `house` and `table` build the
   constraints; a caller registers its own with `Poster`.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,

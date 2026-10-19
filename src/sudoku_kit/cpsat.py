@@ -75,12 +75,17 @@ def forbid(m, x, assignment, tag=""):
     m.AddBoolOr(lits)
 
 
+def check_valid(status, m):
+    """Raise ValueError naming `m.Validate()` when CP-SAT rejected `m`."""
+    if status == cp_model.MODEL_INVALID:
+        raise ValueError(f"CP-SAT rejected the model as invalid: {m.Validate()}")
+
+
 def _check_status(status, limit, m):
     """Raise for a status that is no verdict: a spent cap or a broken model."""
     if status == cp_model.UNKNOWN:
         raise TimeoutError(f"CP-SAT hit the {limit}s limit; no verdict")
-    if status == cp_model.MODEL_INVALID:
-        raise ValueError(f"CP-SAT rejected the model as invalid: {m.Validate()}")
+    check_valid(status, m)
 
 
 def has_second_solution(m, x, first, limit, reproducible=True):
