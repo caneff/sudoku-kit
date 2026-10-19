@@ -19,7 +19,7 @@ from typing import Literal, NamedTuple
 
 from ortools.sat.python import cp_model
 
-from sudoku_kit.cpsat import SOLVED, UNKNOWN, forbid, solver
+from sudoku_kit.cpsat import SOLVED, UNKNOWN, check_valid, forbid, solver
 
 Cell = tuple[int, int]
 Status = Literal["proved", "refuted", "contradictory", "timeout"]
@@ -246,14 +246,10 @@ class Step:
         shown.update(c for chain in self.given for c in chain.cells)
         return shown
 
-    def run(self, m, what):
+    def run(self, m):
         s = solver(self.time_limit, workers=self.workers)
         status = s.Solve(m)
-        if status not in (*SOLVED, UNKNOWN, cp_model.INFEASIBLE):
-            raise ValueError(
-                f"CP-SAT rejected the model for {what}: "
-                f"{cp_model.CpSolver().StatusName(status)}"
-            )
+        check_valid(status, m)
         return status, s
 
     def solve(self, probe):
@@ -265,8 +261,7 @@ class Step:
             _post_chain(m, x, chain)
         if probe is not None:
             probe(m, x)
-        what = f"constraints {[name for name, _ in self.posters]}"
-        return (*self.run(m, what), x)
+        return (*self.run(m), x)
 
     def first_grid(self, probes):
         timed_out = False
@@ -303,7 +298,7 @@ class Step:
                 x = _variables(m, {c: candidates[c] for c in cells})
                 post(m, x)
                 m.Add(x[cell] == digit)
-                status, s = self.run(m, repr(by))
+                status, s = self.run(m)
                 if status in SOLVED:
                     for c in cells:
                         supported[c].add(s.Value(x[c]))
