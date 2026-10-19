@@ -199,13 +199,16 @@ def _step(candidates, registry, names, claim, given, **limits):
 
 def _post(m, x, name, poster):
     # A poster sees only the cells it declares, so one that reaches for
-    # another fails here instead of leaving it out of the witness.
+    # another fails here instead of leaving it out of the witness. Only a
+    # board cell is relabelled; any other KeyError is the poster's own bug.
     try:
         poster.post(m, {c: x[c] for c in poster.cells})
     except KeyError as e:
+        if e.args[0] not in x:
+            raise
         raise ValueError(
             f"constraint {name!r} uses cell {e.args[0]}, which it does not declare"
-        ) from None
+        ) from e
 
 
 def _post_chain(m, x, chain):

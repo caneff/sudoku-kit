@@ -227,6 +227,15 @@ def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
         prove(_board(), registry, ["sneaky"], Order([A, C]))
 
 
+def test_a_poster_bug_raising_keyerror_on_a_non_cell_key_surfaces_as_itself():
+    def post(m, x):
+        {}["missing"]
+
+    registry = {"buggy": Poster([A], post)}
+    with pytest.raises(KeyError, match="missing"):
+        prove(_board(), registry, ["buggy"], Order([A, C]))
+
+
 def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
     # MODEL_INVALID is a broken model, not a step with no grid.
     def post(m, x):
