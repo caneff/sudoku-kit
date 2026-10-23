@@ -8,11 +8,14 @@ and grid-hunts. Both pin v0.1.0; neither imports the step prover.
   makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model`,
   `solve_unique` and `check_valid`.
 - `sudoku_kit.link_codec`: the SudokuMaker link codec. `decode_puzzle`,
-  `encode_link` and `read_link`. `decode_puzzle` reads both payload formats
+  `encode_link`, `read_link` and `shorten_link`. `decode_puzzle` reads both payload formats
   the app writes (`D`, base64url of deflate-raw, and the older lz-string `N`);
   `encode_link` writes `N` and refuses a document whose link does not decode
   back to it. `read_link` also resolves a short link
-  (`https://sudokumaker.app/p/<id>`) with one GET of the app's API.
+  (`https://sudokumaker.app/p/<id>`) with one GET of the app's API. `shorten_link` mints one from a full link
+  (or a file holding one) with one POST and checks it resolves back to the
+  payload sent; `uv run --directory <repo> python -m sudoku_kit.link_codec
+  shorten <link-or-file>...` prints one per source.
 - `sudoku_kit.step_prover`: `prove`, which reports whether a step's claim
   (`Chain`, `Place` or `Either`) is `proved` from its named constraints,
   `refuted` with a witness, or `timeout`. `house` and `table` build the
