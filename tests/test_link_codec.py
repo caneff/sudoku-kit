@@ -2,6 +2,8 @@ import base64
 import http.client
 import io
 import json
+import random
+import string
 import urllib.error
 import zlib
 from pathlib import Path
@@ -10,7 +12,6 @@ import pytest
 
 from sudoku_kit import link_codec
 from sudoku_kit.link_codec import (
-    LINK_PREFIX,
     decode_puzzle,
     encode_link,
     read_link,
@@ -389,11 +390,64 @@ def test_shorten_refuses_when_the_minted_link_holds_another_payload(monkeypatch)
 
 
 def test_shorten_refuses_a_payload_the_app_would_refuse(monkeypatch):
-    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
-    link = LINK_PREFIX + "N" + "A" * link_codec.MAX_PAYLOAD_CHARACTERS
+    app = _ShortLinkApp(monkeypatch)
+    noise = random.Random(0).choices(string.ascii_letters + string.digits, k=300_000)
+    link = encode_link({"notes": "".join(noise)})
+    assert len(link.split("puzzle=")[1]) > link_codec.MAX_PAYLOAD_CHARACTERS
     with pytest.raises(ValueError, match="200000"):
         shorten_link(link)
     assert app.posts == []
+
+
+def test_shorten_accepts_a_payload_of_exactly_the_limit(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / "fillomino.txt")
+    limit = len(link.split("puzzle=")[1])
+    monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", limit)
+    shorten_link(link)
+    assert len(app.posts) == 1
+    monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", limit - 1)
+    with pytest.raises(ValueError, match=str(limit - 1)):
+        shorten_link(link)
+    assert len(app.posts) == 1
+
+
+@pytest.mark.parametrize("tail", ["&x=1", "#frag", "%0A"])
+def test_shorten_refuses_a_link_whose_payload_is_not_clean(monkeypatch, tail):
+    app = _ShortLinkApp(monkeypatch)
+    with pytest.raises(ValueError, match="payload"):
+        shorten_link(read_link(LINKS / "fillomino.txt") + tail)
+    assert app.posts == []
+
+
+def test_shorten_sends_a_percent_encoded_plus_as_a_plus(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / "fillomino.txt")
+    assert "+" in link
+    shorten_link(link.replace("+", "%2B"))
+    assert json.loads(app.posts[0].data) == {"puzzle": link.split("puzzle=")[1]}
+
+
+def test_shorten_leaves_a_short_link_as_it_is(monkeypatch, tmp_path):
+    app = _ShortLinkApp(
+        monkeypatch, stored=read_link(LINKS / "fillomino.txt").split("puzzle=")[1]
+    )
+    saved = tmp_path / "short.txt"
+    saved.write_text("https://sudokumaker.app/p/KkFHGqdkjd\n")
+    assert shorten_link(saved) == "https://sudokumaker.app/p/KkFHGqdkjd"
+    assert shorten_link("https://sudokumaker.app/p/KkFHGqdkjd") == (
+        "https://sudokumaker.app/p/KkFHGqdkjd"
+    )
+    assert app.posts == []
+
+
+def test_shorten_errors_name_the_link_being_shortened(monkeypatch):
+    error = urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+    _ShortLinkApp(monkeypatch, minted=error)
+    link = read_link(LINKS / "fillomino.txt")
+    with pytest.raises(ValueError, match="403 Forbidden") as raised:
+        shorten_link(link)
+    assert link[:60] in str(raised.value)
 
 
 def test_shorten_refuses_what_is_not_a_link_before_the_network(monkeypatch):
@@ -439,3 +493,24 @@ def test_the_shorten_command_reports_a_refusal_and_fails(monkeypatch, capsys):
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "not a SudokuMaker link" in captured.err
+
+
+def test_the_shorten_command_stops_at_the_first_refusal(monkeypatch, capsys):
+    app = _ShortLinkApp(monkeypatch)
+    fillomino = str(LINKS / "fillomino.txt")
+    assert link_codec.main(["shorten", fillomino, "no-such-file.txt", fillomino]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "https://sudokumaker.app/p/AbCdEfGhIj\n"
+    assert "no-such-file.txt" in captured.err
+    assert len(app.posts) == 1
+
+
+def test_the_shorten_command_reports_a_file_it_cannot_read(monkeypatch, capsys):
+    _ShortLinkApp(monkeypatch)
+
+    def unreadable(self):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(link_codec.Path, "read_text", unreadable)
+    assert link_codec.main(["shorten", str(LINKS / "fillomino.txt")]) == 1
+    assert "Permission denied" in capsys.readouterr().err

@@ -32,15 +32,17 @@ from pathlib import Path
 
 from lzstring import LZString
 
-LINK_PREFIX = "https://sudokumaker.app/?puzzle="
+SHORT_LINK_HOST = "sudokumaker.app"
+LINK_PREFIX = f"https://{SHORT_LINK_HOST}/?puzzle="
 SHORT_LINK = re.compile(
     r"https?://(?:www\.)?((?:dev\.)?sudokumaker\.app)/p/([^/?#]*)/?(?:[?#].*)?",
     re.IGNORECASE,
 )
 SHORT_LINK_ID = re.compile(r"[A-Za-z0-9_-]+")
+# Both payload formats: lz-string's URI alphabet and base64url.
+CLEAN_PAYLOAD = re.compile(r"[A-Za-z0-9+/_$=-]+")
 USER_AGENT = "sudoku-kit"
 FETCH_TIMEOUT_SECONDS = 15
-SHORT_LINK_HOST = "sudokumaker.app"
 # The app refuses a longer payload (error code `puzzle_too_large`).
 MAX_PAYLOAD_CHARACTERS = 200_000
 # The CDN answers a bare urllib POST with a 403; these three are the set that
@@ -70,6 +72,15 @@ def read_link(source):
     request and an answer with no payload each raise ValueError naming the id
     or the link; a request that times out raises TimeoutError.
     """
+    link = _source_token(source)
+    short = SHORT_LINK.fullmatch(link)
+    if not short:
+        return link
+    host, link_id = _short_link_parts(short, link)
+    return _resolve_short_link(host, link_id)
+
+
+def _source_token(source):
     source = os.fspath(source)
     try:
         is_file = Path(source).is_file()
@@ -84,13 +95,14 @@ def read_link(source):
         link = tokens[-1]
     else:
         link = source.strip()
-    short = SHORT_LINK.fullmatch(link)
-    if not short:
-        return link
+    return link
+
+
+def _short_link_parts(short, link):
     host, link_id = short.groups()
     if not SHORT_LINK_ID.fullmatch(link_id):
         raise ValueError(f"short link has no usable id after /p/: {link[:60]!r}")
-    return _resolve_short_link(host, link_id)
+    return host, link_id
 
 
 def _resolve_short_link(host, link_id):
@@ -196,33 +208,45 @@ def encode_link(doc):
 def shorten_link(source):
     """The short link (https://sudokumaker.app/p/<id>) for a full link.
 
-    `source` is a full link or a file holding one, as for `read_link`; a
-    short link is resolved first, so it comes back as a new id for the same
-    payload. The payload goes up as it stands in the link, with its `+`: the
+    `source` is a full link or a file holding one, as for `read_link`. A
+    short link comes back as it stands once it resolves: minting again would
+    leave a second record on the app for the same puzzle. The payload goes up
+    as `decode_puzzle` read it, percent-escapes undone and with its `+`: the
     app answers 400 `invalid_request` when a `+` has been read as a space.
 
-    Raises ValueError, before any request, for a source that is not a link or
-    a payload over the app's limit. Raises ValueError, naming the new id,
-    when the minted link does not resolve back to the payload that was sent:
-    a short link that opens another puzzle is worse than no link.
+    Raises ValueError, before any request, for a source that is not a link,
+    a payload carrying anything past the payload alphabet (a `&` or `#`
+    tail), or a payload over the app's limit. Raises ValueError, naming the
+    new id, when the minted link does not resolve back to the payload that
+    was sent: a short link that opens another puzzle is worse than no link.
     """
-    link = read_link(source)
-    payload = link.split("puzzle=", 1)[-1]
-    if len(payload) > MAX_PAYLOAD_CHARACTERS:
+    token = _source_token(source)
+    short = SHORT_LINK.fullmatch(token)
+    if short:
+        host, link_id = _short_link_parts(short, token)
+        _resolve_short_link(host, link_id)
+        return f"https://{host}/p/{link_id}"
+    link = read_link(token)
+    raw = link.split("puzzle=", 1)[-1]
+    if len(raw) > MAX_PAYLOAD_CHARACTERS:
         raise ValueError(
-            f"payload is {len(payload)} characters; the app refuses more than "
+            f"payload is {len(raw)} characters; the app refuses more than "
             f"{MAX_PAYLOAD_CHARACTERS}: {link[:60]!r}"
         )
     decode_puzzle(link)
+    payload = urllib.parse.unquote(raw)
+    if not CLEAN_PAYLOAD.fullmatch(payload):
+        raise ValueError(f"payload has characters a payload does not: {link[:60]!r}")
     url = f"https://{SHORT_LINK_HOST}/api/puzzles"
     request = urllib.request.Request(
         url,
         data=json.dumps({"puzzle": payload}).encode(),
         headers={"Content-Type": "application/json", **BROWSER_HEADERS},
     )
-    link_id = _answer_field(request, "id", "usable id", f"minting at {url}")
+    where = f"minting a short link for {link[:60]!r}: {url}"
+    link_id = _answer_field(request, "id", "usable id", where)
     if not SHORT_LINK_ID.fullmatch(link_id):
-        raise ValueError(f"minting at {url} answered no usable id: {link_id[:60]!r}")
+        raise ValueError(f"{where} answered no usable id: {link_id[:60]!r}")
     if _resolve_short_link(SHORT_LINK_HOST, link_id) != LINK_PREFIX + payload:
         raise ValueError(
             f"short link {link_id!r} holds a payload that is not the payload sent "
@@ -242,7 +266,7 @@ def main(argv=None):
     for source in args.sources:
         try:
             print(shorten_link(source), flush=True)
-        except (ValueError, TimeoutError) as error:
+        except (ValueError, TimeoutError, OSError) as error:
             print(f"{source[:60]}: {error}", file=sys.stderr)
             return 1
     return 0
