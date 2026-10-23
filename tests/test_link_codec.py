@@ -2,6 +2,8 @@ import base64
 import http.client
 import io
 import json
+import random
+import string
 import urllib.error
 import zlib
 from pathlib import Path
@@ -9,7 +11,12 @@ from pathlib import Path
 import pytest
 
 from sudoku_kit import link_codec
-from sudoku_kit.link_codec import decode_puzzle, encode_link, read_link
+from sudoku_kit.link_codec import (
+    decode_puzzle,
+    encode_link,
+    read_link,
+    shorten_link,
+)
 
 LINKS = Path(__file__).parent / "links"
 
@@ -320,3 +327,190 @@ def test_read_link_does_not_touch_the_network_for_a_full_link(monkeypatch):
     link = read_link(LINKS / "house-gac.txt")
     assert read_link(link) == link
     assert network.urls == []
+
+
+class _ShortLinkApp:
+    """The app's two endpoints: POST /api/puzzles mints, GET /api/puzzles/<id> reads."""
+
+    def __init__(self, monkeypatch, *, minted=b'{"id": "AbCdEfGhIj"}', stored=None):
+        self.posts, self.gets = [], []
+        self._minted, self._stored = minted, stored
+        monkeypatch.setattr(link_codec.urllib.request, "urlopen", self)
+
+    def __call__(self, request, timeout=None):
+        if request.data is None:
+            self.gets.append(request)
+            stored = self._stored
+            if stored is None:
+                stored = json.loads(self.posts[-1].data)["puzzle"]
+            return io.BytesIO(_answer(stored))
+        self.posts.append(request)
+        if isinstance(self._minted, Exception):
+            raise self._minted
+        return io.BytesIO(self._minted)
+
+
+@pytest.mark.parametrize(("name", "puzzle_name", "width"), REAL_LINKS)
+def test_shorten_posts_the_raw_payload_and_returns_the_short_link(
+    monkeypatch, name, puzzle_name, width
+):
+    app = _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / name)
+    assert shorten_link(LINKS / name) == "https://sudokumaker.app/p/AbCdEfGhIj"
+    assert [post.full_url for post in app.posts] == [
+        "https://sudokumaker.app/api/puzzles"
+    ]
+    # The payload goes up as it stands in the link: its `+` is not a space.
+    assert json.loads(app.posts[0].data) == {"puzzle": link.split("puzzle=")[1]}
+    assert [get.full_url for get in app.gets] == [
+        "https://sudokumaker.app/api/puzzles/AbCdEfGhIj"
+    ]
+
+
+def test_shorten_takes_the_link_itself(monkeypatch):
+    _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / "fillomino.txt")
+    assert shorten_link(link) == "https://sudokumaker.app/p/AbCdEfGhIj"
+
+
+def test_shorten_posts_json_with_the_headers_the_cdn_wants(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    shorten_link(LINKS / "fillomino.txt")
+    post = app.posts[0]
+    assert post.get_header("Content-type") == "application/json"
+    assert post.get_header("Origin") == "https://sudokumaker.app"
+    assert post.get_header("Referer").startswith("https://sudokumaker.app/")
+    assert post.get_header("User-agent").startswith("Mozilla/")
+
+
+def test_shorten_refuses_when_the_minted_link_holds_another_payload(monkeypatch):
+    _ShortLinkApp(monkeypatch, stored="Dother")
+    with pytest.raises(ValueError, match=r"AbCdEfGhIj.*not the payload"):
+        shorten_link(LINKS / "fillomino.txt")
+
+
+def test_shorten_refuses_a_payload_the_app_would_refuse(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    noise = random.Random(0).choices(string.ascii_letters + string.digits, k=300_000)
+    link = encode_link({"notes": "".join(noise)})
+    assert len(link.split("puzzle=")[1]) > link_codec.MAX_PAYLOAD_CHARACTERS
+    with pytest.raises(ValueError, match="200000"):
+        shorten_link(link)
+    assert app.posts == []
+
+
+def test_shorten_accepts_a_payload_of_exactly_the_limit(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / "fillomino.txt")
+    limit = len(link.split("puzzle=")[1])
+    monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", limit)
+    shorten_link(link)
+    assert len(app.posts) == 1
+    monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", limit - 1)
+    with pytest.raises(ValueError, match=str(limit - 1)):
+        shorten_link(link)
+    assert len(app.posts) == 1
+
+
+@pytest.mark.parametrize("tail", ["&x=1", "#frag", "%0A"])
+def test_shorten_refuses_a_link_whose_payload_is_not_clean(monkeypatch, tail):
+    app = _ShortLinkApp(monkeypatch)
+    with pytest.raises(ValueError, match="payload"):
+        shorten_link(read_link(LINKS / "fillomino.txt") + tail)
+    assert app.posts == []
+
+
+def test_shorten_sends_a_percent_encoded_plus_as_a_plus(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / "fillomino.txt")
+    assert "+" in link
+    shorten_link(link.replace("+", "%2B"))
+    assert json.loads(app.posts[0].data) == {"puzzle": link.split("puzzle=")[1]}
+
+
+def test_shorten_leaves_a_short_link_as_it_is(monkeypatch, tmp_path):
+    app = _ShortLinkApp(
+        monkeypatch, stored=read_link(LINKS / "fillomino.txt").split("puzzle=")[1]
+    )
+    saved = tmp_path / "short.txt"
+    saved.write_text("https://sudokumaker.app/p/KkFHGqdkjd\n")
+    assert shorten_link(saved) == "https://sudokumaker.app/p/KkFHGqdkjd"
+    assert shorten_link("https://sudokumaker.app/p/KkFHGqdkjd") == (
+        "https://sudokumaker.app/p/KkFHGqdkjd"
+    )
+    assert app.posts == []
+
+
+def test_shorten_errors_name_the_link_being_shortened(monkeypatch):
+    error = urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
+    _ShortLinkApp(monkeypatch, minted=error)
+    link = read_link(LINKS / "fillomino.txt")
+    with pytest.raises(ValueError, match="403 Forbidden") as raised:
+        shorten_link(link)
+    assert link[:60] in str(raised.value)
+
+
+def test_shorten_refuses_what_is_not_a_link_before_the_network(monkeypatch):
+    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    with pytest.raises(ValueError, match="not a SudokuMaker link"):
+        shorten_link("no-such-file.txt")
+    assert app.posts == []
+
+
+@pytest.mark.parametrize(
+    "minted", [b'{"id": ""}', b'{"id": 5}', b'{"id": "a/b"}', b"[]", b"no"]
+)
+def test_shorten_names_an_answer_with_no_usable_id(monkeypatch, minted):
+    _ShortLinkApp(monkeypatch, minted=minted)
+    with pytest.raises(ValueError, match="no usable id"):
+        shorten_link(LINKS / "fillomino.txt")
+
+
+def test_shorten_names_the_status_the_app_refused_with(monkeypatch):
+    error = urllib.error.HTTPError("u", 400, "invalid_request", {}, None)
+    _ShortLinkApp(monkeypatch, minted=error)
+    with pytest.raises(ValueError, match=r"answered 400 invalid_request"):
+        shorten_link(LINKS / "fillomino.txt")
+
+
+def test_shorten_raises_timeout_error_when_the_post_times_out(monkeypatch):
+    _ShortLinkApp(monkeypatch, minted=TimeoutError())
+    with pytest.raises(TimeoutError, match="timed out"):
+        shorten_link(LINKS / "fillomino.txt")
+
+
+def test_the_shorten_command_prints_each_short_link_bare(monkeypatch, capsys):
+    _ShortLinkApp(monkeypatch)
+    sources = [str(LINKS / "fillomino.txt"), str(LINKS / "isofill.txt")]
+    assert link_codec.main(["shorten", *sources]) == 0
+    out = capsys.readouterr().out
+    assert out == "https://sudokumaker.app/p/AbCdEfGhIj\n" * 2
+
+
+def test_the_shorten_command_reports_a_refusal_and_fails(monkeypatch, capsys):
+    _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    assert link_codec.main(["shorten", "no-such-file.txt"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "not a SudokuMaker link" in captured.err
+
+
+def test_the_shorten_command_stops_at_the_first_refusal(monkeypatch, capsys):
+    app = _ShortLinkApp(monkeypatch)
+    fillomino = str(LINKS / "fillomino.txt")
+    assert link_codec.main(["shorten", fillomino, "no-such-file.txt", fillomino]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "https://sudokumaker.app/p/AbCdEfGhIj\n"
+    assert "no-such-file.txt" in captured.err
+    assert len(app.posts) == 1
+
+
+def test_the_shorten_command_reports_a_file_it_cannot_read(monkeypatch, capsys):
+    _ShortLinkApp(monkeypatch)
+
+    def unreadable(self):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(link_codec.Path, "read_text", unreadable)
+    assert link_codec.main(["shorten", str(LINKS / "fillomino.txt")]) == 1
+    assert "Permission denied" in capsys.readouterr().err

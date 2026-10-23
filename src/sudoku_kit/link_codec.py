@@ -8,18 +8,22 @@ lz-string form. `decode_puzzle` reads both; `encode_link` writes only `N`.
 takes a full link or a bare payload and splits out the payload itself, so
 `encode_link`'s output can be fed straight back into `decode_puzzle`.
 `read_link` fetches the link to decode when it may be sitting in a file, or
-behind a short link (https://sudokumaker.app/p/<id>).
+behind a short link (https://sudokumaker.app/p/<id>). `shorten_link` mints a
+short link from a full one, and `python -m sudoku_kit.link_codec shorten
+<link-or-file>...` does it from a shell.
 
 A round trip preserves the document, not the link text: a link written by the
 app and a link written here can compress to different payloads and still open
 the same puzzle. Compare documents, never link strings.
 """
 
+import argparse
 import base64
 import http.client
 import json
 import os
 import re
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -28,14 +32,27 @@ from pathlib import Path
 
 from lzstring import LZString
 
-LINK_PREFIX = "https://sudokumaker.app/?puzzle="
+SHORT_LINK_HOST = "sudokumaker.app"
+LINK_PREFIX = f"https://{SHORT_LINK_HOST}/?puzzle="
 SHORT_LINK = re.compile(
     r"https?://(?:www\.)?((?:dev\.)?sudokumaker\.app)/p/([^/?#]*)/?(?:[?#].*)?",
     re.IGNORECASE,
 )
 SHORT_LINK_ID = re.compile(r"[A-Za-z0-9_-]+")
+# Both payload formats: lz-string's URI alphabet and base64url.
+CLEAN_PAYLOAD = re.compile(r"[A-Za-z0-9+/_$=-]+")
 USER_AGENT = "sudoku-kit"
 FETCH_TIMEOUT_SECONDS = 15
+# The app refuses a longer payload (error code `puzzle_too_large`).
+MAX_PAYLOAD_CHARACTERS = 200_000
+# The CDN answers a bare urllib POST with a 403; these three are the set that
+# got through. The smaller set that would is not known.
+BROWSER_HEADERS = {
+    "Origin": f"https://{SHORT_LINK_HOST}",
+    "Referer": f"https://{SHORT_LINK_HOST}/",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+}
 
 
 def read_link(source):
@@ -55,6 +72,15 @@ def read_link(source):
     request and an answer with no payload each raise ValueError naming the id
     or the link; a request that times out raises TimeoutError.
     """
+    link = _source_token(source)
+    short = SHORT_LINK.fullmatch(link)
+    if not short:
+        return link
+    host, link_id = _short_link_parts(short, link)
+    return _resolve_short_link(host, link_id)
+
+
+def _source_token(source):
     source = os.fspath(source)
     try:
         is_file = Path(source).is_file()
@@ -69,13 +95,14 @@ def read_link(source):
         link = tokens[-1]
     else:
         link = source.strip()
-    short = SHORT_LINK.fullmatch(link)
-    if not short:
-        return link
+    return link
+
+
+def _short_link_parts(short, link):
     host, link_id = short.groups()
     if not SHORT_LINK_ID.fullmatch(link_id):
         raise ValueError(f"short link has no usable id after /p/: {link[:60]!r}")
-    return _resolve_short_link(host, link_id)
+    return host, link_id
 
 
 def _resolve_short_link(host, link_id):
@@ -83,21 +110,27 @@ def _resolve_short_link(host, link_id):
     where = f"short link {link_id!r}: {url}"
     # The API's CDN refuses urllib's default User-Agent with a 403.
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    payload = _answer_field(request, "puzzle", "puzzle payload", where)
+    return LINK_PREFIX + payload
+
+
+def _answer_field(request, field, what, where):
+    """The non-empty string `field` of the JSON object the app answers with."""
     try:
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
-            payload = json.load(response)["puzzle"]
-        if not isinstance(payload, str) or not payload:
-            raise ValueError("the puzzle is not a payload")
+            value = json.load(response)[field]
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"the {field} is not a string")
     except urllib.error.HTTPError as error:
         raise ValueError(f"{where} answered {error.code} {error.reason}") from error
     except (KeyError, TypeError, ValueError) as error:
-        raise ValueError(f"{where} answered no puzzle payload") from error
+        raise ValueError(f"{where} answered no {what}") from error
     except (OSError, http.client.HTTPException) as error:
         reason = error.reason if isinstance(error, urllib.error.URLError) else error
         if isinstance(reason, TimeoutError):
             raise TimeoutError(f"{where} timed out") from error
         raise ValueError(f"{where} could not be read: {reason!r}") from error
-    return LINK_PREFIX + payload
+    return value
 
 
 def _payload_text(payload):
@@ -170,3 +203,74 @@ def encode_link(doc):
     if not _same_document(doc, decode_puzzle(link)):
         raise ValueError("link does not round-trip; refusing to return it")
     return link
+
+
+def shorten_link(source):
+    """The short link (https://sudokumaker.app/p/<id>) for a full link.
+
+    `source` is a full link or a file holding one, as for `read_link`. A
+    short link comes back as it stands once it resolves: minting again would
+    leave a second record on the app for the same puzzle. The payload goes up
+    as `decode_puzzle` read it, percent-escapes undone and with its `+`: the
+    app answers 400 `invalid_request` when a `+` has been read as a space.
+
+    Raises ValueError, before any request, for a source that is not a link,
+    a payload carrying anything past the payload alphabet (a `&` or `#`
+    tail), or a payload over the app's limit. Raises ValueError, naming the
+    new id, when the minted link does not resolve back to the payload that
+    was sent: a short link that opens another puzzle is worse than no link.
+    """
+    token = _source_token(source)
+    short = SHORT_LINK.fullmatch(token)
+    if short:
+        host, link_id = _short_link_parts(short, token)
+        _resolve_short_link(host, link_id)
+        return f"https://{host}/p/{link_id}"
+    link = read_link(token)
+    raw = link.split("puzzle=", 1)[-1]
+    if len(raw) > MAX_PAYLOAD_CHARACTERS:
+        raise ValueError(
+            f"payload is {len(raw)} characters; the app refuses more than "
+            f"{MAX_PAYLOAD_CHARACTERS}: {link[:60]!r}"
+        )
+    decode_puzzle(link)
+    payload = urllib.parse.unquote(raw)
+    if not CLEAN_PAYLOAD.fullmatch(payload):
+        raise ValueError(f"payload has characters a payload does not: {link[:60]!r}")
+    url = f"https://{SHORT_LINK_HOST}/api/puzzles"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps({"puzzle": payload}).encode(),
+        headers={"Content-Type": "application/json", **BROWSER_HEADERS},
+    )
+    where = f"minting a short link for {link[:60]!r}: {url}"
+    link_id = _answer_field(request, "id", "usable id", where)
+    if not SHORT_LINK_ID.fullmatch(link_id):
+        raise ValueError(f"{where} answered no usable id: {link_id[:60]!r}")
+    if _resolve_short_link(SHORT_LINK_HOST, link_id) != LINK_PREFIX + payload:
+        raise ValueError(
+            f"short link {link_id!r} holds a payload that is not the payload sent "
+            f"for {link[:60]!r}"
+        )
+    return f"https://{SHORT_LINK_HOST}/p/{link_id}"
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="python -m sudoku_kit.link_codec")
+    commands = parser.add_subparsers(dest="command", required=True)
+    shorten = commands.add_parser(
+        "shorten", help="print a short link for each full link or file of one"
+    )
+    shorten.add_argument("sources", nargs="+", metavar="link-or-file")
+    args = parser.parse_args(argv)
+    for source in args.sources:
+        try:
+            print(shorten_link(source), flush=True)
+        except (ValueError, TimeoutError, OSError) as error:
+            print(f"{source[:60]}: {error}", file=sys.stderr)
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
