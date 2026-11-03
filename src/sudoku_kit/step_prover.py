@@ -66,10 +66,10 @@ class Elimination(NamedTuple):
 
 class PropagationResult(NamedTuple):
     """`proves` is whether propagation alone emptied a cell, in every run
-    for a `Place`. `log` is every elimination in the order made."""
+    for a `Place`. `eliminations` is every elimination in the order made."""
 
     proves: bool
-    log: tuple[Elimination, ...]
+    eliminations: tuple[Elimination, ...]
 
 
 @dataclass(frozen=True)
@@ -192,12 +192,14 @@ def _step(candidates, registry, names, claim, given, time_limit, workers):
             raise ValueError(f"constraint {name!r} is not in the registry")
         _check_cells(registry[name].cells, candidates, f"constraint {name!r}")
         named.append((name, registry[name]))
-    chains = []
+    given_chains = []
     for k, chain in enumerate(given, 1):
         _check_cells(chain.cells, candidates, "a given chain")
-        chains.append((f"given chain {k}", chain.poster()))
+        given_chains.append((f"given chain {k}", chain.poster()))
     _check_cells(claim.claim_cells(), candidates, "the claim")
-    return Step(candidates, tuple(named), tuple(chains), claim, time_limit, workers)
+    return Step(
+        candidates, tuple(named), tuple(given_chains), claim, time_limit, workers
+    )
 
 
 def _post(m, x, name, poster):
@@ -228,12 +230,12 @@ def _variables(m, candidates):
 @dataclass(frozen=True)
 class Step:
     """One prepared step: the `candidates`, the named constraints as
-    (name, `Poster`) pairs, the given `chains` as the same kind of pair, the
+    (name, `Poster`) pairs, the `given_chains` as the same kind of pair, the
     `claim`, and the limits every solve of it runs under."""
 
     candidates: Mapping[Cell, Collection[int]]
     named: tuple[tuple[str, Poster], ...]
-    chains: tuple[tuple[str, Poster], ...]
+    given_chains: tuple[tuple[str, Poster], ...]
     claim: Chain | Place | Either
     time_limit: float
     workers: int
@@ -243,7 +245,7 @@ class Step:
         or a given chain."""
         shown = {c for _, p in self.named for c in p.cells}
         shown.update(self.claim.claim_cells())
-        shown.update(c for _, p in self.chains for c in p.cells)
+        shown.update(c for _, p in self.given_chains for c in p.cells)
         return shown
 
     def _run(self, m):
@@ -256,7 +258,7 @@ class Step:
         """Solve the step with `negation` posted; `ANY_GRID` asks whether any grid is left."""
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
-        for name, p in (*self.named, *self.chains, ("negated claim", negation)):
+        for name, p in (*self.named, *self.given_chains, ("negated claim", negation)):
             _post(m, x, name, p)
         status, s = self._run(m)
         if status not in SOLVED:
@@ -326,13 +328,13 @@ class Step:
                 "no grid with these candidates and given chains: they are "
                 "contradictory"
             )
-        log = []
+        eliminations = []
         for negation in self.claim.negations(self.candidates):
-            units = [("negated claim", negation), *self.named, *self.chains]
-            remaining = {c: set(d) for c, d in self.candidates.items()}
-            if not self._propagate(remaining, units, log):
-                return PropagationResult(False, tuple(log))
-        return PropagationResult(True, tuple(log))
+            units = [("negated claim", negation), *self.named, *self.given_chains]
+            candidates = {c: set(d) for c, d in self.candidates.items()}
+            if not self._propagate(candidates, units, eliminations):
+                return PropagationResult(False, tuple(eliminations))
+        return PropagationResult(True, tuple(eliminations))
 
     def _unsupported(self, by, poster, candidates):
         cells = poster.cells
@@ -358,7 +360,7 @@ class Step:
             if candidates[c] - supported[c]
         }
 
-    def _propagate(self, candidates, units, log):
+    def _propagate(self, candidates, units, eliminations):
         changed = True
         while changed:
             changed = False
@@ -366,7 +368,7 @@ class Step:
                 removed = self._unsupported(by, poster, candidates)
                 for cell, digits in removed.items():
                     candidates[cell] -= set(digits)
-                    log.append(Elimination(by, cell, digits))
+                    eliminations.append(Elimination(by, cell, digits))
                     changed = True
                 if any(not candidates[c] for c in poster.cells):
                     return True

@@ -45,7 +45,7 @@ def test_the_step_prover_end_to_end():
 
     result = propagation(cands, registry, ["ab", "bc"], place)
     assert result.proves
-    assert result.log[0] == Elimination("negated claim", C, (3,))
+    assert result.eliminations[0] == Elimination("negated claim", C, (3,))
 
     either = Either([{B: 2, C: 3}, {B: 1, C: 2}])
     assert prove(cands, registry, ["ab", "bc"], either).status == "proved"

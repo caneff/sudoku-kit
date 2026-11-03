@@ -43,8 +43,8 @@ def test_the_step_prover_end_to_end():
     )
     result = propagation(cands, registry, [], place, given=given)
     assert result.proves
-    assert result.log[0] == Elimination("negated claim", A, (1,))
-    assert {e.by for e in result.log[1:]} == {"given chain 1"}
+    assert result.eliminations[0] == Elimination("negated claim", A, (1,))
+    assert {e.by for e in result.eliminations[1:]} == {"given chain 1"}
 
     def broken(m, x):
         m.NewIntVar(3, 1, "broken")
