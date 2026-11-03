@@ -514,3 +514,38 @@ def test_the_shorten_command_reports_a_file_it_cannot_read(monkeypatch, capsys):
     monkeypatch.setattr(link_codec.Path, "read_text", unreadable)
     assert link_codec.main(["shorten", str(LINKS / "fillomino.txt")]) == 1
     assert "Permission denied" in capsys.readouterr().err
+
+
+def test_a_doubled_puzzle_marker_is_refused_before_any_request(monkeypatch):
+    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    link = read_link(LINKS / "fillomino.txt")
+    doubled = link + "puzzle=" + link.split("puzzle=")[1]
+    with pytest.raises(ValueError, match="puzzle="):
+        decode_puzzle(doubled)
+    with pytest.raises(ValueError, match="puzzle="):
+        shorten_link(doubled)
+    assert app.posts == [] and app.gets == []
+
+
+def test_a_file_holding_another_files_path_reads_the_same_in_both(
+    monkeypatch, tmp_path
+):
+    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    inner = tmp_path / "inner.txt"
+    inner.write_text(read_link(LINKS / "fillomino.txt"))
+    outer = tmp_path / "outer.txt"
+    outer.write_text(f"{inner}\n")
+    assert read_link(outer) == str(inner)
+    with pytest.raises(ValueError, match="not a SudokuMaker link"):
+        shorten_link(outer)
+    assert app.posts == [] and app.gets == []
+
+
+def test_the_size_cap_measures_the_unescaped_payload(monkeypatch):
+    app = _ShortLinkApp(monkeypatch)
+    link = read_link(LINKS / "fillomino.txt")
+    payload = link.split("puzzle=")[1]
+    assert "+" in payload
+    monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", len(payload))
+    shorten_link(link.replace("+", "%2B"))
+    assert len(app.posts) == 1

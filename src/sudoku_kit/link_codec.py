@@ -72,12 +72,21 @@ def read_link(source):
     request and an answer with no payload each raise ValueError naming the id
     or the link; a request that times out raises TimeoutError.
     """
-    link = _source_token(source)
-    short = SHORT_LINK.fullmatch(link)
+    return _resolved(_source_token(source))
+
+
+def _short_link(token):
+    """`(host, id)` when `token` is a short link, else None."""
+    short = SHORT_LINK.fullmatch(token)
     if not short:
-        return link
-    host, link_id = _short_link_parts(short, link)
-    return _resolve_short_link(host, link_id)
+        return None
+    return _short_link_parts(short, token)
+
+
+def _resolved(token):
+    """`token` as a full link: a short link is resolved, anything else stands."""
+    parts = _short_link(token)
+    return token if parts is None else _resolve_short_link(*parts)
 
 
 def _source_token(source):
@@ -92,10 +101,8 @@ def _source_token(source):
         tokens = Path(source).read_text().split()
         if not tokens:
             raise ValueError(f"{source} holds no link: the file is empty")
-        link = tokens[-1]
-    else:
-        link = source.strip()
-    return link
+        return tokens[-1]
+    return source.strip()
 
 
 def _short_link_parts(short, link):
@@ -154,6 +161,18 @@ def _payload_text(payload):
     raise ValueError("the payload is empty")
 
 
+def _payload_of(link):
+    """The unescaped payload after the link's first `puzzle=`.
+
+    A second `puzzle=` in it raises ValueError: two readings of one link, and
+    the checks and the upload must not each pick their own.
+    """
+    payload = urllib.parse.unquote(link.split("puzzle=", 1)[-1])
+    if "puzzle=" in payload:
+        raise ValueError(f"link carries more than one puzzle=: {link[:60]!r}")
+    return payload
+
+
 def decode_puzzle(link):
     """The puzzle doc (a dict) held in a SudokuMaker link or bare payload.
 
@@ -162,7 +181,7 @@ def decode_puzzle(link):
     the link itself. A payload whose first letter is neither `D` nor `N` is
     refused with that letter named, as the app refuses it.
     """
-    payload = urllib.parse.unquote(link.split("puzzle=")[-1])
+    payload = _payload_of(link)
     try:
         text = _payload_text(payload)
         if not text:
@@ -208,9 +227,10 @@ def encode_link(doc):
 def shorten_link(source):
     """The short link (https://sudokumaker.app/p/<id>) for a full link.
 
-    `source` is a full link or a file holding one, as for `read_link`. A
-    short link comes back as it stands once it resolves: minting again would
-    leave a second record on the app for the same puzzle. The payload goes up
+    `source` is a full link or a file holding one, as for `read_link`, read
+    once. A short link comes back normalized to `https://<host>/p/<id>` once
+    it resolves: minting again would leave a second record on the app for the
+    same puzzle. The payload goes up
     as `decode_puzzle` read it, percent-escapes undone and with its `+`: the
     app answers 400 `invalid_request` when a `+` has been read as a space.
 
@@ -221,22 +241,29 @@ def shorten_link(source):
     was sent: a short link that opens another puzzle is worse than no link.
     """
     token = _source_token(source)
-    short = SHORT_LINK.fullmatch(token)
-    if short:
-        host, link_id = _short_link_parts(short, token)
+    parts = _short_link(token)
+    if parts:
+        host, link_id = parts
         _resolve_short_link(host, link_id)
         return f"https://{host}/p/{link_id}"
-    link = read_link(token)
-    raw = link.split("puzzle=", 1)[-1]
-    if len(raw) > MAX_PAYLOAD_CHARACTERS:
+    return _mint(token, _checked_payload(token))
+
+
+def _checked_payload(link):
+    """The payload to send for `link`; raises ValueError, making no request."""
+    payload = _payload_of(link)
+    if len(payload) > MAX_PAYLOAD_CHARACTERS:
         raise ValueError(
-            f"payload is {len(raw)} characters; the app refuses more than "
+            f"payload is {len(payload)} characters; the app refuses more than "
             f"{MAX_PAYLOAD_CHARACTERS}: {link[:60]!r}"
         )
     decode_puzzle(link)
-    payload = urllib.parse.unquote(raw)
     if not CLEAN_PAYLOAD.fullmatch(payload):
         raise ValueError(f"payload has characters a payload does not: {link[:60]!r}")
+    return payload
+
+
+def _mint(link, payload):
     url = f"https://{SHORT_LINK_HOST}/api/puzzles"
     request = urllib.request.Request(
         url,
