@@ -54,9 +54,10 @@ class IrreducibleResult(NamedTuple):
 class Elimination(NamedTuple):
     """`by` removed `digits` from `cell`. `by` is a constraint's name,
     "given chain <k>" for the k-th given chain counting from 1, or "negated
-    claim". For a `Place` every run opens with a "negated claim" entry that
-    fixes the cell to the run's digit; its `digits` are the cell's other
-    candidates, and empty when the run's digit was the only one."""
+    claim". The negated claim is the first unit of every run. For a `Place` it
+    fixes the cell to the run's digit, so its entry's `digits` are the cell's
+    other candidates, and a run whose digit is the only one has no such
+    entry."""
 
     by: str
     cell: Cell
@@ -73,14 +74,15 @@ class PropagationResult(NamedTuple):
 
 @dataclass(frozen=True)
 class Poster:
-    """A constraint: the `cells` it ranges over and `post(model, x)`, which
-    adds it to `model`, `x` mapping those `cells` to their variables."""
+    """A constraint: the `cells` it ranges over, each once, and
+    `post(model, x)`, which adds it to `model`, `x` mapping those `cells` to
+    their variables."""
 
     cells: tuple[Cell, ...]
     post: Callable[[cp_model.CpModel, Mapping[Cell, cp_model.IntVar]], None]
 
     def __post_init__(self):
-        object.__setattr__(self, "cells", tuple(self.cells))
+        object.__setattr__(self, "cells", tuple(dict.fromkeys(self.cells)))
 
 
 def house(cells: Iterable[Cell]) -> Poster:
@@ -98,12 +100,9 @@ def table(cells: Iterable[Cell], tuples: Iterable[Iterable[int]]) -> Poster:
     )
 
 
-# A claim answers `claim_cells()`, the cells it names; `probes(candidates)`,
-# one function per solve it needs, each posting that solve's negation; and
-# `fixes(candidates)`, the (cell, digit) each propagation run fixes, or None
-# when the claim fails in one solve, which `post_negation(m, x)` then posts.
-# `fixes()` returns None exactly when the claim has `post_negation`, which
-# `propagation` relies on.
+# A claim answers `claim_cells()`, the cells it names, and
+# `negations(candidates)`, one `Poster` per solve it needs, each posting that
+# solve's negation.
 
 
 class Chain(NamedTuple):
@@ -114,8 +113,17 @@ class Chain(NamedTuple):
     def claim_cells(self):
         return list(self.cells)
 
-    def fixes(self, candidates):
-        return None
+    def negations(self, candidates):
+        return [Poster(self.cells, self.post_negation)]
+
+    def poster(self):
+        """This chain as a constraint, for a given chain."""
+
+        def post(m, x):
+            for left, right in pairwise(self.cells):
+                m.Add(x[left] < x[right])
+
+        return Poster(self.cells, post)
 
     def post_negation(self, m, x):
         """Post "the chain does not rise" on `m`."""
@@ -127,9 +135,6 @@ class Chain(NamedTuple):
             breaks.append(b)
         m.AddBoolOr(breaks)
 
-    def probes(self, candidates):
-        return [self.post_negation]
-
 
 class Place(NamedTuple):
     """`cell` keeps only `digits` of its candidates."""
@@ -140,15 +145,11 @@ class Place(NamedTuple):
     def claim_cells(self):
         return [self.cell]
 
-    def removed(self, candidates):
-        return sorted(set(candidates[self.cell]) - set(self.digits))
-
-    def fixes(self, candidates):
-        return [(self.cell, d) for d in self.removed(candidates)]
-
-    def probes(self, candidates):
+    def negations(self, candidates):
+        removed = sorted(set(candidates[self.cell]) - set(self.digits))
         return [
-            lambda m, x, d=d: m.Add(x[self.cell] == d) for d in self.removed(candidates)
+            Poster([self.cell], lambda m, x, d=d: m.Add(x[self.cell] == d))
+            for d in removed
         ]
 
 
@@ -161,16 +162,16 @@ class Either(NamedTuple):
     def claim_cells(self):
         return [cell for pattern in self.patterns for cell in pattern]
 
-    def fixes(self, candidates):
-        return None
+    def negations(self, candidates):
+        return [Poster(self.claim_cells(), self.post_negation)]
 
     def post_negation(self, m, x):
         """Post "every pattern fails" on `m`."""
         for i, pattern in enumerate(self.patterns):
             forbid(m, x, pattern, tag=i)
 
-    def probes(self, candidates):
-        return [self.post_negation]
+
+ANY_GRID = Poster((), lambda m, x: None)  # A negation that rules out no grid.
 
 
 def _check_cells(cells, candidates, what):
@@ -194,7 +195,7 @@ def _step(candidates, registry, names, claim, given, *, time_limit, workers):
     chains = []
     for k, chain in enumerate(given, 1):
         _check_cells(chain.cells, candidates, "a given chain")
-        chains.append((f"given chain {k}", _chain_poster(chain)))
+        chains.append((f"given chain {k}", chain.poster()))
     _check_cells(claim.claim_cells(), candidates, "the claim")
     return Step(candidates, tuple(named), tuple(chains), claim, time_limit, workers)
 
@@ -213,17 +214,6 @@ def _post(m, x, name, poster):
         raise ValueError(
             f"constraint {name!r} uses cell {cell}, which it does not declare"
         ) from e
-
-
-def _post_chain(m, x, chain):
-    for left, right in pairwise(chain.cells):
-        m.Add(x[left] < x[right])
-
-
-def _chain_poster(chain):
-    return Poster(
-        tuple(dict.fromkeys(chain.cells)), lambda m, x: _post_chain(m, x, chain)
-    )
 
 
 def _variables(m, candidates):
@@ -266,30 +256,30 @@ class Step:
         check_valid(status, m)
         return status, s
 
-    def _solve(self, probe):
-        """Solve the step with `probe` posted; a None probe asks whether any grid is left."""
+    def _solve(self, negation):
+        """Solve the step with `negation` posted; `ANY_GRID` asks whether any grid is left."""
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
-        for name, p in (*self.named, *self.chains):
+        for name, p in (*self.named, *self.chains, ("negated claim", negation)):
             _post(m, x, name, p)
-        if probe is not None:
-            probe(m, x)
         return (*self._run(m), x)
 
-    def _first_grid(self, probes):
-        """The first probe's grid; one timed-out probe makes the answer UNKNOWN."""
+    def _first_grid(self, negations):
+        """The first negation's grid; one timed-out solve makes the answer UNKNOWN."""
         timed_out = False
-        for probe in probes:
-            status, s, x = self._solve(probe)
+        for negation in negations:
+            status, s, x = self._solve(negation)
             if status in SOLVED:
                 return status, s, x
             timed_out = timed_out or status == UNKNOWN
         return (UNKNOWN if timed_out else cp_model.INFEASIBLE), None, None
 
     def _backing(self, status):
-        # The solves whose infeasibility backs `status`: the claim's probes on
-        # "proved", the solve with no negation on "contradictory".
-        return self.claim.probes(self.candidates) if status == "proved" else [None]
+        # The solves whose infeasibility backs `status`: the claim's negations
+        # on "proved", the solve that rules out no grid on "contradictory".
+        return (
+            self.claim.negations(self.candidates) if status == "proved" else [ANY_GRID]
+        )
 
     def prove(self):
         status, s, x = self._first_grid(self._backing("proved"))
@@ -298,7 +288,7 @@ class Step:
             return ProofResult("refuted", {c: s.Value(x[c]) for c in shown})
         if status == UNKNOWN:
             return ProofResult("timeout")
-        # Every probe is infeasible. That proves the claim only if some grid is
+        # Every negation is infeasible. That proves the claim only if some grid is
         # left at all; none means the named constraints contradict themselves or
         # the candidates, and would "prove" any claim.
         status, _, _ = self._first_grid(self._backing("contradictory"))
@@ -312,12 +302,12 @@ class Step:
         result = self.prove()
         if result.status in ("refuted", "timeout"):
             return IrreducibleResult(result.status, None, result.witness)
-        probes = self._backing(result.status)
+        negations = self._backing(result.status)
 
         kept, checked = self, True
         for pair in self.named:
             trial = kept._without(pair)
-            status, _, _ = trial._first_grid(probes)
+            status, _, _ = trial._first_grid(negations)
             if status == cp_model.INFEASIBLE:
                 kept = trial
             checked = checked and status != UNKNOWN
@@ -326,7 +316,7 @@ class Step:
         )
 
     def propagation(self):
-        status, _, _ = self._solve(None)
+        status, _, _ = self._solve(ANY_GRID)
         if status == UNKNOWN:
             raise TimeoutError(
                 f"CP-SAT hit the {self.time_limit}s limit checking that the named "
@@ -338,29 +328,13 @@ class Step:
                 "no grid with these candidates and given chains: they are "
                 "contradictory"
             )
-        units = [*self.named, *self.chains]
-
         log = []
-        fixes = self.claim.fixes(self.candidates)
-        if fixes is not None:
-            for cell, digit in fixes:
-                remaining = {c: set(d) for c, d in self.candidates.items()}
-                others = tuple(sorted(remaining[cell] - {digit}))
-                remaining[cell] = {digit}
-                log.append(Elimination("negated claim", cell, others))
-                if not _propagate(self, remaining, units, log):
-                    return PropagationResult(False, tuple(log))
-            return PropagationResult(True, tuple(log))
-
-        claim = self.claim
-        units.append(
-            (
-                "negated claim",
-                Poster(tuple(dict.fromkeys(claim.claim_cells())), claim.post_negation),
-            )
-        )
-        remaining = {c: set(d) for c, d in self.candidates.items()}
-        return PropagationResult(_propagate(self, remaining, units, log), tuple(log))
+        for negation in self.claim.negations(self.candidates):
+            units = [("negated claim", negation), *self.named, *self.chains]
+            remaining = {c: set(d) for c, d in self.candidates.items()}
+            if not _propagate(self, remaining, units, log):
+                return PropagationResult(False, tuple(log))
+        return PropagationResult(True, tuple(log))
 
 
 def _unsupported(step, by, poster, candidates):
@@ -455,8 +429,8 @@ def irreducible(
     Takes `prove`'s arguments and raises its ValueErrors.
 
     One greedy pass over `names` in the order given drops each constraint
-    whose removal leaves every solve infeasible: each probe solve on
-    "proved", the solve with no negation on "contradictory". One pass is
+    whose removal leaves every solve infeasible: each negation's solve on
+    "proved", the solve that rules out no grid on "contradictory". One pass is
     enough, since removing a constraint never makes a feasible model
     infeasible. Earlier names are tried first, so a caller lists a constraint
     last to keep it when there is a choice. The given chains always stay. The
