@@ -200,7 +200,8 @@ def decode_puzzle(link):
         return doc
     except RecursionError as error:
         raise ValueError(
-            f"the payload is nested too deep to read: {link[:60]!r}"
+            "not a SudokuMaker link or payload "
+            f"(nested too deep to read): {link[:60]!r}"
         ) from error
     except (ValueError, KeyError, IndexError, TypeError, zlib.error) as error:
         raise ValueError(
