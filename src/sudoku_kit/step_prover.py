@@ -180,7 +180,7 @@ def _check_cells(cells, candidates, what):
             raise ValueError(f"{what} names cell {cell}, which is not on the board")
 
 
-def _step(candidates, registry, names, claim, given, *, time_limit, workers):
+def _step(candidates, registry, names, claim, given, time_limit, workers):
     if not isinstance(claim, Chain | Place | Either):
         raise ValueError(f"unknown claim {claim!r}: expected Chain, Place or Either")
     for cell, digits in candidates.items():
@@ -238,10 +238,6 @@ class Step:
     time_limit: float
     workers: int
 
-    def _without(self, pair):
-        """This step with the named constraint `pair` left out."""
-        return replace(self, named=tuple(p for p in self.named if p is not pair))
-
     def shown(self):
         """The cells a witness carries: those of a named constraint, the claim
         or a given chain."""
@@ -262,36 +258,31 @@ class Step:
         x = _variables(m, self.candidates)
         for name, p in (*self.named, *self.chains, ("negated claim", negation)):
             _post(m, x, name, p)
-        return (*self._run(m), x)
+        status, s = self._run(m)
+        if status not in SOLVED:
+            return status, None
+        return status, {c: s.Value(v) for c, v in x.items()}
 
     def _first_grid(self, negations):
-        """The first negation's grid; one timed-out solve makes the answer UNKNOWN."""
+        """The first feasible probe's grid; one timed-out probe makes the answer UNKNOWN."""
         timed_out = False
         for negation in negations:
-            status, s, x = self._solve(negation)
+            status, grid = self._solve(negation)
             if status in SOLVED:
-                return status, s, x
+                return status, grid
             timed_out = timed_out or status == UNKNOWN
-        return (UNKNOWN if timed_out else cp_model.INFEASIBLE), None, None
-
-    def _backing(self, status):
-        # The solves whose infeasibility backs `status`: the claim's negations
-        # on "proved", the solve that rules out no grid on "contradictory".
-        return (
-            self.claim.negations(self.candidates) if status == "proved" else [ANY_GRID]
-        )
+        return (UNKNOWN if timed_out else cp_model.INFEASIBLE), None
 
     def prove(self):
-        status, s, x = self._first_grid(self._backing("proved"))
+        status, grid = self._first_grid(self.claim.negations(self.candidates))
         if status in SOLVED:
-            shown = sorted(self.shown())
-            return ProofResult("refuted", {c: s.Value(x[c]) for c in shown})
+            return ProofResult("refuted", {c: grid[c] for c in sorted(self.shown())})
         if status == UNKNOWN:
             return ProofResult("timeout")
         # Every negation is infeasible. That proves the claim only if some grid is
         # left at all; none means the named constraints contradict themselves or
         # the candidates, and would "prove" any claim.
-        status, _, _ = self._first_grid(self._backing("contradictory"))
+        status, _ = self._first_grid([ANY_GRID])
         if status == UNKNOWN:
             return ProofResult("timeout")
         return ProofResult(
@@ -302,12 +293,19 @@ class Step:
         result = self.prove()
         if result.status in ("refuted", "timeout"):
             return IrreducibleResult(result.status, None, result.witness)
-        negations = self._backing(result.status)
+        # The solves whose infeasibility backs the verdict: the claim's
+        # negations on "proved", the solve that rules out no grid on
+        # "contradictory".
+        negations = (
+            self.claim.negations(self.candidates)
+            if result.status == "proved"
+            else [ANY_GRID]
+        )
 
         kept, checked = self, True
         for pair in self.named:
-            trial = kept._without(pair)
-            status, _, _ = trial._first_grid(negations)
+            trial = replace(kept, named=tuple(p for p in kept.named if p is not pair))
+            status, _ = trial._first_grid(negations)
             if status == cp_model.INFEASIBLE:
                 kept = trial
             checked = checked and status != UNKNOWN
@@ -316,7 +314,7 @@ class Step:
         )
 
     def propagation(self):
-        status, _, _ = self._solve(ANY_GRID)
+        status, _ = self._solve(ANY_GRID)
         if status == UNKNOWN:
             raise TimeoutError(
                 f"CP-SAT hit the {self.time_limit}s limit checking that the named "
@@ -332,49 +330,47 @@ class Step:
         for negation in self.claim.negations(self.candidates):
             units = [("negated claim", negation), *self.named, *self.chains]
             remaining = {c: set(d) for c, d in self.candidates.items()}
-            if not _propagate(self, remaining, units, log):
+            if not self._propagate(remaining, units, log):
                 return PropagationResult(False, tuple(log))
         return PropagationResult(True, tuple(log))
 
+    def _unsupported(self, by, poster, candidates):
+        cells = poster.cells
+        supported = {c: set() for c in cells}
+        for cell in cells:
+            for digit in sorted(candidates[cell] - supported[cell]):
+                m = cp_model.CpModel()
+                x = _variables(m, {c: candidates[c] for c in cells})
+                poster.post(m, x)
+                m.Add(x[cell] == digit)
+                status, s = self._run(m)
+                if status in SOLVED:
+                    for c in cells:
+                        supported[c].add(s.Value(x[c]))
+                elif status == UNKNOWN:
+                    raise TimeoutError(
+                        f"CP-SAT hit the {self.time_limit}s limit testing "
+                        f"{digit} in {cell} against {by!r}; no verdict"
+                    )
+        return {
+            c: tuple(sorted(candidates[c] - supported[c]))
+            for c in cells
+            if candidates[c] - supported[c]
+        }
 
-def _unsupported(step, by, poster, candidates):
-    cells = poster.cells
-    supported = {c: set() for c in cells}
-    for cell in cells:
-        for digit in sorted(candidates[cell] - supported[cell]):
-            m = cp_model.CpModel()
-            x = _variables(m, {c: candidates[c] for c in cells})
-            poster.post(m, x)
-            m.Add(x[cell] == digit)
-            status, s = step._run(m)
-            if status in SOLVED:
-                for c in cells:
-                    supported[c].add(s.Value(x[c]))
-            elif status == UNKNOWN:
-                raise TimeoutError(
-                    f"CP-SAT hit the {step.time_limit}s limit testing "
-                    f"{digit} in {cell} against {by!r}; no verdict"
-                )
-    return {
-        c: tuple(sorted(candidates[c] - supported[c]))
-        for c in cells
-        if candidates[c] - supported[c]
-    }
-
-
-def _propagate(step, candidates, units, log):
-    changed = True
-    while changed:
-        changed = False
-        for by, poster in units:
-            removed = _unsupported(step, by, poster, candidates)
-            for cell, digits in removed.items():
-                candidates[cell] -= set(digits)
-                log.append(Elimination(by, cell, digits))
-                changed = True
-            if any(not candidates[c] for c in poster.cells):
-                return True
-    return False
+    def _propagate(self, candidates, units, log):
+        changed = True
+        while changed:
+            changed = False
+            for by, poster in units:
+                removed = self._unsupported(by, poster, candidates)
+                for cell, digits in removed.items():
+                    candidates[cell] -= set(digits)
+                    log.append(Elimination(by, cell, digits))
+                    changed = True
+                if any(not candidates[c] for c in poster.cells):
+                    return True
+        return False
 
 
 def prove(
@@ -410,8 +406,8 @@ def prove(
         names,
         claim,
         given,
-        time_limit=time_limit,
-        workers=workers,
+        time_limit,
+        workers,
     ).prove()
 
 
@@ -443,8 +439,8 @@ def irreducible(
         names,
         claim,
         given,
-        time_limit=time_limit,
-        workers=workers,
+        time_limit,
+        workers,
     ).irreducible()
 
 
@@ -481,6 +477,6 @@ def propagation(
         names,
         claim,
         given,
-        time_limit=time_limit,
-        workers=workers,
+        time_limit,
+        workers,
     ).propagation()
