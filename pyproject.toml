@@ -1,6 +1,6 @@
 [project]
 name = "sudoku-kit"
-version = "0.1.0"
+version = "0.2.0"
 description = "CP-SAT helpers, the SudokuMaker link codec and a five-status uniqueness check"
 readme = "README.md"
 requires-python = ">=3.11"

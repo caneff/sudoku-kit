@@ -28,5 +28,5 @@ live layer.
 - **Seam**: `bash tests/all.sh`: ruff check, ruff format, the uv lock check
   and pytest over `src/sudoku_kit`
 - **Blind to**: the consumers. grid-hunts and sudokumaker-custom-constraints
-  pin the `v0.1.0` tag, so a change here never runs against their code until
+  pin the `v0.2.0` tag, so a change here never runs against their code until
   one of them bumps the pin.
