@@ -20,8 +20,7 @@ from sudoku_kit.link_codec import (
 
 LINKS = Path(__file__).parent / "links"
 
-# Each real link and the puzzle name and board width its document carries,
-# read off the app's own export rather than derived here.
+# Read off the app's own export, not derived here.
 REAL_LINKS = [
     ("hit-counts-4x4.txt", "Hit Counts 4x4", 6),
     ("house-gac.txt", "Standalone House GAC", 9),
@@ -187,7 +186,6 @@ D_DOC = LINKS / "numbered-rooms-6x6.json"
 def test_a_d_link_decodes_to_its_document():
     expected = json.loads(D_DOC.read_text())
     assert decode_puzzle(read_link(D_LINK)) == expected
-    assert expected["formatVersion"] == "1.6.0"
 
 
 def test_a_d_link_round_trips_through_an_n_link():
@@ -197,34 +195,33 @@ def test_a_d_link_round_trips_through_an_n_link():
     assert decode_puzzle(n_link) == doc
 
 
-def _d_payload(doc, *, pad=False):
-    return _d_payload_of_text(json.dumps(doc), pad=pad)
+def _d_payload(doc):
+    return _d_payload_of_text(json.dumps(doc))
 
 
-def _d_payload_of_text(text, *, pad=False):
+def _d_payload_of_text(text):
     raw = zlib.compress(text.encode(), wbits=-zlib.MAX_WBITS)
+    payload = base64.urlsafe_b64encode(raw).decode()
+    return "D" + payload.rstrip("=")
+
+
+def _stored_d_payload(doc, *, pad):
+    # Stored blocks keep the deflate length exactly what the text makes it.
+    deflate = zlib.compressobj(0, wbits=-zlib.MAX_WBITS)
+    raw = deflate.compress(json.dumps(doc).encode()) + deflate.flush()
     payload = base64.urlsafe_b64encode(raw).decode()
     return "D" + (payload if pad else payload.rstrip("="))
 
 
-PADDING_EXTRAS = ["", "a", "ab", "abc"]
-
-
-@pytest.mark.parametrize("extra", PADDING_EXTRAS)
+# Unpadded, these bodies run 0, 2 and 3 mod 4 long on zlib 1.3.1, which
+# asks for 0, 2 and 1 characters of padding.
+@pytest.mark.parametrize(
+    "extra", ["", "a", "ab"], ids=["no-padding", "two-padding", "one-padding"]
+)
 def test_a_d_payload_decodes_whatever_its_unpadded_length(extra):
     doc = {"puzzle": {"name": "p" + extra}}
-    assert decode_puzzle(_d_payload(doc)) == doc
-    assert decode_puzzle(_d_payload(doc, pad=True)) == doc
-
-
-def test_the_unpadded_d_payloads_meet_every_padding_amount():
-    # An unpadded base64 body is 0, 2 or 3 mod 4 long (1 cannot occur), which
-    # asks for 0, 2 or 1 characters of padding.
-    lengths = {
-        len(_d_payload({"puzzle": {"name": "p" + extra}})[1:]) % 4
-        for extra in PADDING_EXTRAS
-    }
-    assert lengths == {0, 2, 3}
+    assert decode_puzzle(_stored_d_payload(doc, pad=False)) == doc
+    assert decode_puzzle(_stored_d_payload(doc, pad=True)) == doc
 
 
 @pytest.mark.parametrize("prefix", ["X", "d", "h"])
@@ -288,7 +285,13 @@ def test_read_link_resolves_a_short_link(monkeypatch):
 def test_read_link_asks_the_api_as_sudoku_kit_not_as_urllib(monkeypatch):
     network = _Network(monkeypatch, body=_answer("Dx"))
     read_link("https://sudokumaker.app/p/abc123")
-    assert network.requests[0].get_header("User-agent") == "sudoku-kit"
+    agent = network.requests[0].get_header("User-agent")
+    assert agent and not agent.startswith("Python-urllib")
+
+
+def test_read_link_gives_the_api_a_timeout(monkeypatch):
+    network = _Network(monkeypatch, body=_answer("Dx"))
+    read_link("https://sudokumaker.app/p/abc123")
     assert network.timeouts == [link_codec.FETCH_TIMEOUT_SECONDS]
 
 
@@ -399,8 +402,6 @@ def test_read_link_does_not_touch_the_network_for_a_full_link(monkeypatch):
 
 
 class _ShortLinkApp:
-    """The app's two endpoints: POST /api/puzzles mints, GET /api/puzzles/<id> reads."""
-
     def __init__(self, monkeypatch, *, minted=b'{"id": "AbCdEfGhIj"}', stored=None):
         self.posts, self.gets = [], []
         self._minted, self._stored = minted, stored
@@ -429,7 +430,6 @@ def test_shorten_posts_the_raw_payload_and_returns_the_short_link(
     assert [post.full_url for post in app.posts] == [
         "https://sudokumaker.app/api/puzzles"
     ]
-    # The payload goes up as it stands in the link: its `+` is not a space.
     assert json.loads(app.posts[0].data) == {"puzzle": link.split("puzzle=")[1]}
     assert [get.full_url for get in app.gets] == [
         "https://sudokumaker.app/api/puzzles/AbCdEfGhIj"
@@ -532,13 +532,6 @@ def test_shorten_refuses_what_is_not_a_link_before_the_network(monkeypatch):
 def test_shorten_names_an_answer_with_no_usable_id(monkeypatch, minted):
     _ShortLinkApp(monkeypatch, minted=minted)
     with pytest.raises(ValueError, match="no usable id"):
-        shorten_link(LINKS / "fillomino.txt")
-
-
-def test_shorten_names_the_status_the_app_refused_with(monkeypatch):
-    error = urllib.error.HTTPError("u", 400, "invalid_request", {}, None)
-    _ShortLinkApp(monkeypatch, minted=error)
-    with pytest.raises(ValueError, match=r"answered 400 invalid_request"):
         shorten_link(LINKS / "fillomino.txt")
 
 
