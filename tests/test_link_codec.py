@@ -86,12 +86,77 @@ def test_encode_refuses_a_document_whose_link_does_not_decode_back(monkeypatch):
     [
         {"puzzle": {1: "a"}},
         {"puzzle": {1: "a", "1": "b"}},
-        {"puzzle": {"width": float("nan")}},
     ],
 )
 def test_encode_refuses_a_document_json_cannot_carry(doc):
     with pytest.raises(ValueError, match="round-trip"):
         encode_link(doc)
+
+
+@pytest.mark.parametrize(
+    "doc",
+    [
+        {"puzzle": {"width": float("inf")}},
+        {"puzzle": {"width": float("-inf")}},
+        {"puzzle": {"width": float("nan")}},
+        {"puzzle": {(1, 2): "a"}},
+        {"puzzle": {"cells": {1, 2}}},
+    ],
+)
+def test_encode_names_the_cause_of_a_document_json_cannot_carry(doc):
+    with pytest.raises(ValueError, match=r"cannot carry|not JSON|out of range"):
+        encode_link(doc)
+
+
+def test_the_round_trip_refusal_names_its_document(monkeypatch):
+    other = link_codec.LZString.compressToEncodedURIComponent("{}")
+    monkeypatch.setattr(
+        link_codec.LZString, "compressToEncodedURIComponent", lambda _: other
+    )
+    doc = {"puzzle": {"title": "x" * 100}}
+    with pytest.raises(ValueError, match="round-trip") as refusal:
+        encode_link(doc)
+    assert repr(doc)[:60] in str(refusal.value)
+    assert repr(doc)[:61] not in str(refusal.value)
+
+
+@pytest.mark.parametrize("value", [5, [1, 2], "x", None])
+def test_decode_refuses_a_payload_that_is_not_an_object(value):
+    with pytest.raises(ValueError, match="not a JSON object"):
+        decode_puzzle(_d_payload(value))
+
+
+def test_shorten_refuses_a_payload_that_is_not_an_object_before_any_request(
+    monkeypatch,
+):
+    monkeypatch.setattr(link_codec.urllib.request, "urlopen", _no_request)
+    with pytest.raises(ValueError, match="not a JSON object"):
+        shorten_link(_d_payload(5))
+
+
+def _no_request(*_args, **_kwargs):
+    raise AssertionError("a request was made")
+
+
+def test_decode_refuses_a_payload_nested_too_deep_for_json(monkeypatch, capsys):
+    link = _d_payload_of_text("[" * 100_000)
+    assert len(link) < 200
+    # Which error json raises for this depth varies by interpreter build
+    # (RecursionError, or a plain parse error); every one is a refusal.
+    with pytest.raises(ValueError, match="not a SudokuMaker link"):
+        decode_puzzle(link)
+    monkeypatch.setattr(link_codec.urllib.request, "urlopen", _no_request)
+    assert link_codec.main(["shorten", link]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert len(captured.err.splitlines()) == 1
+
+
+def test_read_link_names_a_file_that_is_not_utf8(tmp_path):
+    bad = tmp_path / "link.txt"
+    bad.write_bytes(b"\xff\xfe link")
+    with pytest.raises(ValueError, match=r"link\.txt is not UTF-8"):
+        read_link(str(bad))
 
 
 def test_read_link_takes_a_path_object(tmp_path):
@@ -133,7 +198,11 @@ def test_a_d_link_round_trips_through_an_n_link():
 
 
 def _d_payload(doc, *, pad=False):
-    raw = zlib.compress(json.dumps(doc).encode(), wbits=-zlib.MAX_WBITS)
+    return _d_payload_of_text(json.dumps(doc), pad=pad)
+
+
+def _d_payload_of_text(text, *, pad=False):
+    raw = zlib.compress(text.encode(), wbits=-zlib.MAX_WBITS)
     payload = base64.urlsafe_b64encode(raw).decode()
     return "D" + (payload if pad else payload.rstrip("="))
 
@@ -508,7 +577,7 @@ def test_the_shorten_command_stops_at_the_first_refusal(monkeypatch, capsys):
 def test_the_shorten_command_reports_a_file_it_cannot_read(monkeypatch, capsys):
     _ShortLinkApp(monkeypatch)
 
-    def unreadable(self):
+    def unreadable(self, **_kwargs):
         raise PermissionError(13, "Permission denied")
 
     monkeypatch.setattr(link_codec.Path, "read_text", unreadable)

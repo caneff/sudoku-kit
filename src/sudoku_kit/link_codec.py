@@ -62,7 +62,8 @@ def read_link(source):
     existing file is read and anything else is already the link. The file's
     last whitespace-separated token wins, which tolerates a trailing newline
     and a file that comments above the link. `source` is a string or a path;
-    a file with nothing in it raises ValueError. A mistyped path is not a
+    a file with nothing in it, or one that is not UTF-8, raises ValueError
+    naming the file. A mistyped path is not a
     file, so it comes back as it stands and `decode_puzzle` refuses it.
 
     A short link (`https://sudokumaker.app/p/<id>`), whether passed itself or
@@ -98,7 +99,10 @@ def _source_token(source):
         # asking about such a name raises instead of answering "no file".
         is_file = False
     if is_file:
-        tokens = Path(source).read_text().split()
+        try:
+            tokens = Path(source).read_text(encoding="utf-8").split()
+        except UnicodeDecodeError as error:
+            raise ValueError(f"{source} is not UTF-8 text: {error}") from error
         if not tokens:
             raise ValueError(f"{source} holds no link: the file is empty")
         return tokens[-1]
@@ -179,14 +183,26 @@ def decode_puzzle(link):
     Raises ValueError when `link` is neither, naming the start of what it was
     handed: the usual cause is a mistyped file name that `read_link` took for
     the link itself. A payload whose first letter is neither `D` nor `N` is
-    refused with that letter named, as the app refuses it.
+    refused with that letter named, as the app refuses it. A payload that
+    holds JSON other than an object (`5`, a list, a string, `null`), or JSON
+    nested too deep to read, is refused the same way.
     """
     payload = _payload_of(link)
     try:
         text = _payload_text(payload)
         if not text:
             raise ValueError("the payload decompresses to nothing")
-        return json.loads(text)
+        doc = json.loads(text)
+        if not isinstance(doc, dict):
+            raise ValueError(
+                f"the payload is not a JSON object: it holds {text[:20]!r}"
+            )
+        return doc
+    except RecursionError as error:
+        raise ValueError(
+            "not a SudokuMaker link or payload "
+            f"(nested too deep to read): {link[:60]!r}"
+        ) from error
     except (ValueError, KeyError, IndexError, TypeError, zlib.error) as error:
         raise ValueError(
             f"not a SudokuMaker link or payload ({error}): {link[:60]!r}"
@@ -216,11 +232,20 @@ def encode_link(doc):
     `doc`: a link that has quietly lost a field opens as a different puzzle,
     and finding that out from a solver is far too late. A tuple where the
     document holds a list is the one difference let through; a key that is
-    not a string and a NaN are both refused, since JSON does not carry them.
+    not a string, a NaN or an infinity, and a set are all refused naming the
+    cause, since JSON does not carry them.
     """
-    link = LINK_PREFIX + LZString.compressToEncodedURIComponent(json.dumps(doc))
+    try:
+        text = json.dumps(doc, allow_nan=False)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"JSON cannot carry this document ({error}): {repr(doc)[:60]}"
+        ) from error
+    link = LINK_PREFIX + LZString.compressToEncodedURIComponent(text)
     if not _same_document(doc, decode_puzzle(link)):
-        raise ValueError("link does not round-trip; refusing to return it")
+        raise ValueError(
+            f"link does not round-trip; refusing to return it: {repr(doc)[:60]}"
+        )
     return link
 
 
