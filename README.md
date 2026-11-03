@@ -35,7 +35,7 @@ Pin a tag as a uv git source:
 dependencies = ["sudoku-kit"]
 
 [tool.uv.sources]
-sudoku-kit = { git = "https://github.com/caneff/sudoku-kit", tag = "v0.1.0" }
+sudoku-kit = { git = "https://github.com/caneff/sudoku-kit", tag = "v0.2.0" }
 ```
 
 ## Develop
