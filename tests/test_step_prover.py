@@ -244,7 +244,6 @@ def test_a_poster_bug_raising_keyerror_surfaces_as_itself(error):
 
 
 def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
-    # MODEL_INVALID is a broken model, not a step with no grid.
     def post(m, x):
         m.NewIntVar(3, 1, "broken")
 
@@ -278,7 +277,7 @@ def test_a_given_chain_the_candidates_cannot_satisfy_is_contradictory():
 
 
 def test_a_spent_time_limit_on_the_contradiction_solve_is_timeout():
-    # The claim removes nothing, so no probe runs: the only solve is the one
+    # The claim removes nothing, so it has no negation: the only solve is the one
     # that asks whether any grid is left.
     cands = _board({C: {2, 3}})
     result = prove(cands, {}, [], Place(C, {2, 3}), time_limit=0.0)
@@ -300,7 +299,7 @@ def test_irreducible_tries_earlier_names_first_so_a_later_one_is_kept():
     assert irreducible(cands, registry, ["bc", "ac"], claim).irreducible_set == ("ac",)
 
 
-def test_irreducible_keeps_a_constraint_any_one_probe_of_a_place_needs():
+def test_irreducible_keeps_a_constraint_any_one_negation_of_a_place_needs():
     cands = _board({A: {1}, B: {2}, C: {1, 2, 3}})
     registry = {"ac": house([A, C]), "bc": house([B, C])}
     result = irreducible(cands, registry, ["ac", "bc"], Place(C, {3}))
@@ -336,7 +335,7 @@ def test_irreducible_on_a_spent_time_limit_is_timeout_with_no_set():
 
 def _starve(monkeypatch, starved):
     """Give the k-th CP-SAT solve (counting from 1) no time at all when
-    `starved(k)`."""
+    `starved(k)`; return the list that records each solve's limit."""
     calls = []
 
     def solver(limit, **kwargs):
@@ -344,16 +343,11 @@ def _starve(monkeypatch, starved):
         return cpsat.solver(0.0 if starved(len(calls)) else limit, **kwargs)
 
     monkeypatch.setattr(step_prover, "solver", solver)
+    return calls
 
 
 def _solves_made(monkeypatch, run):
-    calls = []
-
-    def solver(limit, **kwargs):
-        calls.append(limit)
-        return cpsat.solver(limit, **kwargs)
-
-    monkeypatch.setattr(step_prover, "solver", solver)
+    calls = _starve(monkeypatch, lambda k: False)
     run()
     return len(calls)
 
@@ -384,7 +378,7 @@ def test_a_deletion_trial_that_times_out_keeps_its_constraint(monkeypatch):
 
 def test_irreducible_on_contradictory_constraints_posts_no_negation():
     # Houses ab, bc and ac conflict; table a1 plays no part in that. Against
-    # the claim's probe (A = 2) instead, a1 alone would do and ab would go.
+    # the claim's negation (A = 2) instead, a1 alone would do and ab would go.
     cands = _board({A: {1, 2}, B: {1, 2}, C: {1, 2}})
     registry = {
         "ab": house([A, B]),
@@ -489,18 +483,24 @@ def test_propagation_leaves_the_candidates_alone():
 
 
 def test_a_contradiction_check_that_times_out_raises_timeout_error(monkeypatch):
-    # Only the first solve, which checks that some grid is left, is starved;
-    # the support solves after it would settle the step.
     cands, registry, claim = _pair_step()
     _starve(monkeypatch, lambda k: k == 1)
     with pytest.raises(TimeoutError, match="no verdict"):
         propagation(cands, registry, ["ab", "bc"], claim)
 
 
-def test_a_support_solve_that_times_out_raises_naming_its_constraint(monkeypatch):
+@pytest.mark.parametrize(
+    ("solves_allowed", "named"),
+    # Solve 1 checks that some grid is left; 2 and 3 test C's two candidates
+    # against the negated claim, the first unit; solve 4 is house ab's.
+    [(1, "negated claim"), (3, "ab")],
+)
+def test_a_support_solve_that_times_out_raises_naming_its_constraint(
+    monkeypatch, solves_allowed, named
+):
     cands, registry, claim = _pair_step()
-    _starve(monkeypatch, lambda k: k > 1)
-    with pytest.raises(TimeoutError, match=r"'ab'"):
+    _starve(monkeypatch, lambda k: k > solves_allowed)
+    with pytest.raises(TimeoutError, match=f"'{named}'"):
         propagation(cands, registry, ["ab", "bc"], claim)
 
 
@@ -510,10 +510,53 @@ def test_propagation_on_contradictory_constraints_raises_instead_of_answering():
         propagation(_board(), registry, ["none"], Place(A, {1}))
 
 
-def test_a_place_run_opens_with_its_negated_claim_even_when_nothing_is_removed():
+def test_a_place_run_logs_no_negated_claim_when_its_digit_is_the_only_candidate():
     cands = _board({C: {2}})
     result = propagation(cands, {}, [], Place(C, {3}))
-    assert result == PropagationResult(False, (Elimination("negated claim", C, ()),))
+    assert result == PropagationResult(False, ())
+
+
+@pytest.mark.parametrize(
+    ("claim", "cands", "negated"),
+    [
+        (
+            Chain([A, B]),
+            {A: {1, 2}, B: {2, 3}},
+            [
+                Elimination("negated claim", A, (1,)),
+                Elimination("negated claim", B, (3,)),
+            ],
+        ),
+        (
+            Either([{A: 1, B: 2}]),
+            {A: {1}, B: {2, 3}},
+            [Elimination("negated claim", B, (2,))],
+        ),
+    ],
+    ids=["chain", "either"],
+)
+def test_the_negated_claim_is_the_first_unit_of_a_run(claim, cands, negated):
+    # Table d1 takes digits from D whenever it runs, so its entry shows where
+    # the negated claim's entries fall against a named constraint's.
+    registry = {"d1": table([D], [(1,)])}
+    result = propagation(_board(cands), registry, ["d1"], claim)
+    assert result == PropagationResult(
+        False, (*negated, Elimination("d1", D, (2, 3, 4)))
+    )
+
+
+def test_a_repeated_cell_in_a_poster_is_tested_once(monkeypatch):
+    def post(m, x):
+        m.Add(x[A] == 1)
+
+    def solves(cells):
+        registry = {"a1": Poster(cells, post)}
+        cands = _board({A: {1, 2}, B: {1, 2}})
+        return _solves_made(
+            monkeypatch, lambda: propagation(cands, registry, ["a1"], Place(B, {1}))
+        )
+
+    assert solves([A, A]) == solves([A])
 
 
 def test_irreducible_and_propagation_check_their_input_as_prove_does():

@@ -5,7 +5,7 @@ is relabelled.
 
 Blind to: outside callers. grid-hunts and sudokumaker-custom-constraints pin
 v0.1.0 and import no step prover, so the `Order` -> `Chain` rename reaches
-them only when they bump their tag. Also blind to the spec's static and docs
+them only when they move off that pin. Also blind to the spec's static and docs
 criteria, checked by hand: `radon cc --min C src/sudoku_kit/step_prover.py`
 reporting nothing, the `rg` checks on `docs/agents` (#42) and for the old
 names `Order` and `posters` (#44). The Either tag criterion (#41) is
@@ -43,8 +43,8 @@ def test_the_step_prover_end_to_end():
     )
     result = propagation(cands, registry, [], place, given=given)
     assert result.proves
-    assert result.log[0] == Elimination("negated claim", A, (1,))
-    assert {e.by for e in result.log[1:]} == {"given chain 1"}
+    assert result.eliminations[0] == Elimination("negated claim", A, (1,))
+    assert {e.by for e in result.eliminations[1:]} == {"given chain 1"}
 
     def broken(m, x):
         m.NewIntVar(3, 1, "broken")

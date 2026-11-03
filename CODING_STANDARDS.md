@@ -17,10 +17,12 @@ nothing here restates them.
    link. A link that does not decode back to its document carries a
    different puzzle, and nothing downstream notices.
 
-3. **A timeout is never a verdict.** A solve entry point that hits its time
-   limit raises `TimeoutError` or returns status `"timeout"`, never "unique",
-   "not unique" or "infeasible". A timed-out search reported as a verdict
-   gets published as a proven property of a puzzle it never proved.
+3. **A timeout or an invalid model is never a verdict.** A solve entry point
+   that hits its time limit raises `TimeoutError` or returns status
+   `"timeout"`; one given a model CP-SAT rejects raises `ValueError` or returns
+   status `"invalid"`. Neither is ever "unique", "not unique" or "infeasible".
+   A timed-out search reported as a verdict gets published as a proven
+   property of a puzzle it never proved.
 
 4. **Force a timeout in a test with `time_limit=0.0`, never a short real
    limit.** A 1 ms limit is a race the solver sometimes wins, so the test

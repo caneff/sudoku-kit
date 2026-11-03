@@ -62,7 +62,8 @@ def read_link(source):
     existing file is read and anything else is already the link. The file's
     last whitespace-separated token wins, which tolerates a trailing newline
     and a file that comments above the link. `source` is a string or a path;
-    a file with nothing in it raises ValueError. A mistyped path is not a
+    a file with nothing in it, or one that is not UTF-8, raises ValueError
+    naming the file. A mistyped path is not a
     file, so it comes back as it stands and `decode_puzzle` refuses it.
 
     A short link (`https://sudokumaker.app/p/<id>`), whether passed itself or
@@ -72,12 +73,20 @@ def read_link(source):
     request and an answer with no payload each raise ValueError naming the id
     or the link; a request that times out raises TimeoutError.
     """
-    link = _source_token(source)
-    short = SHORT_LINK.fullmatch(link)
+    token = _source_token(source)
+    parts = _short_link(token)
+    return token if parts is None else _resolve_short_link(*parts)
+
+
+def _short_link(token):
+    """`(host, id)` when `token` is a short link, else None."""
+    short = SHORT_LINK.fullmatch(token)
     if not short:
-        return link
-    host, link_id = _short_link_parts(short, link)
-    return _resolve_short_link(host, link_id)
+        return None
+    host, link_id = short.groups()
+    if not SHORT_LINK_ID.fullmatch(link_id):
+        raise ValueError(f"short link has no usable id after /p/: {token[:60]!r}")
+    return host, link_id
 
 
 def _source_token(source):
@@ -89,20 +98,14 @@ def _source_token(source):
         # asking about such a name raises instead of answering "no file".
         is_file = False
     if is_file:
-        tokens = Path(source).read_text().split()
+        try:
+            tokens = Path(source).read_text(encoding="utf-8").split()
+        except UnicodeDecodeError as error:
+            raise ValueError(f"{source} is not UTF-8 text: {error}") from error
         if not tokens:
             raise ValueError(f"{source} holds no link: the file is empty")
-        link = tokens[-1]
-    else:
-        link = source.strip()
-    return link
-
-
-def _short_link_parts(short, link):
-    host, link_id = short.groups()
-    if not SHORT_LINK_ID.fullmatch(link_id):
-        raise ValueError(f"short link has no usable id after /p/: {link[:60]!r}")
-    return host, link_id
+        return tokens[-1]
+    return source.strip()
 
 
 def _resolve_short_link(host, link_id):
@@ -123,7 +126,7 @@ def _answer_field(request, field, what, where):
             raise ValueError(f"the {field} is not a string")
     except urllib.error.HTTPError as error:
         raise ValueError(f"{where} answered {error.code} {error.reason}") from error
-    except (KeyError, TypeError, ValueError) as error:
+    except (KeyError, RecursionError, TypeError, ValueError) as error:
         raise ValueError(f"{where} answered no {what}") from error
     except (OSError, http.client.HTTPException) as error:
         reason = error.reason if isinstance(error, urllib.error.URLError) else error
@@ -154,21 +157,48 @@ def _payload_text(payload):
     raise ValueError("the payload is empty")
 
 
+def _payload_of(link):
+    """The unescaped payload after the link's first `puzzle=`.
+
+    A `puzzle=` in it raises ValueError, whether a second marker or an escaped
+    first one: two readings of one link, and the checks and the upload must
+    not each pick their own.
+    """
+    payload = urllib.parse.unquote(link.split("puzzle=", 1)[-1])
+    if "puzzle=" in payload:
+        raise ValueError(f"the link's payload holds a puzzle=: {link[:60]!r}")
+    return payload
+
+
 def decode_puzzle(link):
     """The puzzle doc (a dict) held in a SudokuMaker link or bare payload.
 
     Raises ValueError when `link` is neither, naming the start of what it was
     handed: the usual cause is a mistyped file name that `read_link` took for
     the link itself. A payload whose first letter is neither `D` nor `N` is
-    refused with that letter named, as the app refuses it.
+    refused with that letter named, as the app refuses it. A payload that
+    holds JSON other than an object (`5`, a list, a string, `null`), or JSON
+    nested too deep to read, is refused the same way.
     """
-    payload = urllib.parse.unquote(link.split("puzzle=")[-1])
+    payload = _payload_of(link)
     try:
         text = _payload_text(payload)
         if not text:
             raise ValueError("the payload decompresses to nothing")
-        return json.loads(text)
-    except (ValueError, KeyError, IndexError, TypeError, zlib.error) as error:
+        doc = json.loads(text)
+        if not isinstance(doc, dict):
+            raise ValueError(
+                f"the payload is not a JSON object: it holds {text[:20]!r}"
+            )
+        return doc
+    except (
+        RecursionError,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+        zlib.error,
+    ) as error:
         raise ValueError(
             f"not a SudokuMaker link or payload ({error}): {link[:60]!r}"
         ) from error
@@ -190,27 +220,53 @@ def _same_document(sent, back):
     return sent == back
 
 
+def _opening(doc):
+    """The start of `repr(doc)` for a refusal; `repr` itself refuses some docs."""
+    try:
+        return repr(doc)[:60]
+    except (RecursionError, ValueError) as error:
+        return f"a {type(doc).__name__} with no repr ({error})"
+
+
 def encode_link(doc):
     """The full SudokuMaker link for a puzzle doc; decode_puzzle reads it back.
 
     Raises ValueError rather than return a link that does not decode back to
     `doc`: a link that has quietly lost a field opens as a different puzzle,
     and finding that out from a solver is far too late. A tuple where the
-    document holds a list is the one difference let through; a key that is
-    not a string and a NaN are both refused, since JSON does not carry them.
+    document holds a list is the one difference let through. A NaN, an
+    infinity, a set, a tuple key and a document nested too deep are refused
+    naming the cause, since JSON does not carry them. A key JSON rewrites as a
+    string (an int, a bool, None) is refused as a link that does not round-trip.
     """
-    link = LINK_PREFIX + LZString.compressToEncodedURIComponent(json.dumps(doc))
-    if not _same_document(doc, decode_puzzle(link)):
-        raise ValueError("link does not round-trip; refusing to return it")
+    try:
+        text = json.dumps(doc, allow_nan=False)
+    except (RecursionError, TypeError, ValueError) as error:
+        raise ValueError(
+            f"JSON cannot carry this document ({error}): {_opening(doc)}"
+        ) from error
+    link = LINK_PREFIX + LZString.compressToEncodedURIComponent(text)
+    back = decode_puzzle(link)
+    try:
+        same = _same_document(doc, back)
+    except RecursionError as error:
+        raise ValueError(
+            f"document nested too deep to compare with its link: {_opening(doc)}"
+        ) from error
+    if not same:
+        raise ValueError(
+            f"link does not round-trip; refusing to return it: {_opening(doc)}"
+        )
     return link
 
 
 def shorten_link(source):
     """The short link (https://sudokumaker.app/p/<id>) for a full link.
 
-    `source` is a full link or a file holding one, as for `read_link`. A
-    short link comes back as it stands once it resolves: minting again would
-    leave a second record on the app for the same puzzle. The payload goes up
+    `source` is a full link or a file holding one, as for `read_link`, read
+    once. A short link comes back normalized to `https://<host>/p/<id>` once
+    it resolves: minting again would leave a second record on the app for the
+    same puzzle. The payload goes up
     as `decode_puzzle` read it, percent-escapes undone and with its `+`: the
     app answers 400 `invalid_request` when a `+` has been read as a space.
 
@@ -221,22 +277,29 @@ def shorten_link(source):
     was sent: a short link that opens another puzzle is worse than no link.
     """
     token = _source_token(source)
-    short = SHORT_LINK.fullmatch(token)
-    if short:
-        host, link_id = _short_link_parts(short, token)
+    parts = _short_link(token)
+    if parts:
+        host, link_id = parts
         _resolve_short_link(host, link_id)
         return f"https://{host}/p/{link_id}"
-    link = read_link(token)
-    raw = link.split("puzzle=", 1)[-1]
-    if len(raw) > MAX_PAYLOAD_CHARACTERS:
+    return _mint(token, _checked_payload(token))
+
+
+def _checked_payload(link):
+    """The payload to send for `link`; raises ValueError, making no request."""
+    payload = _payload_of(link)
+    if len(payload) > MAX_PAYLOAD_CHARACTERS:
         raise ValueError(
-            f"payload is {len(raw)} characters; the app refuses more than "
+            f"payload is {len(payload)} characters; the app refuses more than "
             f"{MAX_PAYLOAD_CHARACTERS}: {link[:60]!r}"
         )
     decode_puzzle(link)
-    payload = urllib.parse.unquote(raw)
     if not CLEAN_PAYLOAD.fullmatch(payload):
         raise ValueError(f"payload has characters a payload does not: {link[:60]!r}")
+    return payload
+
+
+def _mint(link, payload):
     url = f"https://{SHORT_LINK_HOST}/api/puzzles"
     request = urllib.request.Request(
         url,

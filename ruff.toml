@@ -1,5 +1,4 @@
-# The select sudokumaker-custom-constraints gates its Python with: the
-# bug-and-clarity core plus the formatter.
+# The select sudokumaker-custom-constraints gates its Python with.
 line-length = 88
 
 [lint]

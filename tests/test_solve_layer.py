@@ -4,7 +4,7 @@ the thread count, and a board is described by its houses.
 Blind to: outside callers. sudokumaker-custom-constraints (pinned at v0.1.0,
 12 sudoku_model call sites in 10 files) and grid-hunts run none of their code
 here, so the changed sudoku_model signature and the new ValueError on
-MODEL_INVALID reach them only when they bump their tag.
+MODEL_INVALID reach them only when they move off that pin.
 """
 
 import pytest
