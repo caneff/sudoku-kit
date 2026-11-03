@@ -73,7 +73,9 @@ def read_link(source):
     request and an answer with no payload each raise ValueError naming the id
     or the link; a request that times out raises TimeoutError.
     """
-    return _resolved(_source_token(source))
+    token = _source_token(source)
+    parts = _short_link(token)
+    return token if parts is None else _resolve_short_link(*parts)
 
 
 def _short_link(token):
@@ -81,13 +83,10 @@ def _short_link(token):
     short = SHORT_LINK.fullmatch(token)
     if not short:
         return None
-    return _short_link_parts(short, token)
-
-
-def _resolved(token):
-    """`token` as a full link: a short link is resolved, anything else stands."""
-    parts = _short_link(token)
-    return token if parts is None else _resolve_short_link(*parts)
+    host, link_id = short.groups()
+    if not SHORT_LINK_ID.fullmatch(link_id):
+        raise ValueError(f"short link has no usable id after /p/: {token[:60]!r}")
+    return host, link_id
 
 
 def _source_token(source):
@@ -109,13 +108,6 @@ def _source_token(source):
     return source.strip()
 
 
-def _short_link_parts(short, link):
-    host, link_id = short.groups()
-    if not SHORT_LINK_ID.fullmatch(link_id):
-        raise ValueError(f"short link has no usable id after /p/: {link[:60]!r}")
-    return host, link_id
-
-
 def _resolve_short_link(host, link_id):
     url = f"https://{host}/api/puzzles/{link_id}"
     where = f"short link {link_id!r}: {url}"
@@ -134,7 +126,7 @@ def _answer_field(request, field, what, where):
             raise ValueError(f"the {field} is not a string")
     except urllib.error.HTTPError as error:
         raise ValueError(f"{where} answered {error.code} {error.reason}") from error
-    except (KeyError, TypeError, ValueError) as error:
+    except (KeyError, RecursionError, TypeError, ValueError) as error:
         raise ValueError(f"{where} answered no {what}") from error
     except (OSError, http.client.HTTPException) as error:
         reason = error.reason if isinstance(error, urllib.error.URLError) else error
@@ -168,12 +160,13 @@ def _payload_text(payload):
 def _payload_of(link):
     """The unescaped payload after the link's first `puzzle=`.
 
-    A second `puzzle=` in it raises ValueError: two readings of one link, and
-    the checks and the upload must not each pick their own.
+    A `puzzle=` in it raises ValueError, whether a second marker or an escaped
+    first one: two readings of one link, and the checks and the upload must
+    not each pick their own.
     """
     payload = urllib.parse.unquote(link.split("puzzle=", 1)[-1])
     if "puzzle=" in payload:
-        raise ValueError(f"link carries more than one puzzle=: {link[:60]!r}")
+        raise ValueError(f"the link's payload holds a puzzle=: {link[:60]!r}")
     return payload
 
 
@@ -198,12 +191,14 @@ def decode_puzzle(link):
                 f"the payload is not a JSON object: it holds {text[:20]!r}"
             )
         return doc
-    except RecursionError as error:
-        raise ValueError(
-            "not a SudokuMaker link or payload "
-            f"(nested too deep to read): {link[:60]!r}"
-        ) from error
-    except (ValueError, KeyError, IndexError, TypeError, zlib.error) as error:
+    except (
+        RecursionError,
+        ValueError,
+        KeyError,
+        IndexError,
+        TypeError,
+        zlib.error,
+    ) as error:
         raise ValueError(
             f"not a SudokuMaker link or payload ({error}): {link[:60]!r}"
         ) from error
@@ -225,26 +220,42 @@ def _same_document(sent, back):
     return sent == back
 
 
+def _opening(doc):
+    """The start of `repr(doc)` for a refusal; `repr` itself refuses some docs."""
+    try:
+        return repr(doc)[:60]
+    except (RecursionError, ValueError) as error:
+        return f"a {type(doc).__name__} with no repr ({error})"
+
+
 def encode_link(doc):
     """The full SudokuMaker link for a puzzle doc; decode_puzzle reads it back.
 
     Raises ValueError rather than return a link that does not decode back to
     `doc`: a link that has quietly lost a field opens as a different puzzle,
     and finding that out from a solver is far too late. A tuple where the
-    document holds a list is the one difference let through; a key that is
-    not a string, a NaN or an infinity, and a set are all refused naming the
-    cause, since JSON does not carry them.
+    document holds a list is the one difference let through. A NaN, an
+    infinity, a set, a tuple key and a document nested too deep are refused
+    naming the cause, since JSON does not carry them. A key JSON rewrites as a
+    string (an int, a bool, None) is refused as a link that does not round-trip.
     """
     try:
         text = json.dumps(doc, allow_nan=False)
-    except (TypeError, ValueError) as error:
+    except (RecursionError, TypeError, ValueError) as error:
         raise ValueError(
-            f"JSON cannot carry this document ({error}): {repr(doc)[:60]}"
+            f"JSON cannot carry this document ({error}): {_opening(doc)}"
         ) from error
     link = LINK_PREFIX + LZString.compressToEncodedURIComponent(text)
-    if not _same_document(doc, decode_puzzle(link)):
+    back = decode_puzzle(link)
+    try:
+        same = _same_document(doc, back)
+    except RecursionError as error:
         raise ValueError(
-            f"link does not round-trip; refusing to return it: {repr(doc)[:60]}"
+            f"document nested too deep to compare with its link: {_opening(doc)}"
+        ) from error
+    if not same:
+        raise ValueError(
+            f"link does not round-trip; refusing to return it: {_opening(doc)}"
         )
     return link
 

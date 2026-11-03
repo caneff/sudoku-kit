@@ -284,7 +284,7 @@ class Step:
         # Every negation is infeasible. That proves the claim only if some grid is
         # left at all; none means the named constraints contradict themselves or
         # the candidates, and would "prove" any claim.
-        status, _ = self._first_grid([ANY_GRID])
+        status, _ = self._solve(ANY_GRID)
         if status == UNKNOWN:
             return ProofResult("timeout")
         return ProofResult(
@@ -402,15 +402,7 @@ def prove(
     `candidates`, a constraint that touches a cell it does not declare, a claim
     that is not a `Chain`, `Place` or `Either`, or a model CP-SAT rejects.
     """
-    return _step(
-        candidates,
-        registry,
-        names,
-        claim,
-        given,
-        time_limit,
-        workers,
-    ).prove()
+    return _step(candidates, registry, names, claim, given, time_limit, workers).prove()
 
 
 def irreducible(
@@ -436,13 +428,7 @@ def irreducible(
     changes `candidates`.
     """
     return _step(
-        candidates,
-        registry,
-        names,
-        claim,
-        given,
-        time_limit,
-        workers,
+        candidates, registry, names, claim, given, time_limit, workers
     ).irreducible()
 
 
@@ -474,11 +460,5 @@ def propagation(
     when one solve spends `time_limit` seconds: a timeout is never a verdict.
     """
     return _step(
-        candidates,
-        registry,
-        names,
-        claim,
-        given,
-        time_limit,
-        workers,
+        candidates, registry, names, claim, given, time_limit, workers
     ).propagation()
