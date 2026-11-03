@@ -244,7 +244,6 @@ def test_a_poster_bug_raising_keyerror_surfaces_as_itself(error):
 
 
 def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
-    # MODEL_INVALID is a broken model, not a step with no grid.
     def post(m, x):
         m.NewIntVar(3, 1, "broken")
 
@@ -484,8 +483,6 @@ def test_propagation_leaves_the_candidates_alone():
 
 
 def test_a_contradiction_check_that_times_out_raises_timeout_error(monkeypatch):
-    # Only the first solve, which checks that some grid is left, is starved;
-    # the support solves after it would settle the step.
     cands, registry, claim = _pair_step()
     _starve(monkeypatch, lambda k: k == 1)
     with pytest.raises(TimeoutError, match="no verdict"):
