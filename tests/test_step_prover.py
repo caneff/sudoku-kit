@@ -336,7 +336,7 @@ def test_irreducible_on_a_spent_time_limit_is_timeout_with_no_set():
 
 def _starve(monkeypatch, starved):
     """Give the k-th CP-SAT solve (counting from 1) no time at all when
-    `starved(k)`."""
+    `starved(k)`; return the list that records each solve's limit."""
     calls = []
 
     def solver(limit, **kwargs):
@@ -344,16 +344,11 @@ def _starve(monkeypatch, starved):
         return cpsat.solver(0.0 if starved(len(calls)) else limit, **kwargs)
 
     monkeypatch.setattr(step_prover, "solver", solver)
+    return calls
 
 
 def _solves_made(monkeypatch, run):
-    calls = []
-
-    def solver(limit, **kwargs):
-        calls.append(limit)
-        return cpsat.solver(limit, **kwargs)
-
-    monkeypatch.setattr(step_prover, "solver", solver)
+    calls = _starve(monkeypatch, lambda k: False)
     run()
     return len(calls)
 
