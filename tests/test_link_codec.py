@@ -139,7 +139,7 @@ def _no_request(*_args, **_kwargs):
 
 
 def test_decode_refuses_a_payload_nested_too_deep_for_json(monkeypatch, capsys):
-    link = _d_payload_of_text("[" * 1000)
+    link = _d_payload_of_text("[" * 100_000)
     assert len(link) < 200
     with pytest.raises(ValueError, match="nested too deep"):
         decode_puzzle(link)
