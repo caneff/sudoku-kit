@@ -28,5 +28,6 @@ live layer.
 - **Seam**: `bash tests/all.sh`: ruff check, ruff format, the uv lock check
   and pytest over `src/sudoku_kit`
 - **Blind to**: the consumers. grid-hunts and sudokumaker-custom-constraints
-  pin a release tag, so a change here never runs against their code until
-  one of them bumps the pin.
+  each lock a commit in `uv.lock`, so a change here never runs against their
+  code until one of them runs `uv lock --upgrade-package sudoku-kit`. This
+  repo cuts no release tags (Chris, 2026-11-03).

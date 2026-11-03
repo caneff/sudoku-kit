@@ -2,7 +2,7 @@
 
 A small library of sudoku tooling, written to be shared by
 [sudokumaker-custom-constraints](https://github.com/caneff/sudokumaker-custom-constraints)
-and grid-hunts. Both pin v0.1.0; neither imports the step prover.
+and grid-hunts. Neither imports the step prover.
 
 - `sudoku_kit.cpsat`: the CP-SAT calls every generator and uniqueness proof
   makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model`,
@@ -28,15 +28,18 @@ raise `TimeoutError`, and `check_uniqueness` reports `timeout`.
 
 ## Install
 
-Pin a tag as a uv git source:
+Use `main` as a uv git source, with no tag. This repo cuts no release tags.
 
 ```toml
 [project]
 dependencies = ["sudoku-kit"]
 
 [tool.uv.sources]
-sudoku-kit = { git = "https://github.com/caneff/sudoku-kit", tag = "v0.2.0" }
+sudoku-kit = { git = "https://github.com/caneff/sudoku-kit" }
 ```
+
+`uv.lock` holds the exact commit. `uv lock --upgrade-package sudoku-kit` moves
+it to the latest `main`.
 
 ## Develop
 
