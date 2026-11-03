@@ -1,5 +1,4 @@
-# The gate CI runs: tests/all.sh holds the suite list. `.python-version` holds
-# it to the floor pyproject.toml declares; CI also runs it on the newest Python.
+# The gate CI runs, at the .python-version floor here and also on the newest Python in CI.
 check:
     bash tests/all.sh
 

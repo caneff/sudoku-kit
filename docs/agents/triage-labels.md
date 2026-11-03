@@ -11,4 +11,6 @@ The skills speak in terms of six canonical triage roles. This file maps those ro
 | `backlog`                  | `backlog`            | Real work, parked until scheduled                                                                      |
 | `wontfix`                  | `wontfix`            | Will not be actioned                                                                                   |
 
+Not routing roles, each with its string equal to its name: `bug` and `enhancement` (the category roles `/triage` adds), and `spec` (a parent reference `/to-spec` and `/to-tickets` add beside `ready-for-agent`, which a burn hands to `/implement-spec`).
+
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.

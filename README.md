@@ -18,8 +18,10 @@ and grid-hunts. Neither imports the step prover.
   shorten <link-or-file>...` prints one per source.
 - `sudoku_kit.step_prover`: `prove`, which reports whether a step's claim
   (`Chain`, `Place` or `Either`) is `proved` from its named constraints,
-  `refuted` with a witness, or `timeout`. `house` and `table` build the
-  constraints; a caller registers its own with `Poster`.
+  `refuted` with a witness, `contradictory` or `timeout`. `irreducible`
+  shrinks a proved step to an irreducible set of constraints, and
+  `propagation` checks whether propagation alone proves it. `house` and
+  `table` build the constraints; a caller registers its own with `Poster`.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
 
@@ -43,5 +45,5 @@ it to the latest `main`.
 
 ## Develop
 
-`just check` runs ruff and the tests. It needs only `uv`, and runs on Python
+`just check` runs ruff, the uv lock check and the tests. It needs only `uv`, and runs on Python
 3.11, the floor, which `.python-version` pins. CI runs it on 3.11 and 3.14.

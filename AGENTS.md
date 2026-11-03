@@ -26,8 +26,10 @@ failure; `--list` prints the suites. `just check` calls it, so CI runs it too.
 live layer.
 
 - **Seam**: `bash tests/all.sh`: ruff check, ruff format, the uv lock check
-  and pytest over `src/sudoku_kit`
+  and pytest over `tests/`
 - **Blind to**: the consumers. grid-hunts and sudokumaker-custom-constraints
   each lock a commit in `uv.lock`, so a change here never runs against their
-  code until one of them runs `uv lock --upgrade-package sudoku-kit`. This
-  repo cuts no release tags (Chris, 2026-11-03).
+  code until one of them moves its lock. Both still pin `tag = "v0.1.0"` in
+  `pyproject.toml`, where `uv lock --upgrade-package sudoku-kit` changes
+  nothing: drop the `tag` first. This repo cuts no more release tags (Chris,
+  2026-11-03).
