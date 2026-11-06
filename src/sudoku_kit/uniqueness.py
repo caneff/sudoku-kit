@@ -54,10 +54,6 @@ def _remap(retry_model, v):
     return retry_model.GetIntVarFromProtoIndex(-index - 1).Not()
 
 
-def _read(solver, variables):
-    return tuple(solver.Value(v) for v in variables)
-
-
 def _keyed(values, keys):
     """`values` as a tuple, or a dict under `keys` when the caller gave names."""
     if keys is None:
@@ -76,14 +72,16 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     solution out is added to an internal copy, so the caller's model is
     safe to reuse across repeated calls.
     """
-    keys = list(variables) if isinstance(variables, Mapping) else None
-    variables = list(variables.values() if keys is not None else variables)
+    keys = None
+    if isinstance(variables, Mapping):
+        keys, variables = list(variables), variables.values()
+    variables = list(variables)
     status, solver = _solve(model, time_limit, workers)
     if status in _UNSOLVED:
         return UniquenessResult(_UNSOLVED[status])
     if status == cp_model.INFEASIBLE:
         return UniquenessResult("infeasible")
-    first = _read(solver, variables)
+    first = tuple(solver.Value(v) for v in variables)
 
     retry_model = model.clone()
     retry_variables = [_remap(retry_model, v) for v in variables]
@@ -95,5 +93,5 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
         return UniquenessResult(_UNSOLVED[status], _keyed(first, keys))
     if status == cp_model.INFEASIBLE:
         return UniquenessResult("unique", _keyed(first, keys))
-    second = _read(solver, retry_variables)
+    second = tuple(solver.Value(v) for v in retry_variables)
     return UniquenessResult("not_unique", _keyed(first, keys), _keyed(second, keys))
