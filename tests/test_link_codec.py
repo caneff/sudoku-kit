@@ -10,10 +10,11 @@ from pathlib import Path
 import pytest
 from link_helpers import (
     ShortLinkApp,
-    answer,
     d_payload,
     d_payload_of_deflate,
+    d_payload_of_stored,
     d_payload_of_text,
+    puzzle_answer_body,
 )
 
 from sudoku_kit import link_codec
@@ -233,13 +234,6 @@ def test_a_d_link_round_trips_through_an_n_link():
     assert decode_puzzle(n_link) == doc
 
 
-def _stored_d_payload(doc, *, pad):
-    # Stored blocks keep the deflate length exactly what the text makes it.
-    deflate = zlib.compressobj(0, wbits=-zlib.MAX_WBITS)
-    raw = deflate.compress(json.dumps(doc).encode()) + deflate.flush()
-    return d_payload_of_deflate(raw, pad=pad)
-
-
 # Unpadded, these bodies run 0, 2 and 3 mod 4 long on zlib 1.3.1, which
 # asks for 0, 2 and 1 characters of padding.
 @pytest.mark.parametrize(
@@ -247,8 +241,8 @@ def _stored_d_payload(doc, *, pad):
 )
 def test_a_d_payload_decodes_whatever_its_unpadded_length(extra):
     doc = {"puzzle": {"name": "p" + extra}}
-    assert decode_puzzle(_stored_d_payload(doc, pad=False)) == doc
-    assert decode_puzzle(_stored_d_payload(doc, pad=True)) == doc
+    assert decode_puzzle(d_payload_of_stored(doc, pad=False)) == doc
+    assert decode_puzzle(d_payload_of_stored(doc, pad=True)) == doc
 
 
 @pytest.mark.parametrize("prefix", ["X", "d", "h"])
@@ -300,7 +294,7 @@ class _Network:
 def test_read_link_resolves_a_short_link(monkeypatch):
     d_link = read_link(D_LINK)
     payload = d_link.split("puzzle=")[1]
-    network = _Network(monkeypatch, body=answer(payload))
+    network = _Network(monkeypatch, body=puzzle_answer_body(payload))
     link = read_link("https://sudokumaker.app/p/bWgLDdqJLQ")
     assert network.urls == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
     assert link == "https://sudokumaker.app/?puzzle=" + payload
@@ -308,14 +302,14 @@ def test_read_link_resolves_a_short_link(monkeypatch):
 
 
 def test_read_link_does_not_ask_the_api_as_urllib(monkeypatch):
-    network = _Network(monkeypatch, body=answer("Dx"))
+    network = _Network(monkeypatch, body=puzzle_answer_body("Dx"))
     read_link("https://sudokumaker.app/p/abc123")
     agent = network.requests[0].get_header("User-agent")
     assert agent and not agent.startswith("Python-urllib")
 
 
 def test_read_link_gives_the_api_a_timeout(monkeypatch):
-    network = _Network(monkeypatch, body=answer("Dx"))
+    network = _Network(monkeypatch, body=puzzle_answer_body("Dx"))
     read_link("https://sudokumaker.app/p/abc123")
     assert network.timeouts == [link_codec.FETCH_TIMEOUT_SECONDS]
 
@@ -334,7 +328,7 @@ def test_an_escaped_marker_is_refused_for_what_it_is():
 
 
 def test_read_link_resolves_a_short_link_held_in_a_file(monkeypatch, tmp_path):
-    network = _Network(monkeypatch, body=answer("Dx"))
+    network = _Network(monkeypatch, body=puzzle_answer_body("Dx"))
     saved = tmp_path / "link.txt"
     saved.write_text("# Renbanana\nhttps://sudokumaker.app/p/KkFHGqdkjd\n")
     assert read_link(saved) == "https://sudokumaker.app/?puzzle=Dx"
@@ -350,13 +344,13 @@ def test_read_link_resolves_a_short_link_held_in_a_file(monkeypatch, tmp_path):
     ],
 )
 def test_read_link_resolves_the_other_spellings_of_a_short_link(monkeypatch, short):
-    network = _Network(monkeypatch, body=answer("Dx"))
+    network = _Network(monkeypatch, body=puzzle_answer_body("Dx"))
     assert read_link(short) == "https://sudokumaker.app/?puzzle=Dx"
     assert network.urls == ["https://sudokumaker.app/api/puzzles/abc123"]
 
 
 def test_read_link_resolves_a_dev_short_link_on_the_dev_host(monkeypatch):
-    network = _Network(monkeypatch, body=answer("Dx"))
+    network = _Network(monkeypatch, body=puzzle_answer_body("Dx"))
     read_link("https://dev.sudokumaker.app/p/abc123")
     assert network.urls == ["https://dev.sudokumaker.app/api/puzzles/abc123"]
 
@@ -659,7 +653,7 @@ def test_read_puzzle_reads_a_file_a_commented_file_a_link_and_a_payload(tmp_path
 def test_read_puzzle_resolves_a_short_link(monkeypatch):
     d_link = read_link(D_LINK)
     payload = d_link.split("puzzle=")[1]
-    network = _Network(monkeypatch, body=answer(payload))
+    network = _Network(monkeypatch, body=puzzle_answer_body(payload))
     doc = read_puzzle("https://sudokumaker.app/p/bWgLDdqJLQ")
     assert network.urls == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
     assert doc == decode_puzzle(d_link)

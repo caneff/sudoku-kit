@@ -9,7 +9,8 @@ import zlib
 from sudoku_kit import link_codec
 
 
-def answer(puzzle):
+def puzzle_answer_body(puzzle):
+    """The body `/api/puzzles/<id>` answers a GET with."""
     return json.dumps({"puzzle": puzzle}).encode()
 
 
@@ -28,7 +29,7 @@ class ShortLinkApp:
             stored = self._stored
             if stored is None:
                 stored = json.loads(self.posts[-1].data)["puzzle"]
-            return io.BytesIO(answer(stored))
+            return io.BytesIO(puzzle_answer_body(stored))
         self.posts.append(request)
         if isinstance(self._minted, Exception):
             raise self._minted
@@ -42,6 +43,13 @@ def d_payload_of_deflate(raw, *, pad=False):
 
 def d_payload_of_text(text):
     return d_payload_of_deflate(zlib.compress(text.encode(), wbits=-zlib.MAX_WBITS))
+
+
+def d_payload_of_stored(doc, *, pad):
+    # Stored blocks keep the deflate length exactly what the text makes it.
+    deflate = zlib.compressobj(0, wbits=-zlib.MAX_WBITS)
+    raw = deflate.compress(json.dumps(doc).encode()) + deflate.flush()
+    return d_payload_of_deflate(raw, pad=pad)
 
 
 def d_payload(doc):
