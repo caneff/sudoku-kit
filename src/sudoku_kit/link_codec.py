@@ -7,6 +7,8 @@ lz-string form. `decode_puzzle` reads both; `encode_link` writes only `N`.
 `encode_link` returns the full link, not the bare payload. `decode_puzzle`
 takes a full link or a bare payload and splits out the payload itself, so
 `encode_link`'s output can be fed straight back into `decode_puzzle`.
+`read_puzzle` is the one call that returns the puzzle document a file, link,
+bare payload or short link holds; it is `read_link` then `decode_puzzle`.
 `read_link` fetches the link to decode when it may be sitting in a file, or
 behind a short link (https://sudokumaker.app/p/<id>). `shorten_link` mints a
 short link from a full one, and `python -m sudoku_kit.link_codec shorten
@@ -76,6 +78,16 @@ def read_link(source):
     token = _source_token(source)
     parts = _short_link(token)
     return token if parts is None else _resolve_short_link(*parts)
+
+
+def read_puzzle(source):
+    """The puzzle doc (a dict) that `source` holds.
+
+    `source` is anything `read_link` takes (a file, a full link, a bare
+    payload or a short link) and is read the way `read_link` reads it, so its
+    refusals and its network errors are `read_link`'s and `decode_puzzle`'s.
+    """
+    return decode_puzzle(read_link(source))
 
 
 def _short_link(token):

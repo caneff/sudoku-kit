@@ -8,7 +8,9 @@ and grid-hunts. Neither imports the step prover.
   makes. `solver`, `forbid`, `has_second_solution`, `boxes`, `sudoku_model`,
   `solve_unique` and `check_valid`.
 - `sudoku_kit.link_codec`: the SudokuMaker link codec. `decode_puzzle`,
-  `encode_link`, `read_link` and `shorten_link`. `decode_puzzle` reads both payload formats
+  `encode_link`, `read_puzzle`, `read_link` and `shorten_link`. `read_puzzle` returns the
+  document a file, link, bare payload or short link holds in one call (`read_link` then
+  `decode_puzzle`). `decode_puzzle` reads both payload formats
   the app writes (`D`, base64url of deflate-raw, and the older lz-string `N`);
   `encode_link` writes `N` and refuses a document whose link does not decode
   back to it. `read_link` also resolves a short link
