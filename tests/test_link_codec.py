@@ -1,4 +1,3 @@
-import base64
 import http.client
 import io
 import json
@@ -9,6 +8,13 @@ import zlib
 from pathlib import Path
 
 import pytest
+from link_helpers import (
+    ShortLinkApp,
+    answer,
+    d_payload,
+    d_payload_of_deflate,
+    d_payload_of_text,
+)
 
 from sudoku_kit import link_codec
 from sudoku_kit.link_codec import (
@@ -145,7 +151,7 @@ def test_the_round_trip_refusal_names_its_document(monkeypatch):
 @pytest.mark.parametrize("value", [5, [1, 2], "x", None])
 def test_decode_refuses_a_payload_that_is_not_an_object(value):
     with pytest.raises(ValueError, match="not a JSON object"):
-        decode_puzzle(_d_payload(value))
+        decode_puzzle(d_payload(value))
 
 
 def test_shorten_refuses_a_payload_that_is_not_an_object_before_any_request(
@@ -153,20 +159,25 @@ def test_shorten_refuses_a_payload_that_is_not_an_object_before_any_request(
 ):
     network = _Network(monkeypatch)
     with pytest.raises(ValueError, match="not a JSON object"):
-        shorten_link(_d_payload(5))
+        shorten_link(d_payload(5))
     assert network.requests == []
 
 
 @pytest.mark.parametrize("depth", [1_000, 100_000])
-def test_decode_refuses_a_payload_nested_too_deep_for_json(monkeypatch, capsys, depth):
-    link = _d_payload_of_text("[" * depth)
+def test_decode_refuses_a_payload_nested_too_deep_for_json(depth):
+    link = d_payload_of_text("[" * depth)
     assert len(link) < 200
     # Which error json raises for this depth varies by interpreter build
     # (RecursionError, or a plain parse error); every one is a refusal.
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
         decode_puzzle(link)
+
+
+def test_the_shorten_command_refuses_a_payload_nested_too_deep_for_json(
+    monkeypatch, capsys
+):
     network = _Network(monkeypatch)
-    assert link_codec.main(["shorten", link]) == 1
+    assert link_codec.main(["shorten", d_payload_of_text("[" * 1_000)]) == 1
     assert network.requests == []
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -222,24 +233,11 @@ def test_a_d_link_round_trips_through_an_n_link():
     assert decode_puzzle(n_link) == doc
 
 
-def _d_payload(doc):
-    return _d_payload_of_text(json.dumps(doc))
-
-
-def _d_payload_of_text(text):
-    return _d_payload_of_deflate(zlib.compress(text.encode(), wbits=-zlib.MAX_WBITS))
-
-
-def _d_payload_of_deflate(raw, *, pad=False):
-    payload = base64.urlsafe_b64encode(raw).decode()
-    return "D" + (payload if pad else payload.rstrip("="))
-
-
 def _stored_d_payload(doc, *, pad):
     # Stored blocks keep the deflate length exactly what the text makes it.
     deflate = zlib.compressobj(0, wbits=-zlib.MAX_WBITS)
     raw = deflate.compress(json.dumps(doc).encode()) + deflate.flush()
-    return _d_payload_of_deflate(raw, pad=pad)
+    return d_payload_of_deflate(raw, pad=pad)
 
 
 # Unpadded, these bodies run 0, 2 and 3 mod 4 long on zlib 1.3.1, which
@@ -259,8 +257,10 @@ def test_decode_names_an_unknown_prefix(prefix):
         decode_puzzle(f"https://sudokumaker.app/?puzzle={prefix}3Vpt")
 
 
-_GOOD = _d_payload({"puzzle": {}})
-_WITH_JUNK = zlib.compress(b'{"puzzle": {}}', wbits=-zlib.MAX_WBITS) + b"junk"
+_GOOD = d_payload({"puzzle": {}})
+_WITH_JUNK = d_payload_of_deflate(
+    zlib.compress(b'{"puzzle": {}}', wbits=-zlib.MAX_WBITS) + b"junk"
+)
 
 
 @pytest.mark.parametrize(
@@ -270,7 +270,7 @@ _WITH_JUNK = zlib.compress(b'{"puzzle": {}}', wbits=-zlib.MAX_WBITS) + b"junk"
         "D!!not-base64!!",
         "DAAAA",
         _GOOD[:5] + "*" + _GOOD[5:],
-        "D" + base64.urlsafe_b64encode(_WITH_JUNK).decode().rstrip("="),
+        _WITH_JUNK,
     ],
 )
 def test_decode_refuses_a_d_payload_that_is_not_one_clean_deflate_stream(payload):
@@ -297,14 +297,10 @@ class _Network:
         return [request.full_url for request in self.requests]
 
 
-def _answer(puzzle):
-    return json.dumps({"puzzle": puzzle}).encode()
-
-
 def test_read_link_resolves_a_short_link(monkeypatch):
     d_link = read_link(D_LINK)
     payload = d_link.split("puzzle=")[1]
-    network = _Network(monkeypatch, body=_answer(payload))
+    network = _Network(monkeypatch, body=answer(payload))
     link = read_link("https://sudokumaker.app/p/bWgLDdqJLQ")
     assert network.urls == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
     assert link == "https://sudokumaker.app/?puzzle=" + payload
@@ -312,14 +308,14 @@ def test_read_link_resolves_a_short_link(monkeypatch):
 
 
 def test_read_link_does_not_ask_the_api_as_urllib(monkeypatch):
-    network = _Network(monkeypatch, body=_answer("Dx"))
+    network = _Network(monkeypatch, body=answer("Dx"))
     read_link("https://sudokumaker.app/p/abc123")
     agent = network.requests[0].get_header("User-agent")
     assert agent and not agent.startswith("Python-urllib")
 
 
 def test_read_link_gives_the_api_a_timeout(monkeypatch):
-    network = _Network(monkeypatch, body=_answer("Dx"))
+    network = _Network(monkeypatch, body=answer("Dx"))
     read_link("https://sudokumaker.app/p/abc123")
     assert network.timeouts == [link_codec.FETCH_TIMEOUT_SECONDS]
 
@@ -338,7 +334,7 @@ def test_an_escaped_marker_is_refused_for_what_it_is():
 
 
 def test_read_link_resolves_a_short_link_held_in_a_file(monkeypatch, tmp_path):
-    network = _Network(monkeypatch, body=_answer("Dx"))
+    network = _Network(monkeypatch, body=answer("Dx"))
     saved = tmp_path / "link.txt"
     saved.write_text("# Renbanana\nhttps://sudokumaker.app/p/KkFHGqdkjd\n")
     assert read_link(saved) == "https://sudokumaker.app/?puzzle=Dx"
@@ -354,13 +350,13 @@ def test_read_link_resolves_a_short_link_held_in_a_file(monkeypatch, tmp_path):
     ],
 )
 def test_read_link_resolves_the_other_spellings_of_a_short_link(monkeypatch, short):
-    network = _Network(monkeypatch, body=_answer("Dx"))
+    network = _Network(monkeypatch, body=answer("Dx"))
     assert read_link(short) == "https://sudokumaker.app/?puzzle=Dx"
     assert network.urls == ["https://sudokumaker.app/api/puzzles/abc123"]
 
 
 def test_read_link_resolves_a_dev_short_link_on_the_dev_host(monkeypatch):
-    network = _Network(monkeypatch, body=_answer("Dx"))
+    network = _Network(monkeypatch, body=answer("Dx"))
     read_link("https://dev.sudokumaker.app/p/abc123")
     assert network.urls == ["https://dev.sudokumaker.app/api/puzzles/abc123"]
 
@@ -443,30 +439,11 @@ def test_read_link_does_not_touch_the_network_for_a_full_link(monkeypatch):
     assert network.urls == []
 
 
-class _ShortLinkApp:
-    def __init__(self, monkeypatch, *, minted=b'{"id": "AbCdEfGhIj"}', stored=None):
-        self.posts, self.gets = [], []
-        self._minted, self._stored = minted, stored
-        monkeypatch.setattr(link_codec.urllib.request, "urlopen", self)
-
-    def __call__(self, request, timeout=None):
-        if request.data is None:
-            self.gets.append(request)
-            stored = self._stored
-            if stored is None:
-                stored = json.loads(self.posts[-1].data)["puzzle"]
-            return io.BytesIO(_answer(stored))
-        self.posts.append(request)
-        if isinstance(self._minted, Exception):
-            raise self._minted
-        return io.BytesIO(self._minted)
-
-
 @pytest.mark.parametrize(("name", "puzzle_name", "width"), REAL_LINKS)
 def test_shorten_posts_the_raw_payload_and_returns_the_short_link(
     monkeypatch, name, puzzle_name, width
 ):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     link = read_link(LINKS / name)
     assert shorten_link(LINKS / name) == "https://sudokumaker.app/p/AbCdEfGhIj"
     assert [post.full_url for post in app.posts] == [
@@ -479,13 +456,13 @@ def test_shorten_posts_the_raw_payload_and_returns_the_short_link(
 
 
 def test_shorten_takes_the_link_itself(monkeypatch):
-    _ShortLinkApp(monkeypatch)
+    ShortLinkApp(monkeypatch)
     link = read_link(LINKS / "fillomino.txt")
     assert shorten_link(link) == "https://sudokumaker.app/p/AbCdEfGhIj"
 
 
 def test_shorten_posts_json_with_the_headers_the_cdn_wants(monkeypatch):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     shorten_link(LINKS / "fillomino.txt")
     post = app.posts[0]
     assert post.get_header("Content-type") == "application/json"
@@ -495,13 +472,13 @@ def test_shorten_posts_json_with_the_headers_the_cdn_wants(monkeypatch):
 
 
 def test_shorten_refuses_when_the_minted_link_holds_another_payload(monkeypatch):
-    _ShortLinkApp(monkeypatch, stored="Dother")
+    ShortLinkApp(monkeypatch, stored="Dother")
     with pytest.raises(ValueError, match=r"AbCdEfGhIj.*not the payload"):
         shorten_link(LINKS / "fillomino.txt")
 
 
 def test_shorten_refuses_a_payload_the_app_would_refuse(monkeypatch):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     noise = random.Random(0).choices(string.ascii_letters + string.digits, k=300_000)
     link = encode_link({"notes": "".join(noise)})
     assert len(link.split("puzzle=")[1]) > link_codec.MAX_PAYLOAD_CHARACTERS
@@ -511,7 +488,7 @@ def test_shorten_refuses_a_payload_the_app_would_refuse(monkeypatch):
 
 
 def test_shorten_accepts_a_payload_of_exactly_the_limit(monkeypatch):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     link = read_link(LINKS / "fillomino.txt")
     limit = len(link.split("puzzle=")[1])
     monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", limit)
@@ -525,14 +502,14 @@ def test_shorten_accepts_a_payload_of_exactly_the_limit(monkeypatch):
 
 @pytest.mark.parametrize("tail", ["&x=1", "#frag", "%0A"])
 def test_shorten_refuses_a_link_whose_payload_is_not_clean(monkeypatch, tail):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     with pytest.raises(ValueError, match="payload"):
         shorten_link(read_link(LINKS / "fillomino.txt") + tail)
     assert app.posts == []
 
 
 def test_shorten_sends_a_percent_encoded_plus_as_a_plus(monkeypatch):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     link = read_link(LINKS / "fillomino.txt")
     assert "+" in link
     shorten_link(link.replace("+", "%2B"))
@@ -540,7 +517,7 @@ def test_shorten_sends_a_percent_encoded_plus_as_a_plus(monkeypatch):
 
 
 def test_shorten_leaves_a_short_link_as_it_is(monkeypatch, tmp_path):
-    app = _ShortLinkApp(
+    app = ShortLinkApp(
         monkeypatch, stored=read_link(LINKS / "fillomino.txt").split("puzzle=")[1]
     )
     saved = tmp_path / "short.txt"
@@ -562,13 +539,13 @@ def test_shorten_leaves_a_short_link_as_it_is(monkeypatch, tmp_path):
     ],
 )
 def test_shorten_normalizes_a_short_link_once_it_resolves(monkeypatch, short):
-    _ShortLinkApp(monkeypatch, stored="Dx")
+    ShortLinkApp(monkeypatch, stored="Dx")
     assert shorten_link(short) == "https://sudokumaker.app/p/KkFHGqdkjd"
 
 
 def test_shorten_errors_name_the_link_being_shortened(monkeypatch):
     error = urllib.error.HTTPError("u", 403, "Forbidden", {}, None)
-    _ShortLinkApp(monkeypatch, minted=error)
+    ShortLinkApp(monkeypatch, minted=error)
     link = read_link(LINKS / "fillomino.txt")
     with pytest.raises(ValueError, match="403 Forbidden") as raised:
         shorten_link(link)
@@ -576,7 +553,7 @@ def test_shorten_errors_name_the_link_being_shortened(monkeypatch):
 
 
 def test_shorten_refuses_what_is_not_a_link_before_the_network(monkeypatch):
-    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    app = ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
         shorten_link("no-such-file.txt")
     assert app.posts == []
@@ -586,19 +563,19 @@ def test_shorten_refuses_what_is_not_a_link_before_the_network(monkeypatch):
     "minted", [b'{"id": ""}', b'{"id": 5}', b'{"id": "a/b"}', b"[]", b"no"]
 )
 def test_shorten_names_an_answer_with_no_usable_id(monkeypatch, minted):
-    _ShortLinkApp(monkeypatch, minted=minted)
+    ShortLinkApp(monkeypatch, minted=minted)
     with pytest.raises(ValueError, match="no usable id"):
         shorten_link(LINKS / "fillomino.txt")
 
 
 def test_shorten_raises_timeout_error_when_the_post_times_out(monkeypatch):
-    _ShortLinkApp(monkeypatch, minted=TimeoutError())
+    ShortLinkApp(monkeypatch, minted=TimeoutError())
     with pytest.raises(TimeoutError, match="timed out"):
         shorten_link(LINKS / "fillomino.txt")
 
 
 def test_the_shorten_command_prints_each_short_link_bare(monkeypatch, capsys):
-    _ShortLinkApp(monkeypatch)
+    ShortLinkApp(monkeypatch)
     sources = [str(LINKS / "fillomino.txt"), str(LINKS / "isofill.txt")]
     assert link_codec.main(["shorten", *sources]) == 0
     out = capsys.readouterr().out
@@ -606,7 +583,7 @@ def test_the_shorten_command_prints_each_short_link_bare(monkeypatch, capsys):
 
 
 def test_the_shorten_command_reports_a_refusal_and_fails(monkeypatch, capsys):
-    _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
     assert link_codec.main(["shorten", "no-such-file.txt"]) == 1
     captured = capsys.readouterr()
     assert captured.out == ""
@@ -614,7 +591,7 @@ def test_the_shorten_command_reports_a_refusal_and_fails(monkeypatch, capsys):
 
 
 def test_the_shorten_command_stops_at_the_first_refusal(monkeypatch, capsys):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     fillomino = str(LINKS / "fillomino.txt")
     assert link_codec.main(["shorten", fillomino, "no-such-file.txt", fillomino]) == 1
     captured = capsys.readouterr()
@@ -624,7 +601,7 @@ def test_the_shorten_command_stops_at_the_first_refusal(monkeypatch, capsys):
 
 
 def test_the_shorten_command_reports_a_file_it_cannot_read(monkeypatch, capsys):
-    _ShortLinkApp(monkeypatch)
+    ShortLinkApp(monkeypatch)
 
     def unreadable(self, **_kwargs):
         raise PermissionError(13, "Permission denied")
@@ -635,7 +612,7 @@ def test_the_shorten_command_reports_a_file_it_cannot_read(monkeypatch, capsys):
 
 
 def test_a_doubled_puzzle_marker_is_refused_before_any_request(monkeypatch):
-    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    app = ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
     link = read_link(LINKS / "fillomino.txt")
     doubled = link + "puzzle=" + link.split("puzzle=")[1]
     with pytest.raises(ValueError, match="puzzle="):
@@ -648,7 +625,7 @@ def test_a_doubled_puzzle_marker_is_refused_before_any_request(monkeypatch):
 def test_a_file_holding_another_files_path_reads_the_same_in_both(
     monkeypatch, tmp_path
 ):
-    app = _ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
+    app = ShortLinkApp(monkeypatch, minted=AssertionError("network used"))
     inner = tmp_path / "inner.txt"
     inner.write_text(read_link(LINKS / "fillomino.txt"))
     outer = tmp_path / "outer.txt"
@@ -660,7 +637,7 @@ def test_a_file_holding_another_files_path_reads_the_same_in_both(
 
 
 def test_the_size_cap_measures_the_unescaped_payload(monkeypatch):
-    app = _ShortLinkApp(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     link = read_link(LINKS / "fillomino.txt")
     payload = link.split("puzzle=")[1]
     assert "+" in payload
@@ -682,7 +659,7 @@ def test_read_puzzle_reads_a_file_a_commented_file_a_link_and_a_payload(tmp_path
 def test_read_puzzle_resolves_a_short_link(monkeypatch):
     d_link = read_link(D_LINK)
     payload = d_link.split("puzzle=")[1]
-    network = _Network(monkeypatch, body=_answer(payload))
+    network = _Network(monkeypatch, body=answer(payload))
     doc = read_puzzle("https://sudokumaker.app/p/bWgLDdqJLQ")
     assert network.urls == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
     assert doc == decode_puzzle(d_link)

@@ -11,12 +11,10 @@ shape (#61), the renames beyond `eliminations` (#62), the test audit (#63), and
 the docs and CI (#64).
 """
 
-import base64
-import io
 import json
-import zlib
 
 import pytest
+from link_helpers import ShortLinkApp, d_payload_of_text
 
 from sudoku_kit import link_codec
 from sudoku_kit.link_codec import decode_puzzle, encode_link, read_link, shorten_link
@@ -26,29 +24,8 @@ A, B = (0, 0), (0, 1)
 REGISTRY = {"pair": house([A, B])}
 
 
-class _App:
-    """Mints one id, and answers that id with the payload it was sent."""
-
-    def __init__(self, monkeypatch):
-        self.posts = []
-        monkeypatch.setattr(link_codec.urllib.request, "urlopen", self)
-
-    def __call__(self, request, timeout=None):
-        if request.data is None:
-            answer = {"puzzle": json.loads(self.posts[-1].data)["puzzle"]}
-        else:
-            self.posts.append(request)
-            answer = {"id": "AbCdEfGhIj"}
-        return io.BytesIO(json.dumps(answer).encode())
-
-
-def _d_payload(text):
-    raw = zlib.compress(text.encode(), wbits=-zlib.MAX_WBITS)
-    return "D" + base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
 def test_the_checks_and_the_upload_read_one_payload(monkeypatch, tmp_path):
-    app = _App(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     doc = {"puzzle": {"title": "spec 57"}}
     link = encode_link(doc)
 
@@ -61,21 +38,22 @@ def test_the_checks_and_the_upload_read_one_payload(monkeypatch, tmp_path):
     holder.write_text(f"{tmp_path / 'other.txt'}\n")
     (tmp_path / "other.txt").write_text(f"{link}\n")
     app.posts.clear()
-    for refused in (doubled, holder):
-        with pytest.raises(ValueError):
-            shorten_link(refused)
+    with pytest.raises(ValueError, match=r"holds a puzzle="):
+        shorten_link(doubled)
+    with pytest.raises(ValueError, match="unknown format prefix"):
+        shorten_link(holder)
     assert app.posts == []
     assert read_link(holder) == str(tmp_path / "other.txt")
 
 
 def test_every_link_refusal_is_a_value_error(monkeypatch, tmp_path, capsys):
-    app = _App(monkeypatch)
+    app = ShortLinkApp(monkeypatch)
     with pytest.raises(ValueError, match="JSON cannot carry"):
         encode_link({"puzzle": {"width": float("inf")}})
     with pytest.raises(ValueError, match="not a JSON object"):
-        shorten_link(_d_payload("5"))
+        shorten_link(d_payload_of_text("5"))
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
-        shorten_link(_d_payload("[" * 1_000))
+        shorten_link(d_payload_of_text("[" * 1_000))
     binary = tmp_path / "binary.txt"
     binary.write_bytes(b"\xff\xfe")
     with pytest.raises(ValueError, match=r"binary\.txt"):
