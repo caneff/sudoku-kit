@@ -14,7 +14,8 @@ the docs and CI (#64).
 import json
 
 import pytest
-from link_helpers import ShortLinkApp, d_payload_of_text
+from link_helpers import ShortLinkApp as _App
+from link_helpers import d_payload_of_text as _d_payload
 
 from sudoku_kit import link_codec
 from sudoku_kit.link_codec import decode_puzzle, encode_link, read_link, shorten_link
@@ -25,7 +26,7 @@ REGISTRY = {"pair": house([A, B])}
 
 
 def test_the_checks_and_the_upload_read_one_payload(monkeypatch, tmp_path):
-    app = ShortLinkApp(monkeypatch)
+    app = _App(monkeypatch)
     doc = {"puzzle": {"title": "spec 57"}}
     link = encode_link(doc)
 
@@ -47,13 +48,13 @@ def test_the_checks_and_the_upload_read_one_payload(monkeypatch, tmp_path):
 
 
 def test_every_link_refusal_is_a_value_error(monkeypatch, tmp_path, capsys):
-    app = ShortLinkApp(monkeypatch)
+    app = _App(monkeypatch)
     with pytest.raises(ValueError, match="JSON cannot carry"):
         encode_link({"puzzle": {"width": float("inf")}})
     with pytest.raises(ValueError, match="not a JSON object"):
-        shorten_link(d_payload_of_text("5"))
+        shorten_link(_d_payload("5"))
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
-        shorten_link(d_payload_of_text("[" * 1_000))
+        shorten_link(_d_payload("[" * 1_000))
     binary = tmp_path / "binary.txt"
     binary.write_bytes(b"\xff\xfe")
     with pytest.raises(ValueError, match=r"binary\.txt"):
