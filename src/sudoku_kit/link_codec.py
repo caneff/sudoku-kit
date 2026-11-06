@@ -47,6 +47,8 @@ USER_AGENT = "sudoku-kit"
 FETCH_TIMEOUT_SECONDS = 15
 # The app refuses a longer payload (error code `puzzle_too_large`).
 MAX_PAYLOAD_CHARACTERS = 200_000
+# How much of a refused input a message quotes.
+PREVIEW_CHARACTERS = 60
 # The CDN answers a bare urllib POST with a 403; these three are the set that
 # got through. The smaller set that would is not known.
 BROWSER_HEADERS = {
@@ -91,13 +93,14 @@ def read_puzzle(source):
 
 
 def _short_link(token):
-    """`(host, id)` when `token` is a short link, else None."""
     short = SHORT_LINK.fullmatch(token)
     if not short:
         return None
     host, link_id = short.groups()
     if not SHORT_LINK_ID.fullmatch(link_id):
-        raise ValueError(f"short link has no usable id after /p/: {token[:60]!r}")
+        raise ValueError(
+            f"short link has no usable id after /p/: {token[:PREVIEW_CHARACTERS]!r}"
+        )
     return host, link_id
 
 
@@ -178,7 +181,9 @@ def _payload_of(link):
     """
     payload = urllib.parse.unquote(link.split("puzzle=", 1)[-1])
     if "puzzle=" in payload:
-        raise ValueError(f"the link's payload holds a puzzle=: {link[:60]!r}")
+        raise ValueError(
+            f"the link's payload holds a puzzle=: {link[:PREVIEW_CHARACTERS]!r}"
+        )
     return payload
 
 
@@ -212,7 +217,7 @@ def decode_puzzle(link):
         zlib.error,
     ) as error:
         raise ValueError(
-            f"not a SudokuMaker link or payload ({error}): {link[:60]!r}"
+            f"not a SudokuMaker link or payload ({error}): {link[:PREVIEW_CHARACTERS]!r}"
         ) from error
 
 
@@ -233,9 +238,8 @@ def _same_document(sent, back):
 
 
 def _opening(doc):
-    """The start of `repr(doc)` for a refusal; `repr` itself refuses some docs."""
     try:
-        return repr(doc)[:60]
+        return repr(doc)[:PREVIEW_CHARACTERS]
     except (RecursionError, ValueError) as error:
         return f"a {type(doc).__name__} with no repr ({error})"
 
@@ -303,11 +307,13 @@ def _checked_payload(link):
     if len(payload) > MAX_PAYLOAD_CHARACTERS:
         raise ValueError(
             f"payload is {len(payload)} characters; the app refuses more than "
-            f"{MAX_PAYLOAD_CHARACTERS}: {link[:60]!r}"
+            f"{MAX_PAYLOAD_CHARACTERS}: {link[:PREVIEW_CHARACTERS]!r}"
         )
     decode_puzzle(link)
     if not CLEAN_PAYLOAD.fullmatch(payload):
-        raise ValueError(f"payload has characters a payload does not: {link[:60]!r}")
+        raise ValueError(
+            f"payload has characters a payload does not: {link[:PREVIEW_CHARACTERS]!r}"
+        )
     return payload
 
 
@@ -318,19 +324,27 @@ def _mint(link, payload):
         data=json.dumps({"puzzle": payload}).encode(),
         headers={"Content-Type": "application/json", **BROWSER_HEADERS},
     )
-    where = f"minting a short link for {link[:60]!r}: {url}"
+    where = f"minting a short link for {link[:PREVIEW_CHARACTERS]!r}: {url}"
     link_id = _answer_field(request, "id", "usable id", where)
     if not SHORT_LINK_ID.fullmatch(link_id):
-        raise ValueError(f"{where} answered no usable id: {link_id[:60]!r}")
+        raise ValueError(
+            f"{where} answered no usable id: {link_id[:PREVIEW_CHARACTERS]!r}"
+        )
     if _resolve_short_link(SHORT_LINK_HOST, link_id) != LINK_PREFIX + payload:
         raise ValueError(
             f"short link {link_id!r} holds a payload that is not the payload sent "
-            f"for {link[:60]!r}"
+            f"for {link[:PREVIEW_CHARACTERS]!r}"
         )
     return f"https://{SHORT_LINK_HOST}/p/{link_id}"
 
 
 def main(argv=None):
+    """Run the `shorten` command: print each source's short link, one per line.
+
+    Exits 0 when every source shortens. Exits 1 at the first failure, naming
+    that source on stderr; the sources after it are not tried, and the links
+    already printed stay printed.
+    """
     parser = argparse.ArgumentParser(prog="python -m sudoku_kit.link_codec")
     commands = parser.add_subparsers(dest="command", required=True)
     shorten = commands.add_parser(
@@ -342,7 +356,7 @@ def main(argv=None):
         try:
             print(shorten_link(source), flush=True)
         except (ValueError, TimeoutError, OSError) as error:
-            print(f"{source[:60]}: {error}", file=sys.stderr)
+            print(f"{source[:PREVIEW_CHARACTERS]}: {error}", file=sys.stderr)
             return 1
     return 0
 
