@@ -253,7 +253,9 @@ def test_a_poster_that_builds_an_invalid_model_raises_with_cpsats_reason():
 
 
 def test_a_claim_of_an_unknown_kind_raises_naming_it():
-    with pytest.raises(ValueError, match="unknown claim 'A < B'"):
+    with pytest.raises(
+        ValueError, match="unknown claim 'A < B': expected Chain, Place or Either"
+    ):
         prove(_board(), {}, [], "A < B")
 
 
