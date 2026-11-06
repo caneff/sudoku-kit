@@ -8,6 +8,7 @@ model where this leaves it alone. Why both exist:
 docs/adr/0001-two-uniqueness-proofs.md.
 """
 
+from collections.abc import Mapping
 from typing import Literal, NamedTuple
 
 from ortools.sat.python import cp_model
@@ -19,16 +20,20 @@ Status = Literal["unique", "not_unique", "infeasible", "timeout", "invalid"]
 
 class UniquenessResult(NamedTuple):
     """`first`/`second` are solutions -- tuples of values aligned with the
-    `variables` passed to `check_uniqueness` -- with `second` set only when
-    `status` is "not_unique"."""
+    `variables` passed to `check_uniqueness`, or dicts with the same keys when
+    `variables` was a Mapping -- with `second` set only when `status` is
+    "not_unique"."""
 
     status: Status
-    first: tuple | None = None
-    second: tuple | None = None
+    first: tuple | dict | None = None
+    second: tuple | dict | None = None
 
     @property
     def unique(self):
         return self.status == "unique"
+
+
+_UNSOLVED = {cp_model.MODEL_INVALID: "invalid", cp_model.UNKNOWN: "timeout"}
 
 
 def _solve(model, time_limit, workers):
@@ -49,9 +54,17 @@ def _remap(retry_model, v):
     return retry_model.GetIntVarFromProtoIndex(-index - 1).Not()
 
 
+def _keyed(values, keys):
+    """`values` as a tuple, or a dict under `keys` when the caller gave names."""
+    if keys is None:
+        return values
+    return dict(zip(keys, values, strict=True))
+
+
 def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     """True (via `.unique`) iff `model` has exactly one solution over
-    `variables`. A timeout or an invalid model is reported as such and
+    `variables`, a sequence or a Mapping (solutions then come back keyed the
+    same way). A timeout or an invalid model is reported as such and
     never as unique -- a caller stripping clues that trusted either would
     drop a clue the puzzle needs.
 
@@ -59,12 +72,13 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     solution out is added to an internal copy, so the caller's model is
     safe to reuse across repeated calls.
     """
+    keys = None
+    if isinstance(variables, Mapping):
+        keys, variables = list(variables), variables.values()
     variables = list(variables)
     status, solver = _solve(model, time_limit, workers)
-    if status == cp_model.MODEL_INVALID:
-        return UniquenessResult("invalid")
-    if status == cp_model.UNKNOWN:
-        return UniquenessResult("timeout")
+    if status in _UNSOLVED:
+        return UniquenessResult(_UNSOLVED[status])
     if status == cp_model.INFEASIBLE:
         return UniquenessResult("infeasible")
     first = tuple(solver.Value(v) for v in variables)
@@ -75,11 +89,9 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     forbid(retry_model, dict(enumerate(retry_variables)), dict(enumerate(first)))
 
     status, solver = _solve(retry_model, time_limit, workers)
-    if status == cp_model.MODEL_INVALID:
-        return UniquenessResult("invalid", first)
-    if status == cp_model.UNKNOWN:
-        return UniquenessResult("timeout", first)
+    if status in _UNSOLVED:
+        return UniquenessResult(_UNSOLVED[status], _keyed(first, keys))
     if status == cp_model.INFEASIBLE:
-        return UniquenessResult("unique", first)
+        return UniquenessResult("unique", _keyed(first, keys))
     second = tuple(solver.Value(v) for v in retry_variables)
-    return UniquenessResult("not_unique", first, second)
+    return UniquenessResult("not_unique", _keyed(first, keys), _keyed(second, keys))

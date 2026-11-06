@@ -10,6 +10,7 @@ solve for one that reports it.
 
 import random
 
+import pytest
 from ortools.sat.python import cp_model
 
 from sudoku_kit import uniqueness
@@ -133,3 +134,20 @@ def test_a_negated_literal_among_the_variables_reads_as_its_own_value():
     result = check_uniqueness(m, [a, b.Not()])
     assert result.status == "not_unique"
     assert {result.first, result.second} == {(0, 0), (1, 1)}
+
+
+@pytest.mark.parametrize("negate", [False, True])
+def test_variables_given_by_name_come_back_by_name(negate):
+    # x is fixed at 2, y is free, z's literal is fixed at 1: the two solutions
+    # differ only in y, and no two names share a value, so a value filed under
+    # the wrong name fails. Under negation z reads its literal flipped.
+    m = cp_model.CpModel()
+    x = m.NewIntVar(2, 2, "x")
+    y = m.NewBoolVar("y")
+    z = m.NewBoolVar("z")
+    m.Add(z == 1)
+    result = check_uniqueness(m, {"x": x, "y": y, "z": z.Not() if negate else z})
+    assert result.status == "not_unique"
+    z_value = 0 if negate else 1
+    expected = [{"x": 2, "y": 0, "z": z_value}, {"x": 2, "y": 1, "z": z_value}]
+    assert sorted([result.first, result.second], key=lambda s: s["y"]) == expected

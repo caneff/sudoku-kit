@@ -15,7 +15,7 @@ row, column and region and gives every cell the full domain.
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, replace
 from itertools import pairwise
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, get_args
 
 from ortools.sat.python import cp_model
 
@@ -100,11 +100,6 @@ def table(cells: Iterable[Cell], tuples: Iterable[Iterable[int]]) -> Poster:
     )
 
 
-# A claim answers `claim_cells()`, the cells it names, and
-# `negations(candidates)`, one `Poster` per solve it needs, each posting that
-# solve's negation.
-
-
 class Chain(NamedTuple):
     """A rising chain: cells[0] < cells[1] < ..."""
 
@@ -171,7 +166,12 @@ class Either(NamedTuple):
             forbid(m, x, pattern, tag=i)
 
 
-ANY_GRID = Poster((), lambda m, x: None)  # A negation that rules out no grid.
+# A claim answers `claim_cells()`, the cells it names, and
+# `negations(candidates)`, one `Poster` per solve it needs, each posting that
+# solve's negation.
+Claim = Chain | Place | Either
+
+ANY_GRID = Poster((), lambda m, x: None)
 
 
 def _check_cells(cells, candidates, what):
@@ -181,8 +181,11 @@ def _check_cells(cells, candidates, what):
 
 
 def _step(candidates, registry, names, claim, given, time_limit, workers):
-    if not isinstance(claim, Chain | Place | Either):
-        raise ValueError(f"unknown claim {claim!r}: expected Chain, Place or Either")
+    if not isinstance(claim, Claim):
+        kinds = [kind.__name__ for kind in get_args(Claim)]
+        raise ValueError(
+            f"unknown claim {claim!r}: expected {', '.join(kinds[:-1])} or {kinds[-1]}"
+        )
     for cell, digits in candidates.items():
         if not digits:
             raise ValueError(f"cell {cell} has no candidates")
@@ -236,7 +239,7 @@ class Step:
     candidates: Mapping[Cell, Collection[int]]
     named: tuple[tuple[str, Poster], ...]
     given_chains: tuple[tuple[str, Poster], ...]
-    claim: Chain | Place | Either
+    claim: Claim
     time_limit: float
     workers: int
 
@@ -255,7 +258,6 @@ class Step:
         return status, s
 
     def _solve(self, negation):
-        """Solve the step with `negation` posted; `ANY_GRID` asks whether any grid is left."""
         m = cp_model.CpModel()
         x = _variables(m, self.candidates)
         for name, p in (*self.named, *self.given_chains, ("negated claim", negation)):
@@ -266,7 +268,6 @@ class Step:
         return status, {c: s.Value(v) for c, v in x.items()}
 
     def _first_grid(self, negations):
-        """The first feasible probe's grid; one timed-out probe makes the answer UNKNOWN."""
         timed_out = False
         for negation in negations:
             status, grid = self._solve(negation)
@@ -295,9 +296,6 @@ class Step:
         result = self.prove()
         if result.status in ("refuted", "timeout"):
             return IrreducibleResult(result.status, None, result.witness)
-        # The solves whose infeasibility backs the verdict: the claim's
-        # negations on "proved", the solve that rules out no grid on
-        # "contradictory".
         negations = (
             self.claim.negations(self.candidates)
             if result.status == "proved"
@@ -379,7 +377,7 @@ def prove(
     candidates: Mapping[Cell, Collection[int]],
     registry: Mapping[str, Poster],
     names: Iterable[str],
-    claim: Chain | Place | Either,
+    claim: Claim,
     *,
     given: Iterable[Chain] = (),
     time_limit: float = 10.0,
@@ -409,7 +407,7 @@ def irreducible(
     candidates: Mapping[Cell, Collection[int]],
     registry: Mapping[str, Poster],
     names: Iterable[str],
-    claim: Chain | Place | Either,
+    claim: Claim,
     *,
     given: Iterable[Chain] = (),
     time_limit: float = 10.0,
@@ -436,7 +434,7 @@ def propagation(
     candidates: Mapping[Cell, Collection[int]],
     registry: Mapping[str, Poster],
     names: Iterable[str],
-    claim: Chain | Place | Either,
+    claim: Claim,
     *,
     given: Iterable[Chain] = (),
     time_limit: float = 10.0,
