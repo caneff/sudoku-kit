@@ -57,7 +57,7 @@ def _remap(retry_model, v):
 def _read(solver, variables, keys):
     """The solution over `variables`: a tuple, or a dict under `keys`."""
     values = tuple(solver.Value(v) for v in variables)
-    return values if keys is None else dict(zip(keys, values))
+    return values if keys is None else dict(zip(keys, values, strict=True))
 
 
 def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
