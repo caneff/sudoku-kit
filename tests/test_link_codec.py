@@ -15,6 +15,7 @@ from sudoku_kit.link_codec import (
     decode_puzzle,
     encode_link,
     read_link,
+    read_puzzle,
     shorten_link,
 )
 
@@ -666,3 +667,41 @@ def test_the_size_cap_measures_the_unescaped_payload(monkeypatch):
     monkeypatch.setattr(link_codec, "MAX_PAYLOAD_CHARACTERS", len(payload))
     shorten_link(link.replace("+", "%2B"))
     assert len(app.posts) == 1
+
+
+def test_read_puzzle_reads_a_file_a_commented_file_a_link_and_a_payload(tmp_path):
+    link = read_link(str(LINKS / "house-gac.txt"))
+    expected = decode_puzzle(link)
+    commented = tmp_path / "commented.txt"
+    commented.write_text(f"# the puzzle\n{link}\n")
+    payload = link.split("puzzle=")[1]
+    for source in (str(LINKS / "house-gac.txt"), commented, link, payload):
+        assert read_puzzle(source) == expected
+
+
+def test_read_puzzle_resolves_a_short_link(monkeypatch):
+    d_link = read_link(D_LINK)
+    payload = d_link.split("puzzle=")[1]
+    network = _Network(monkeypatch, body=_answer(payload))
+    doc = read_puzzle("https://sudokumaker.app/p/bWgLDdqJLQ")
+    assert network.urls == ["https://sudokumaker.app/api/puzzles/bWgLDdqJLQ"]
+    assert doc == decode_puzzle(d_link)
+
+
+def test_read_puzzle_names_an_empty_file(tmp_path):
+    empty = tmp_path / "link.txt"
+    empty.write_text("\n")
+    with pytest.raises(ValueError, match=r"link\.txt holds no link"):
+        read_puzzle(empty)
+
+
+def test_read_puzzle_names_a_non_utf8_file(tmp_path):
+    binary = tmp_path / "link.bin"
+    binary.write_bytes(b"\xff\xfe\x00")
+    with pytest.raises(ValueError, match=r"link\.bin is not UTF-8 text"):
+        read_puzzle(binary)
+
+
+def test_read_puzzle_names_what_is_not_a_link():
+    with pytest.raises(ValueError, match="not a SudokuMaker link"):
+        read_puzzle("examples/no-such/PUZZLE_LINK.txt")
