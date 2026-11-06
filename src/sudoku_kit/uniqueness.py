@@ -31,6 +31,9 @@ class UniquenessResult(NamedTuple):
         return self.status == "unique"
 
 
+_UNSOLVED = {cp_model.MODEL_INVALID: "invalid", cp_model.UNKNOWN: "timeout"}
+
+
 def _solve(model, time_limit, workers):
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
@@ -61,10 +64,8 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     """
     variables = list(variables)
     status, solver = _solve(model, time_limit, workers)
-    if status == cp_model.MODEL_INVALID:
-        return UniquenessResult("invalid")
-    if status == cp_model.UNKNOWN:
-        return UniquenessResult("timeout")
+    if status in _UNSOLVED:
+        return UniquenessResult(_UNSOLVED[status])
     if status == cp_model.INFEASIBLE:
         return UniquenessResult("infeasible")
     first = tuple(solver.Value(v) for v in variables)
@@ -75,10 +76,8 @@ def check_uniqueness(model, variables, *, time_limit=10.0, workers=1):
     forbid(retry_model, dict(enumerate(retry_variables)), dict(enumerate(first)))
 
     status, solver = _solve(retry_model, time_limit, workers)
-    if status == cp_model.MODEL_INVALID:
-        return UniquenessResult("invalid", first)
-    if status == cp_model.UNKNOWN:
-        return UniquenessResult("timeout", first)
+    if status in _UNSOLVED:
+        return UniquenessResult(_UNSOLVED[status], first)
     if status == cp_model.INFEASIBLE:
         return UniquenessResult("unique", first)
     second = tuple(solver.Value(v) for v in retry_variables)
