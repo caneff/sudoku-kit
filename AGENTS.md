@@ -28,9 +28,7 @@ live layer.
 - **Seam**: `bash tests/all.sh`: ruff check, ruff format, the uv lock check
   and pytest over `tests/`
 - **Blind to**: the consumers. grid-hunts and sudokumaker-custom-constraints
-  each lock a commit in `uv.lock`, so a change here never runs against their
-  code until one of them moves its lock. grid-hunts still pins
-  `tag = "v0.1.0"` in `pyproject.toml`, where
-  `uv lock --upgrade-package sudoku-kit` changes nothing: drop the `tag`
-  first. sudokumaker-custom-constraints tracks main. This repo cuts no more release tags (Chris,
-  2026-11-03).
+  both track main and each lock a commit in `uv.lock`, so a change here never
+  runs against their code until one of them runs
+  `uv lock --upgrade-package sudoku-kit`. This repo cuts no more release tags
+  (Chris, 2026-11-03).
