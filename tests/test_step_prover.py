@@ -208,34 +208,35 @@ def _via_prove(candidates, registry, names, claim, given):
 
 
 BAD_INPUTS = {
-    "unknown claim": (_board(), {}, [], "A < B", ()),
-    "no candidates": (_board({(2, 1): set()}), {}, [], Chain([A, B]), ()),
+    "unknown claim": (
+        (_board(), {}, [], "A < B", ()),
+        "unknown claim 'A < B': expected Chain, Place or Either",
+    ),
+    "no candidates": (
+        (_board({(2, 1): set()}), {}, [], Chain([A, B]), ()),
+        r"cell \(2, 1\) has no candidates",
+    ),
     "named cell off board": (
-        _board(),
-        {"off": house([A, (9, 9)])},
-        ["off"],
-        Chain([A, B]),
-        (),
+        (_board(), {"off": house([A, (9, 9)])}, ["off"], Chain([A, B]), ()),
+        r"constraint 'off' names cell \(9, 9\), which is not on the board",
     ),
     "given chain cell off board": (
-        _board(),
-        {},
-        [],
-        Chain([A, B]),
-        (Chain([A, (9, 9)]),),
+        (_board(), {}, [], Chain([A, B]), (Chain([A, (9, 9)]),)),
+        r"a given chain names cell \(9, 9\), which is not on the board",
     ),
-    "claim cell off board": (_board(), {}, [], Chain([A, (9, 9)]), ()),
+    "claim cell off board": (
+        (_board(), {}, [], Chain([A, (9, 9)]), ()),
+        r"the claim names cell \(9, 9\), which is not on the board",
+    ),
 }
 
 
 @pytest.mark.parametrize("way_in", [_via_prove, _direct], ids=["prove", "Step"])
 @pytest.mark.parametrize("case", BAD_INPUTS)
 def test_both_ways_in_raise_the_same_error_for_bad_input(case, way_in):
-    with pytest.raises(ValueError) as raised:
-        way_in(*BAD_INPUTS[case])
-    with pytest.raises(ValueError) as reference:
-        _via_prove(*BAD_INPUTS[case])
-    assert str(raised.value) == str(reference.value)
+    args, message = BAD_INPUTS[case]
+    with pytest.raises(ValueError, match=f"^{message}$"):
+        way_in(*args)
 
 
 def test_any_board_size_works():
