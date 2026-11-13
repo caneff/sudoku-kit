@@ -249,14 +249,23 @@ def test_a_given_chain_cell_off_the_board_raises_naming_it():
         prove(_board(), {}, [], Chain([A, B]), given=[Chain([A, (9, 9)])])
 
 
+def test_a_poster_whose_own_dict_misses_a_board_cell_surfaces_its_own_keyerror():
+    def post(m, x):
+        {}[B]
+
+    registry = {"buggy": Poster([A], post)}
+    with pytest.raises(KeyError) as raised:
+        prove(_board(), registry, ["buggy"], Chain([A, C]))
+    assert raised.value.args == (B,)
+
+
 def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
     def post(m, x):
         m.Add(x[A] != x[B])
 
     registry = {"sneaky": Poster([A], post)}
-    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)") as raised:
+    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)"):
         prove(_board(), registry, ["sneaky"], Chain([A, C]))
-    assert isinstance(raised.value.__cause__, KeyError)
 
 
 @pytest.mark.parametrize(

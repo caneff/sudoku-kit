@@ -191,20 +191,29 @@ def _step(candidates, registry, names, claim, given, time_limit, workers):
     return Step(candidates, tuple(named), given_chains, claim, time_limit, workers)
 
 
+class _DeclaredCells(dict):
+    """The variables of the cells a poster declares. Another board cell is
+    refused here, naming the constraint; any other missing key is a plain
+    `KeyError`, the poster's own bug."""
+
+    def __init__(self, name, declared, others):
+        super().__init__(declared)
+        self._name = name
+        self._others = others
+
+    def __missing__(self, cell):
+        if cell in self._others:
+            raise ValueError(
+                f"constraint {self._name!r} uses cell {cell}, which it does not declare"
+            )
+        raise KeyError(cell)
+
+
 def _post(m, x, name, poster):
     # A poster sees only the cells it declares, so one that reaches for
-    # another fails here instead of leaving it out of the witness. Only a
-    # board cell the poster did not declare is relabelled; any other KeyError
-    # is the poster's own bug.
-    try:
-        poster.post(m, {c: x[c] for c in poster.cells})
-    except KeyError as e:
-        cell = e.args[0] if e.args else None
-        if not (isinstance(cell, tuple) and cell in x and cell not in poster.cells):
-            raise
-        raise ValueError(
-            f"constraint {name!r} uses cell {cell}, which it does not declare"
-        ) from e
+    # another fails at the lookup instead of leaving it out of the witness.
+    declared = {c: x[c] for c in poster.cells}
+    poster.post(m, _DeclaredCells(name, declared, x.keys() - declared.keys()))
 
 
 def _variables(m, candidates):
