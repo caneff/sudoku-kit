@@ -26,10 +26,9 @@ Status = Literal["proved", "refuted", "contradictory", "timeout"]
 
 
 class ProofResult(NamedTuple):
-    """`status` is "proved", "refuted", "contradictory" or "timeout". `witness` is set only on
-    "refuted": a {(row, column): digit} grid over the cells that appear in a
-    named constraint, the claim or a given chain. Other cells carry no meaning
-    and are left out."""
+    """`witness` is set only on "refuted": a {(row, column): digit} grid over
+    the cells that appear in a named constraint, the claim or a given chain.
+    Other cells carry no meaning and are left out."""
 
     status: Status
     witness: dict[Cell, int] | None = None
@@ -181,28 +180,15 @@ def _check_cells(cells, candidates, what):
 
 
 def _step(candidates, registry, names, claim, given, time_limit, workers):
-    if not isinstance(claim, Claim):
-        kinds = [kind.__name__ for kind in get_args(Claim)]
-        raise ValueError(
-            f"unknown claim {claim!r}: expected {', '.join(kinds[:-1])} or {kinds[-1]}"
-        )
-    for cell, digits in candidates.items():
-        if not digits:
-            raise ValueError(f"cell {cell} has no candidates")
     named = []
     for name in names:
         if name not in registry:
             raise ValueError(f"constraint {name!r} is not in the registry")
-        _check_cells(registry[name].cells, candidates, f"constraint {name!r}")
         named.append((name, registry[name]))
-    given_chains = []
-    for k, chain in enumerate(given, 1):
-        _check_cells(chain.cells, candidates, "a given chain")
-        given_chains.append((f"given chain {k}", chain.poster()))
-    _check_cells(claim.claim_cells(), candidates, "the claim")
-    return Step(
-        candidates, tuple(named), tuple(given_chains), claim, time_limit, workers
+    given_chains = tuple(
+        (f"given chain {k}", chain.poster()) for k, chain in enumerate(given, 1)
     )
+    return Step(candidates, tuple(named), given_chains, claim, time_limit, workers)
 
 
 def _post(m, x, name, poster):
@@ -242,6 +228,22 @@ class Step:
     claim: Claim
     time_limit: float
     workers: int
+
+    def __post_init__(self):
+        if not isinstance(self.claim, Claim):
+            kinds = [kind.__name__ for kind in get_args(Claim)]
+            raise ValueError(
+                f"unknown claim {self.claim!r}: expected "
+                f"{', '.join(kinds[:-1])} or {kinds[-1]}"
+            )
+        for cell, digits in self.candidates.items():
+            if not digits:
+                raise ValueError(f"cell {cell} has no candidates")
+        for name, poster in self.named:
+            _check_cells(poster.cells, self.candidates, f"constraint {name!r}")
+        for _, poster in self.given_chains:
+            _check_cells(poster.cells, self.candidates, "a given chain")
+        _check_cells(self.claim.claim_cells(), self.candidates, "the claim")
 
     def shown(self):
         """The cells a witness carries: those of a named constraint, the claim
