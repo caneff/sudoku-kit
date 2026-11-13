@@ -15,17 +15,38 @@ def puzzle_answer_body(puzzle):
 
 
 class ShortLinkApp:
-    """Mints an id on a POST; answers a GET with the stored payload, else the
-    last one posted."""
+    """Mints an id on a POST; answers a GET with `body` as it stands, else
+    raises `error`, else the stored payload, else the last one posted. Records
+    every request's URL and timeout."""
 
-    def __init__(self, monkeypatch, *, minted=b'{"id": "AbCdEfGhIj"}', stored=None):
+    def __init__(
+        self,
+        monkeypatch,
+        *,
+        minted=b'{"id": "AbCdEfGhIj"}',
+        stored=None,
+        body=None,
+        error=None,
+    ):
+        self.requests, self.timeouts = [], []
         self.posts, self.gets = [], []
         self._minted, self._stored = minted, stored
+        self._body, self._error = body, error
         monkeypatch.setattr(link_codec.urllib.request, "urlopen", self)
 
+    @property
+    def urls(self):
+        return [request.full_url for request in self.requests]
+
     def __call__(self, request, timeout=None):
+        self.requests.append(request)
+        self.timeouts.append(timeout)
         if request.data is None:
             self.gets.append(request)
+            if self._error is not None:
+                raise self._error
+            if self._body is not None:
+                return io.BytesIO(self._body)
             stored = self._stored
             if stored is None:
                 stored = json.loads(self.posts[-1].data)["puzzle"]
