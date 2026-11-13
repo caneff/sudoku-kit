@@ -192,9 +192,10 @@ def _step(candidates, registry, names, claim, given, time_limit, workers):
 
 
 class _DeclaredCells(dict):
-    """The variables of the cells a poster declares. Another board cell is
-    refused here, naming the constraint; any other missing key is a plain
-    `KeyError`, the poster's own bug."""
+    """The variables of the cells a poster declares. Indexing another board
+    cell is refused, naming the constraint; any other missing key is a plain
+    `KeyError`, the poster's own bug. `get`, `in` and iteration see only the
+    declared cells."""
 
     def __init__(self, name, declared, others):
         super().__init__(declared)

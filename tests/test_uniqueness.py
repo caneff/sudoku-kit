@@ -157,8 +157,9 @@ def test_a_negated_literal_variable_is_judged_correctly():
     # `a.Not()` reads 1 - a, so a == b pins (1, 0)-style pairs: with a == 1
     # the pair (a.Not(), b) is forced to (0, 1) -- unique; unpinned, two.
     m, (a, b) = _pair(pin=True)
-    assert check_uniqueness(m, [a.Not(), b]).first == (0, 1)
-    assert check_uniqueness(m, [a.Not(), b]).status == "unique"
+    result = check_uniqueness(m, [a.Not(), b])
+    assert result.status == "unique"
+    assert result.first == (0, 1)
     m, (a, b) = _pair(pin=False)
     result = check_uniqueness(m, [a.Not(), b])
     assert result.status == "not_unique"

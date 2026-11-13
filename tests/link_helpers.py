@@ -15,8 +15,8 @@ def puzzle_answer_body(puzzle):
 
 
 class ShortLinkApp:
-    """Mints an id on a POST; answers a GET with `body` as it stands, else
-    raises `error`, else the stored payload, else the last one posted. Records
+    """Mints an id on a POST; answers a GET by raising `error`, else with `body`
+    as it stands, else the stored payload, else the last one posted. Records
     every request's URL and timeout."""
 
     def __init__(
