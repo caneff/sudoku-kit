@@ -161,8 +161,8 @@ class Either(NamedTuple):
 
     def post_negation(self, m, x):
         """Post "every pattern fails" on `m`."""
-        for i, pattern in enumerate(self.patterns):
-            forbid(m, x, pattern, tag=i)
+        for pattern in self.patterns:
+            forbid(m, x, pattern)
 
 
 # A claim answers `claim_cells()`, the cells it names, and
