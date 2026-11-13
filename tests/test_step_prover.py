@@ -598,7 +598,9 @@ def test_a_repeated_cell_in_a_poster_is_tested_once(monkeypatch):
             monkeypatch, lambda: propagation(cands, registry, ["a1"], Place(B, {1}))
         )
 
-    assert solves([A, A]) == solves([A])
+    once = solves([A])
+    assert once >= 1, "the single-cell run made no solve; the counts watch nothing"
+    assert solves([A, A]) == once
 
 
 def test_irreducible_and_propagation_check_their_input_as_prove_does():
