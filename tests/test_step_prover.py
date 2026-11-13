@@ -197,6 +197,47 @@ def test_a_claim_cell_off_the_board_raises_naming_it():
         prove(_board(), {}, [], Chain([A, (9, 9)]))
 
 
+def _direct(candidates, registry, names, claim, given):
+    named = tuple((n, registry[n]) for n in names)
+    chains = tuple((f"given chain {k}", g.poster()) for k, g in enumerate(given, 1))
+    return step_prover.Step(candidates, named, chains, claim, 10.0, 1).prove()
+
+
+def _via_prove(candidates, registry, names, claim, given):
+    return prove(candidates, registry, names, claim, given=given)
+
+
+BAD_INPUTS = {
+    "unknown claim": (_board(), {}, [], "A < B", ()),
+    "no candidates": (_board({(2, 1): set()}), {}, [], Chain([A, B]), ()),
+    "named cell off board": (
+        _board(),
+        {"off": house([A, (9, 9)])},
+        ["off"],
+        Chain([A, B]),
+        (),
+    ),
+    "given chain cell off board": (
+        _board(),
+        {},
+        [],
+        Chain([A, B]),
+        (Chain([A, (9, 9)]),),
+    ),
+    "claim cell off board": (_board(), {}, [], Chain([A, (9, 9)]), ()),
+}
+
+
+@pytest.mark.parametrize("way_in", [_via_prove, _direct], ids=["prove", "Step"])
+@pytest.mark.parametrize("case", BAD_INPUTS)
+def test_both_ways_in_raise_the_same_error_for_bad_input(case, way_in):
+    with pytest.raises(ValueError) as raised:
+        way_in(*BAD_INPUTS[case])
+    with pytest.raises(ValueError) as reference:
+        _via_prove(*BAD_INPUTS[case])
+    assert str(raised.value) == str(reference.value)
+
+
 def test_any_board_size_works():
     # (0, 2) is on the board but in no constraint or claim, so the witness
     # must leave it out.
