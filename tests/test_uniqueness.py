@@ -151,3 +151,21 @@ def test_variables_given_by_name_come_back_by_name(negate):
     z_value = 0 if negate else 1
     expected = [{"x": 2, "y": 0, "z": z_value}, {"x": 2, "y": 1, "z": z_value}]
     assert sorted([result.first, result.second], key=lambda s: s["y"]) == expected
+
+
+def test_a_negated_literal_variable_is_judged_correctly():
+    # `a.Not()` reads 1 - a, so a == b pins (1, 0)-style pairs: with a == 1
+    # the pair (a.Not(), b) is forced to (0, 1) -- unique; unpinned, two.
+    m, (a, b) = _pair(pin=True)
+    result = check_uniqueness(m, [a.Not(), b])
+    assert result.status == "unique"
+    assert result.first == (0, 1)
+    m, (a, b) = _pair(pin=False)
+    result = check_uniqueness(m, [a.Not(), b])
+    assert result.status == "not_unique"
+    assert {result.first, result.second} == {(1, 0), (0, 1)}
+
+
+def test_a_model_with_no_variables_is_unique():
+    m = cp_model.CpModel()
+    assert check_uniqueness(m, []).status == "unique"

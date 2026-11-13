@@ -26,10 +26,9 @@ Status = Literal["proved", "refuted", "contradictory", "timeout"]
 
 
 class ProofResult(NamedTuple):
-    """`status` is "proved", "refuted", "contradictory" or "timeout". `witness` is set only on
-    "refuted": a {(row, column): digit} grid over the cells that appear in a
-    named constraint, the claim or a given chain. Other cells carry no meaning
-    and are left out."""
+    """`witness` is set only on "refuted": a {(row, column): digit} grid over
+    the cells that appear in a named constraint, the claim or a given chain.
+    Other cells carry no meaning and are left out."""
 
     status: Status
     witness: dict[Cell, int] | None = None
@@ -162,8 +161,8 @@ class Either(NamedTuple):
 
     def post_negation(self, m, x):
         """Post "every pattern fails" on `m`."""
-        for i, pattern in enumerate(self.patterns):
-            forbid(m, x, pattern, tag=i)
+        for pattern in self.patterns:
+            forbid(m, x, pattern)
 
 
 # A claim answers `claim_cells()`, the cells it names, and
@@ -181,44 +180,41 @@ def _check_cells(cells, candidates, what):
 
 
 def _step(candidates, registry, names, claim, given, time_limit, workers):
-    if not isinstance(claim, Claim):
-        kinds = [kind.__name__ for kind in get_args(Claim)]
-        raise ValueError(
-            f"unknown claim {claim!r}: expected {', '.join(kinds[:-1])} or {kinds[-1]}"
-        )
-    for cell, digits in candidates.items():
-        if not digits:
-            raise ValueError(f"cell {cell} has no candidates")
     named = []
     for name in names:
         if name not in registry:
             raise ValueError(f"constraint {name!r} is not in the registry")
-        _check_cells(registry[name].cells, candidates, f"constraint {name!r}")
         named.append((name, registry[name]))
-    given_chains = []
-    for k, chain in enumerate(given, 1):
-        _check_cells(chain.cells, candidates, "a given chain")
-        given_chains.append((f"given chain {k}", chain.poster()))
-    _check_cells(claim.claim_cells(), candidates, "the claim")
-    return Step(
-        candidates, tuple(named), tuple(given_chains), claim, time_limit, workers
+    given_chains = tuple(
+        (f"given chain {k}", chain.poster()) for k, chain in enumerate(given, 1)
     )
+    return Step(candidates, tuple(named), given_chains, claim, time_limit, workers)
+
+
+class _DeclaredCells(dict):
+    """The variables of the cells a poster declares. Indexing another board
+    cell is refused, naming the constraint; any other missing key is a plain
+    `KeyError`, the poster's own bug. `get`, `in` and iteration see only the
+    declared cells."""
+
+    def __init__(self, name, declared, others):
+        super().__init__(declared)
+        self._name = name
+        self._others = others
+
+    def __missing__(self, cell):
+        if cell in self._others:
+            raise ValueError(
+                f"constraint {self._name!r} uses cell {cell}, which it does not declare"
+            )
+        raise KeyError(cell)
 
 
 def _post(m, x, name, poster):
     # A poster sees only the cells it declares, so one that reaches for
-    # another fails here instead of leaving it out of the witness. Only a
-    # board cell the poster did not declare is relabelled; any other KeyError
-    # is the poster's own bug.
-    try:
-        poster.post(m, {c: x[c] for c in poster.cells})
-    except KeyError as e:
-        cell = e.args[0] if e.args else None
-        if not (isinstance(cell, tuple) and cell in x and cell not in poster.cells):
-            raise
-        raise ValueError(
-            f"constraint {name!r} uses cell {cell}, which it does not declare"
-        ) from e
+    # another fails at the lookup instead of leaving it out of the witness.
+    declared = {c: x[c] for c in poster.cells}
+    poster.post(m, _DeclaredCells(name, declared, x.keys() - declared.keys()))
 
 
 def _variables(m, candidates):
@@ -242,6 +238,22 @@ class Step:
     claim: Claim
     time_limit: float
     workers: int
+
+    def __post_init__(self):
+        if not isinstance(self.claim, Claim):
+            kinds = [kind.__name__ for kind in get_args(Claim)]
+            raise ValueError(
+                f"unknown claim {self.claim!r}: expected "
+                f"{', '.join(kinds[:-1])} or {kinds[-1]}"
+            )
+        for cell, digits in self.candidates.items():
+            if not digits:
+                raise ValueError(f"cell {cell} has no candidates")
+        for name, poster in self.named:
+            _check_cells(poster.cells, self.candidates, f"constraint {name!r}")
+        for _, poster in self.given_chains:
+            _check_cells(poster.cells, self.candidates, "a given chain")
+        _check_cells(self.claim.claim_cells(), self.candidates, "the claim")
 
     def shown(self):
         """The cells a witness carries: those of a named constraint, the claim

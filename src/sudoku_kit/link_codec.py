@@ -47,7 +47,6 @@ USER_AGENT = "sudoku-kit"
 FETCH_TIMEOUT_SECONDS = 15
 # The app refuses a longer payload (error code `puzzle_too_large`).
 MAX_PAYLOAD_CHARACTERS = 200_000
-# How much of a refused input a message quotes.
 PREVIEW_CHARACTERS = 60
 # The CDN answers a bare urllib POST with a 403; these three are the set that
 # got through. The smaller set that would is not known.

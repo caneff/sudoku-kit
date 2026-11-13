@@ -7,7 +7,6 @@ a cell no constraint or claim touches is visible as an extra key.
 """
 
 import pytest
-from ortools.sat.python import cp_model
 
 from sudoku_kit import cpsat, step_prover
 from sudoku_kit.step_prover import (
@@ -117,16 +116,6 @@ def test_an_either_claim_proved_and_refuted():
     assert result.witness in ({A: 1, B: 1}, {A: 2, B: 2})
 
 
-def test_an_either_negation_tags_each_pattern_distinctly():
-    m = cp_model.CpModel()
-    x = {A: m.NewIntVar(1, 2, "a"), B: m.NewIntVar(1, 2, "b")}
-    cells = len(m.Proto().variables)
-    Either([{A: 1, B: 2}, {A: 2, B: 1}]).post_negation(m, x)
-    names = [v.name for v in m.Proto().variables][cells:]
-    assert names
-    assert len(set(names)) == len(names)
-
-
 def test_an_either_pattern_holds_only_when_all_its_equalities_do():
     cands = _board({A: {1}, B: {1, 2}})
     claim = Either([{A: 1, B: 2}, {A: 2, B: 1}])
@@ -197,6 +186,48 @@ def test_a_claim_cell_off_the_board_raises_naming_it():
         prove(_board(), {}, [], Chain([A, (9, 9)]))
 
 
+def _direct(candidates, registry, names, claim, given):
+    named = tuple((n, registry[n]) for n in names)
+    chains = tuple((f"given chain {k}", g.poster()) for k, g in enumerate(given, 1))
+    return step_prover.Step(candidates, named, chains, claim, 10.0, 1).prove()
+
+
+def _via_prove(candidates, registry, names, claim, given):
+    return prove(candidates, registry, names, claim, given=given)
+
+
+BAD_INPUTS = {
+    "unknown claim": (
+        (_board(), {}, [], "A < B", ()),
+        "unknown claim 'A < B': expected Chain, Place or Either",
+    ),
+    "no candidates": (
+        (_board({(2, 1): set()}), {}, [], Chain([A, B]), ()),
+        r"cell \(2, 1\) has no candidates",
+    ),
+    "named cell off board": (
+        (_board(), {"off": house([A, (9, 9)])}, ["off"], Chain([A, B]), ()),
+        r"constraint 'off' names cell \(9, 9\), which is not on the board",
+    ),
+    "given chain cell off board": (
+        (_board(), {}, [], Chain([A, B]), (Chain([A, (9, 9)]),)),
+        r"a given chain names cell \(9, 9\), which is not on the board",
+    ),
+    "claim cell off board": (
+        (_board(), {}, [], Chain([A, (9, 9)]), ()),
+        r"the claim names cell \(9, 9\), which is not on the board",
+    ),
+}
+
+
+@pytest.mark.parametrize("way_in", [_via_prove, _direct], ids=["prove", "Step"])
+@pytest.mark.parametrize("case", BAD_INPUTS)
+def test_both_ways_in_raise_the_same_error_for_bad_input(case, way_in):
+    args, message = BAD_INPUTS[case]
+    with pytest.raises(ValueError, match=f"^{message}$"):
+        way_in(*args)
+
+
 def test_any_board_size_works():
     # (0, 2) is on the board but in no constraint or claim, so the witness
     # must leave it out.
@@ -218,14 +249,23 @@ def test_a_given_chain_cell_off_the_board_raises_naming_it():
         prove(_board(), {}, [], Chain([A, B]), given=[Chain([A, (9, 9)])])
 
 
+def test_a_poster_whose_own_dict_misses_a_board_cell_surfaces_its_own_keyerror():
+    def post(m, x):
+        {}[B]
+
+    registry = {"buggy": Poster([A], post)}
+    with pytest.raises(KeyError) as raised:
+        prove(_board(), registry, ["buggy"], Chain([A, C]))
+    assert raised.value.args == (B,)
+
+
 def test_a_poster_reaching_past_its_declared_cells_raises_naming_both():
     def post(m, x):
         m.Add(x[A] != x[B])
 
     registry = {"sneaky": Poster([A], post)}
-    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)") as raised:
+    with pytest.raises(ValueError, match=r"'sneaky'.*\(0, 1\)"):
         prove(_board(), registry, ["sneaky"], Chain([A, C]))
-    assert isinstance(raised.value.__cause__, KeyError)
 
 
 @pytest.mark.parametrize(
@@ -558,7 +598,9 @@ def test_a_repeated_cell_in_a_poster_is_tested_once(monkeypatch):
             monkeypatch, lambda: propagation(cands, registry, ["a1"], Place(B, {1}))
         )
 
-    assert solves([A, A]) == solves([A])
+    once = solves([A])
+    assert once >= 1, "the single-cell run made no solve; the counts watch nothing"
+    assert solves([A, A]) == once
 
 
 def test_irreducible_and_propagation_check_their_input_as_prove_does():

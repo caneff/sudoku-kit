@@ -43,8 +43,17 @@ def test_forbid_rules_out_exactly_the_named_assignment():
     while (found := _solve(m, x)) is not None:
         assert found not in seen, f"{found} came back twice: forbid struck nothing"
         seen.append(found)
-        forbid(m, x, found, tag=len(seen))
+        forbid(m, x, found)
     assert len(seen) == 9, sorted(map(sorted, (s.items() for s in seen)))
+
+
+def test_forbidding_the_empty_assignment_leaves_no_solution():
+    # The empty assignment is every assignment, so forbidding it rules out all
+    # of them: the model has no solution, and nothing raises.
+    m = cp_model.CpModel()
+    x = {"x": m.NewIntVar(1, 3, "x")}
+    forbid(m, x, {})
+    assert _solve(m, x) is None
 
 
 def test_has_second_solution_on_a_unique_and_an_ambiguous_model():
@@ -157,7 +166,7 @@ def _solutions(m, x):
     found = []
     while (a := _solve(m, x)) is not None:
         found.append(a)
-        forbid(m, x, a, tag=len(found))
+        forbid(m, x, a)
     return found
 
 
