@@ -163,3 +163,8 @@ def test_a_negated_literal_variable_is_judged_correctly():
     result = check_uniqueness(m, [a.Not(), b])
     assert result.status == "not_unique"
     assert {result.first, result.second} == {(1, 0), (0, 1)}
+
+
+def test_a_model_with_no_variables_is_unique():
+    m = cp_model.CpModel()
+    assert check_uniqueness(m, []).status == "unique"

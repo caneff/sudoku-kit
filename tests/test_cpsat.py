@@ -47,6 +47,15 @@ def test_forbid_rules_out_exactly_the_named_assignment():
     assert len(seen) == 9, sorted(map(sorted, (s.items() for s in seen)))
 
 
+def test_forbidding_the_empty_assignment_leaves_no_solution():
+    # The empty assignment is every assignment, so forbidding it rules out all
+    # of them: the model has no solution, and nothing raises.
+    m = cp_model.CpModel()
+    x = {"x": m.NewIntVar(1, 3, "x")}
+    forbid(m, x, {})
+    assert _solve(m, x) is None
+
+
 def test_has_second_solution_on_a_unique_and_an_ambiguous_model():
     m, x = _model(6)
     assert has_second_solution(m, x, _solve(m, x), 10) is False

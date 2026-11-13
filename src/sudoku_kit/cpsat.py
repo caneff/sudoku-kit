@@ -61,11 +61,14 @@ def forbid(m, x, assignment):
 
     `x` maps a cell to its variable, keyed however the caller keys cells --
     (row, column) pairs in the generators, board indices in a link check. Only
-    the cells `assignment` names are constrained.
+    the cells `assignment` names are constrained. The empty assignment is every
+    assignment, so forbidding it leaves `m` with no solution.
     """
-    cells = list(assignment)
+    if not assignment:
+        m.AddBoolOr([])
+        return
     m.AddForbiddenAssignments(
-        [x[c] for c in cells], [tuple(assignment[c] for c in cells)]
+        [x[c] for c in assignment], [tuple(assignment.values())]
     )
 
 
