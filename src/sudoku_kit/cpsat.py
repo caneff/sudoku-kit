@@ -67,9 +67,7 @@ def forbid(m, x, assignment):
     if not assignment:
         m.AddBoolOr([])
         return
-    m.AddForbiddenAssignments(
-        [x[c] for c in assignment], [tuple(assignment.values())]
-    )
+    m.AddForbiddenAssignments([x[c] for c in assignment], [tuple(assignment.values())])
 
 
 def check_valid(status, m):
