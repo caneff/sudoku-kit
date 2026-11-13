@@ -43,7 +43,7 @@ def test_forbid_rules_out_exactly_the_named_assignment():
     while (found := _solve(m, x)) is not None:
         assert found not in seen, f"{found} came back twice: forbid struck nothing"
         seen.append(found)
-        forbid(m, x, found, tag=len(seen))
+        forbid(m, x, found)
     assert len(seen) == 9, sorted(map(sorted, (s.items() for s in seen)))
 
 
@@ -157,7 +157,7 @@ def _solutions(m, x):
     found = []
     while (a := _solve(m, x)) is not None:
         found.append(a)
-        forbid(m, x, a, tag=len(found))
+        forbid(m, x, a)
     return found
 
 

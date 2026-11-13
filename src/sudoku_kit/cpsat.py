@@ -56,23 +56,17 @@ def solver(limit, reproducible=True, seed=0, randomize=False, workers=None):
     return s
 
 
-def forbid(m, x, assignment, tag=""):
+def forbid(m, x, assignment):
     """Rule `assignment` out of model `m`: some cell must differ from it.
 
     `x` maps a cell to its variable, keyed however the caller keys cells --
     (row, column) pairs in the generators, board indices in a link check. Only
-    the cells `assignment` names are constrained. `tag` distinguishes the
-    literals when one model is forbidden more than once; CP-SAT does not
-    require distinct names, but a duplicate makes the model unreadable in a
-    dump.
+    the cells `assignment` names are constrained.
     """
-    lits = []
-    for cell, v in assignment.items():
-        b = m.NewBoolVar(f"d{tag}_{cell}")
-        m.Add(x[cell] != v).OnlyEnforceIf(b)
-        m.Add(x[cell] == v).OnlyEnforceIf(b.Not())
-        lits.append(b)
-    m.AddBoolOr(lits)
+    cells = list(assignment)
+    m.AddForbiddenAssignments(
+        [x[c] for c in cells], [tuple(assignment[c] for c in cells)]
+    )
 
 
 def check_valid(status, m):
