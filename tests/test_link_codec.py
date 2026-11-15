@@ -649,3 +649,82 @@ def test_read_puzzle_names_a_non_utf8_file(tmp_path):
 def test_read_puzzle_names_what_is_not_a_link():
     with pytest.raises(ValueError, match="not a SudokuMaker link"):
         read_puzzle("examples/no-such/PUZZLE_LINK.txt")
+
+
+def too_many_requests(retry_after=None):
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    return urllib.error.HTTPError("u", 429, "Too Many Requests", headers, None)
+
+
+@pytest.fixture
+def waits(monkeypatch):
+    seconds = []
+    monkeypatch.setattr(link_codec.time, "sleep", seconds.append)
+    return seconds
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "wait"),
+    [("7", 7), (" 12 ", 12), (None, 60), ("soon", 60), ("-5", 60), ("1.5", 60)],
+)
+def test_shorten_waits_out_a_429_on_the_post_and_retries_once(
+    monkeypatch, waits, capsys, retry_after, wait
+):
+    app = ShortLinkApp(monkeypatch, refusals=[too_many_requests(retry_after)])
+    assert (
+        shorten_link(LINKS / "fillomino.txt") == "https://sudokumaker.app/p/AbCdEfGhIj"
+    )
+    assert waits == [wait]
+    assert len(app.posts) == 2
+    assert app.posts[0] is app.posts[1]
+    err = capsys.readouterr().err.strip().splitlines()
+    assert len(err) == 1
+    assert "429" in err[0] and str(wait) in err[0]
+
+
+def test_read_link_waits_out_a_429_on_the_resolve_get_and_retries_once(
+    monkeypatch, waits, capsys
+):
+    payload = "Dx"
+    app = ShortLinkApp(
+        monkeypatch,
+        body=puzzle_answer_body(payload),
+        refusals=[too_many_requests("3")],
+    )
+    assert read_link("https://sudokumaker.app/p/abc123").endswith(payload)
+    assert waits == [3]
+    assert len(app.gets) == 2
+    assert "429" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("retry_after", "shown"),
+    [
+        ("30", "Retry-After: 30"),
+        (None, "no Retry-After"),
+        ("soon", "Retry-After: soon"),
+    ],
+)
+def test_a_second_429_raises_with_the_retry_after_it_carried(
+    monkeypatch, waits, retry_after, shown
+):
+    app = ShortLinkApp(
+        monkeypatch,
+        refusals=[too_many_requests("1"), too_many_requests(retry_after)],
+    )
+    with pytest.raises(ValueError, match=r"answered 429 Too Many Requests") as error:
+        shorten_link(LINKS / "fillomino.txt")
+    assert shown in str(error.value)
+    assert waits == [1]
+    assert len(app.posts) == 2
+
+
+def test_other_statuses_are_not_retried(monkeypatch, waits):
+    app = ShortLinkApp(
+        monkeypatch,
+        refusals=[urllib.error.HTTPError("u", 503, "Unavailable", {}, None)],
+    )
+    with pytest.raises(ValueError, match="answered 503"):
+        shorten_link(LINKS / "fillomino.txt")
+    assert waits == []
+    assert len(app.posts) == 1
