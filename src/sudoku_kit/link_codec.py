@@ -26,6 +26,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -48,6 +49,8 @@ FETCH_TIMEOUT_SECONDS = 15
 # The app refuses a longer payload (error code `puzzle_too_large`).
 MAX_PAYLOAD_CHARACTERS = 200_000
 PREVIEW_CHARACTERS = 60
+# A 429 with no usable Retry-After waits this long before its one retry.
+DEFAULT_RETRY_AFTER_SECONDS = 60
 # The CDN answers a bare urllib POST with a 403; these three are the set that
 # got through. The smaller set that would is not known.
 BROWSER_HEADERS = {
@@ -132,13 +135,55 @@ def _resolve_short_link(host, link_id):
 
 
 def _answer_field(request, field, what, where):
-    """The non-empty string `field` of the JSON object the app answers with."""
+    """The non-empty string `field` of the JSON object the app answers with.
+
+    A 429 waits the server's `Retry-After` seconds (`DEFAULT_RETRY_AFTER_SECONDS`
+    when the header is missing or not a whole number of seconds), says so on
+    stderr, and sends the same request once more. The app refused the request,
+    so a retry cannot mint a second record. A second 429 raises like any other
+    refusal, naming the `Retry-After` it carried.
+    """
+    try:
+        return _fetch_field(request, field, what, where)
+    except urllib.error.HTTPError as refusal:
+        wait = _retry_after_seconds(refusal.headers.get("Retry-After"))
+        print(
+            f"{where} answered 429; waiting {wait} s, then retrying once",
+            file=sys.stderr,
+        )
+        try:
+            time.sleep(wait)
+        except OverflowError as error:
+            raise ValueError(
+                _too_many_requests(where, refusal, "too long to wait")
+            ) from error
+    try:
+        return _fetch_field(request, field, what, where)
+    except urllib.error.HTTPError as refusal:
+        raise ValueError(_too_many_requests(where, refusal)) from refusal
+
+
+def _too_many_requests(where, refusal, note=""):
+    header = refusal.headers.get("Retry-After")
+    carried = "no Retry-After" if header is None else f"Retry-After: {header}"
+    return f"{where} answered 429 {refusal.reason} ({carried}{', ' + note if note else ''})"
+
+
+def _retry_after_seconds(header):
+    if header is not None and re.fullmatch(r"[0-9]+", header.strip()):
+        return int(header)
+    return DEFAULT_RETRY_AFTER_SECONDS
+
+
+def _fetch_field(request, field, what, where):
     try:
         with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT_SECONDS) as response:
             value = json.load(response)[field]
         if not isinstance(value, str) or not value:
             raise ValueError(f"the {field} is not a string")
     except urllib.error.HTTPError as error:
+        if error.code == 429:
+            raise  # `_answer_field` waits and retries
         raise ValueError(f"{where} answered {error.code} {error.reason}") from error
     except (KeyError, RecursionError, TypeError, ValueError) as error:
         raise ValueError(f"{where} answered no {what}") from error

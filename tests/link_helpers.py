@@ -17,7 +17,8 @@ def puzzle_answer_body(puzzle):
 class ShortLinkApp:
     """Mints an id on a POST; answers a GET by raising `error`, else with `body`
     as it stands, else the stored payload, else the last one posted. Records
-    every request's URL and timeout."""
+    every request's URL and timeout. `refusals` are raised, one per request in
+    order, after recording the request, so a test scripts "429, then fine"."""
 
     def __init__(
         self,
@@ -27,11 +28,13 @@ class ShortLinkApp:
         stored=None,
         body=None,
         error=None,
+        refusals=(),
     ):
         self.requests, self.timeouts = [], []
         self.posts, self.gets = [], []
         self._minted, self._stored = minted, stored
         self._body, self._error = body, error
+        self._refusals = list(refusals)
         monkeypatch.setattr(link_codec.urllib.request, "urlopen", self)
 
     @property
@@ -41,8 +44,11 @@ class ShortLinkApp:
     def __call__(self, request, timeout=None):
         self.requests.append(request)
         self.timeouts.append(timeout)
-        if request.data is None:
-            self.gets.append(request)
+        is_get = request.data is None
+        (self.gets if is_get else self.posts).append(request)
+        if self._refusals:
+            raise self._refusals.pop(0)
+        if is_get:
             if self._error is not None:
                 raise self._error
             if self._body is not None:
@@ -51,7 +57,6 @@ class ShortLinkApp:
             if stored is None:
                 stored = json.loads(self.posts[-1].data)["puzzle"]
             return io.BytesIO(puzzle_answer_body(stored))
-        self.posts.append(request)
         if isinstance(self._minted, Exception):
             raise self._minted
         return io.BytesIO(self._minted)
