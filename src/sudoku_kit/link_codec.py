@@ -137,35 +137,36 @@ def _resolve_short_link(host, link_id):
 def _answer_field(request, field, what, where):
     """The non-empty string `field` of the JSON object the app answers with.
 
-    A 429 waits the server's `Retry-After` seconds (60 when the header is
-    missing or not a whole number of seconds), says so on stderr, and sends the
-    same request once more. The app refused the request, so a retry cannot mint
-    a second record. A second 429 raises like any other refusal, naming the
-    `Retry-After` it carried.
+    A 429 waits the server's `Retry-After` seconds (`DEFAULT_RETRY_AFTER_SECONDS`
+    when the header is missing or not a whole number of seconds), says so on
+    stderr, and sends the same request once more. The app refused the request,
+    so a retry cannot mint a second record. A second 429 raises like any other
+    refusal, naming the `Retry-After` it carried.
     """
     try:
         return _fetch_field(request, field, what, where)
-    except _TooManyRequests as refusal:
-        wait = _retry_after_seconds(refusal.retry_after)
+    except urllib.error.HTTPError as refusal:
+        wait = _retry_after_seconds(refusal.headers.get("Retry-After"))
         print(
             f"{where} answered 429; waiting {wait} s, then retrying once",
             file=sys.stderr,
         )
-        time.sleep(wait)
+        try:
+            time.sleep(wait)
+        except OverflowError as error:
+            raise ValueError(
+                _too_many_requests(where, refusal, "too long to wait")
+            ) from error
     try:
         return _fetch_field(request, field, what, where)
-    except _TooManyRequests as refusal:
-        header = refusal.retry_after
-        carried = "no Retry-After" if header is None else f"Retry-After: {header}"
-        raise ValueError(
-            f"{where} answered 429 Too Many Requests ({carried})"
-        ) from None
+    except urllib.error.HTTPError as refusal:
+        raise ValueError(_too_many_requests(where, refusal)) from refusal
 
 
-class _TooManyRequests(Exception):
-    def __init__(self, retry_after):
-        super().__init__(retry_after)
-        self.retry_after = retry_after
+def _too_many_requests(where, refusal, note=""):
+    header = refusal.headers.get("Retry-After")
+    carried = "no Retry-After" if header is None else f"Retry-After: {header}"
+    return f"{where} answered 429 {refusal.reason} ({carried}{', ' + note if note else ''})"
 
 
 def _retry_after_seconds(header):
@@ -182,7 +183,7 @@ def _fetch_field(request, field, what, where):
             raise ValueError(f"the {field} is not a string")
     except urllib.error.HTTPError as error:
         if error.code == 429:
-            raise _TooManyRequests(error.headers.get("Retry-After")) from error
+            raise  # `_answer_field` waits and retries
         raise ValueError(f"{where} answered {error.code} {error.reason}") from error
     except (KeyError, RecursionError, TypeError, ValueError) as error:
         raise ValueError(f"{where} answered no {what}") from error

@@ -728,3 +728,18 @@ def test_other_statuses_are_not_retried(monkeypatch, waits):
         shorten_link(LINKS / "fillomino.txt")
     assert waits == []
     assert len(app.posts) == 1
+
+
+def test_an_oversized_retry_after_is_a_value_error_not_an_overflow(monkeypatch):
+    app = ShortLinkApp(monkeypatch, refusals=[too_many_requests("9" * 20)])
+    with pytest.raises(ValueError, match=r"answered 429.*9{20}.*too long") as error:
+        shorten_link(LINKS / "fillomino.txt")
+    assert len(app.posts) == 1
+    assert isinstance(error.value.__cause__, OverflowError)
+
+
+def test_a_second_429_keeps_the_http_error_as_its_cause(monkeypatch, waits):
+    ShortLinkApp(monkeypatch, refusals=[too_many_requests(), too_many_requests()])
+    with pytest.raises(ValueError) as error:
+        shorten_link(LINKS / "fillomino.txt")
+    assert isinstance(error.value.__cause__, urllib.error.HTTPError)
