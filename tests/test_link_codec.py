@@ -665,7 +665,15 @@ def waits(monkeypatch):
 
 @pytest.mark.parametrize(
     ("retry_after", "wait"),
-    [("7", 7), (" 12 ", 12), (None, 60), ("soon", 60), ("-5", 60), ("1.5", 60)],
+    [
+        ("7", 7),
+        (" 12 ", 12),
+        ("300", 300),
+        (None, 60),
+        ("soon", 60),
+        ("-5", 60),
+        ("1.5", 60),
+    ],
 )
 def test_shorten_waits_out_a_429_on_the_post_and_retries_once(
     monkeypatch, waits, capsys, retry_after, wait
@@ -730,12 +738,29 @@ def test_other_statuses_are_not_retried(monkeypatch, waits):
     assert len(app.posts) == 1
 
 
-def test_an_oversized_retry_after_is_a_value_error_not_an_overflow(monkeypatch):
-    app = ShortLinkApp(monkeypatch, refusals=[too_many_requests("9" * 20)])
-    with pytest.raises(ValueError, match=r"answered 429.*9{20}.*too long") as error:
+@pytest.mark.parametrize("retry_after", ["301", "86400", "9" * 20])
+def test_a_retry_after_over_the_cap_refuses_without_sleeping(
+    monkeypatch, waits, capsys, retry_after
+):
+    app = ShortLinkApp(monkeypatch, refusals=[too_many_requests(retry_after)])
+    with pytest.raises(ValueError, match=r"answered 429") as error:
         shorten_link(LINKS / "fillomino.txt")
+    assert f"Retry-After: {retry_after}" in str(error.value)
+    assert "over the 300 s cap" in str(error.value)
+    assert isinstance(error.value.__cause__, urllib.error.HTTPError)
+    assert waits == []
     assert len(app.posts) == 1
-    assert isinstance(error.value.__cause__, OverflowError)
+    assert capsys.readouterr().err == ""
+
+
+def test_read_link_refuses_a_retry_after_over_the_cap_without_sleeping(
+    monkeypatch, waits
+):
+    app = ShortLinkApp(monkeypatch, refusals=[too_many_requests("86400")])
+    with pytest.raises(ValueError, match=r"Retry-After: 86400.*over the 300 s cap"):
+        read_link("https://sudokumaker.app/p/abc123")
+    assert waits == []
+    assert len(app.gets) == 1
 
 
 def test_a_second_429_keeps_the_http_error_as_its_cause(monkeypatch, waits):

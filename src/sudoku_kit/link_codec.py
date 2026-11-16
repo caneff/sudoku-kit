@@ -51,6 +51,8 @@ MAX_PAYLOAD_CHARACTERS = 200_000
 PREVIEW_CHARACTERS = 60
 # A 429 with no usable Retry-After waits this long before its one retry.
 DEFAULT_RETRY_AFTER_SECONDS = 60
+# A longer Retry-After is refused at once instead of slept (Chris, 2026-11-15).
+MAX_RETRY_AFTER_SECONDS = 300
 # The CDN answers a bare urllib POST with a 403; these three are the set that
 # got through. The smaller set that would is not known.
 BROWSER_HEADERS = {
@@ -141,22 +143,21 @@ def _answer_field(request, field, what, where):
     when the header is missing or not a whole number of seconds), says so on
     stderr, and sends the same request once more. The app refused the request,
     so a retry cannot mint a second record. A second 429 raises like any other
-    refusal, naming the `Retry-After` it carried.
+    refusal, naming the `Retry-After` it carried. A `Retry-After` over
+    `MAX_RETRY_AFTER_SECONDS` raises the same refusal at once, without waiting.
     """
     try:
         return _fetch_field(request, field, what, where)
     except urllib.error.HTTPError as refusal:
         wait = _retry_after_seconds(refusal.headers.get("Retry-After"))
+        if wait > MAX_RETRY_AFTER_SECONDS:
+            note = f"over the {MAX_RETRY_AFTER_SECONDS} s cap"
+            raise ValueError(_too_many_requests(where, refusal, note)) from refusal
         print(
             f"{where} answered 429; waiting {wait} s, then retrying once",
             file=sys.stderr,
         )
-        try:
-            time.sleep(wait)
-        except OverflowError as error:
-            raise ValueError(
-                _too_many_requests(where, refusal, "too long to wait")
-            ) from error
+        time.sleep(wait)
     try:
         return _fetch_field(request, field, what, where)
     except urllib.error.HTTPError as refusal:
