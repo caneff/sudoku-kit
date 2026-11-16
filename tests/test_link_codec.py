@@ -753,6 +753,16 @@ def test_a_retry_after_over_the_cap_refuses_without_sleeping(
     assert capsys.readouterr().err == ""
 
 
+def test_read_link_refuses_a_retry_after_over_the_cap_without_sleeping(
+    monkeypatch, waits
+):
+    app = ShortLinkApp(monkeypatch, refusals=[too_many_requests("86400")])
+    with pytest.raises(ValueError, match=r"Retry-After: 86400.*over the 300 s cap"):
+        read_link("https://sudokumaker.app/p/abc123")
+    assert waits == []
+    assert len(app.gets) == 1
+
+
 def test_a_second_429_keeps_the_http_error_as_its_cause(monkeypatch, waits):
     ShortLinkApp(monkeypatch, refusals=[too_many_requests(), too_many_requests()])
     with pytest.raises(ValueError) as error:

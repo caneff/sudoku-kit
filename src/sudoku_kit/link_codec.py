@@ -141,10 +141,10 @@ def _answer_field(request, field, what, where):
 
     A 429 waits the server's `Retry-After` seconds (`DEFAULT_RETRY_AFTER_SECONDS`
     when the header is missing or not a whole number of seconds), says so on
-    stderr, and sends the same request once more. A `Retry-After` over
-    `MAX_RETRY_AFTER_SECONDS` raises at once without waiting. The app refused the request,
+    stderr, and sends the same request once more. The app refused the request,
     so a retry cannot mint a second record. A second 429 raises like any other
-    refusal, naming the `Retry-After` it carried.
+    refusal, naming the `Retry-After` it carried. A `Retry-After` over
+    `MAX_RETRY_AFTER_SECONDS` raises the same refusal at once, without waiting.
     """
     try:
         return _fetch_field(request, field, what, where)
