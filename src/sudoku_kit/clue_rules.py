@@ -12,6 +12,17 @@ doubler or Schrodinger value reads. A line rule's `cells` are in path order
 (a thermo's bulb first; a lockout line's two ends first and last).
 Rule types are added as the solve guide's test set needs them.
 
+The sum and outside-clue rules copy gridfind's `arrow`, `cage` with
+`group_sum`, `numbered_rooms` and `offset_adjacency`; gridfind has no skyscraper
+or little-killer layer, so those two follow their stated rules. Cells are
+[row, column] pairs, and an outside clue's cell is one step off the board (row
+or column -1, or n), a variable with digits 1..n like any other. An arrow's
+`cells` are its bulb's then its shaft's, its one value the bulb's length (a
+pill of two or more reads as a number, first cell most significant). A
+skyscraper's and a numbered room's `cells` are the outside cell, then the
+line from the clue inward, over a board whose lines are n cells long (a
+numbered room's near digit may name any of them).
+
 The line rules post only comparisons between the cells' variables, so they
 need no board size: a lockout's smallest end gap is the clue's value (gridfind
 derived it from the board, size // 2), and a whisper's smallest step is its
@@ -151,6 +162,116 @@ def lockout(clue):
     return Poster(tuple(cells), post)
 
 
+def _clue_cells(clue, minimum, values):
+    """The clue's cells, refusing fewer than `minimum` and any count of values
+    but `values`."""
+    cells = [tuple(cell) for cell in clue["cells"]]
+    if len(cells) < minimum or len(clue["values"]) != values:
+        raise ValueError(
+            f"clue {clue['id']!r} ({clue['rule']}) needs {minimum} or more cells "
+            f"and {values} value(s), got cells {clue['cells']} and values "
+            f"{clue['values']}"
+        )
+    return cells
+
+
+def arrow(clue):
+    """The shaft's digits sum to the bulb: its one value is the bulb's length,
+    the first cells; two or more read as a number, first cell most
+    significant. The shaft may repeat digits."""
+    cells = _clue_cells(clue, 2, 1)
+    width = clue["values"][0]
+    if not 1 <= width < len(cells):
+        raise ValueError(
+            f"clue {clue['id']!r} (arrow) has bulb length {width} over "
+            f"{len(cells)} cells: it needs a bulb and a shaft"
+        )
+
+    def post(m, x):
+        bulb = sum(x[c] * 10 ** (width - 1 - i) for i, c in enumerate(cells[:width]))
+        m.Add(sum(x[c] for c in cells[width:]) == bulb)
+
+    return Poster(tuple(cells), post)
+
+
+def killer_cage(clue):
+    """The cage's digits all differ and sum to the clue's value."""
+    cells = _clue_cells(clue, 2, 1)
+
+    def post(m, x):
+        m.AddAllDifferent([x[c] for c in cells])
+        m.Add(sum(x[c] for c in cells) == clue["values"][0])
+
+    return Poster(tuple(cells), post)
+
+
+def little_killer(clue):
+    """The diagonal's digits sum to the clue's value; repeats are allowed."""
+    cells = _clue_cells(clue, 2, 1)
+
+    def post(m, x):
+        m.Add(sum(x[c] for c in cells) == clue["values"][0])
+
+    return Poster(tuple(cells), post)
+
+
+def skyscraper(clue):
+    """The outside cell holds how many digits of the line show from the clue:
+    a digit shows when it is taller than every digit before it."""
+    cells = _clue_cells(clue, 2, 0)
+    line = cells[1:]
+
+    def post(m, x):
+        shown = 1
+        for i, cell in enumerate(line[1:], 1):
+            taller = []
+            for j, before in enumerate(line[:i]):
+                above = m.NewBoolVar(f"{clue['id']}.{i}>{j}")
+                m.Add(x[cell] > x[before]).OnlyEnforceIf(above)
+                m.Add(x[cell] <= x[before]).OnlyEnforceIf(above.Not())
+                taller.append(above)
+            seen = m.NewBoolVar(f"{clue['id']}.seen{i}")
+            m.AddBoolAnd(taller).OnlyEnforceIf(seen)
+            m.AddBoolOr([above.Not() for above in taller]).OnlyEnforceIf(seen.Not())
+            shown += seen
+        m.Add(x[cells[0]] == shown)
+
+    return Poster(tuple(cells), post)
+
+
+def numbered_rooms(clue):
+    """The outside cell holds the digit the line holds at the position its near
+    cell's digit names: near cell 3 puts the outside digit third from the
+    clue."""
+    cells = _clue_cells(clue, 2, 0)
+    outside, line = cells[0], cells[1:]
+
+    def post(m, x):
+        near = x[line[0]]
+        m.Add(near <= len(line))
+        for position, cell in enumerate(line, 1):
+            names = m.NewBoolVar(f"{clue['id']}.names{position}")
+            m.Add(near == position).OnlyEnforceIf(names)
+            m.Add(near != position).OnlyEnforceIf(names.Not())
+            m.Add(x[cell] == x[outside]).OnlyEnforceIf(names)
+
+    return Poster(tuple(cells), post)
+
+
+def anti_knight(clue):
+    """The two cells, a chess knight's move apart, differ."""
+    a, b = _clue_cells(clue, 2, 0)[:2]
+    if len(clue["cells"]) != 2:
+        raise ValueError(
+            f"clue {clue['id']!r} (anti_knight) needs two cells, got {clue['cells']}"
+        )
+
+    def post(m, x):
+        m.Add(x[a] != x[b])
+
+    return Poster((a, b), post)
+
+
 RULES = {
     "difference": difference,
     "ratio": ratio,
@@ -159,6 +280,12 @@ RULES = {
     "renban": renban,
     "whisper": whisper,
     "lockout": lockout,
+    "arrow": arrow,
+    "killer_cage": killer_cage,
+    "little_killer": little_killer,
+    "skyscraper": skyscraper,
+    "numbered_rooms": numbered_rooms,
+    "anti_knight": anti_knight,
 }
 
 
