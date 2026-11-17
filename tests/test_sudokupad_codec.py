@@ -179,7 +179,12 @@ def test_a_file_that_holds_no_scl_is_refused_naming_the_file(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "body", [LZString().compressToBase64("[1]"), LZString().compressToBase64("{oops")]
+    "body",
+    [
+        LZString().compressToBase64("[1]"),
+        # Not JSON, so it falls through to the loader, which needs the recording.
+        pytest.param(LZString().compressToBase64("{oops"), marks=needs_app),
+    ],
 )
 def test_a_body_that_is_not_a_puzzle_object_names_the_input(body):
     with pytest.raises(ValueError, match="the-link"):
