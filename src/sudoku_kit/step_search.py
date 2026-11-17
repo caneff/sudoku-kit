@@ -29,7 +29,9 @@ Ties go to the earlier constraint in the registry and the earlier cell, so a
 run and a resumed run take the same path. Each proof runs under the proof
 limit; one that times out is recorded and the search goes on without it. When
 no claim proves at the last ring, the search records a stuck point, the grid
-and candidates there, and stops: it never guesses.
+and candidates there, and stops: it never guesses. A hint, a claim and the
+constraints it names, is proved with `prove` and appended as a step when
+proved; the search then goes on from it.
 
 The step record is a JSON object:
 
@@ -39,12 +41,13 @@ The step record is a JSON object:
   step as a given chain) or `{"either": [[[cell, digit], ...], ...]}`.
 - `timeouts`: each `{"step", "claim", "named"}`, `step` the index of the step
   being searched for when the proof timed out.
-- `stuck`: null, or `{"grid", "candidates"}`: n rows of digits, 0 where the
-  cell is unsolved, and n rows of each cell's candidate list.
+- `stuck`: null, or `{"grid", "candidates", "outside"}`: n rows of digits, 0
+  where the cell is unsolved; n rows of each cell's candidate list; and each
+  outside cell as `{"cell", "candidates"}`. Outside cells are searched like
+  grid cells, and a path is finished only when they are solved too.
 """
 
 import json
-import os
 from pathlib import Path
 
 from sudoku_kit import rules_file
@@ -58,9 +61,7 @@ def claim_to_json(claim):
         return {"cell": list(claim.cell), "digits": sorted(claim.digits)}
     if isinstance(claim, Chain):
         return {"chain": [list(c) for c in claim.cells]}
-    return {
-        "either": [[[list(c), d] for c, d in p.items()] for p in claim.patterns]
-    }
+    return {"either": [[[list(c), d] for c, d in p.items()] for p in claim.patterns]}
 
 
 def claim_from_json(data):
@@ -73,9 +74,7 @@ def claim_from_json(data):
         if "chain" in data:
             return Chain(tuple(tuple(c) for c in data["chain"]))
         if "either" in data:
-            return Either(
-                tuple({tuple(c): d for c, d in p} for p in data["either"])
-            )
+            return Either(tuple({tuple(c): d for c, d in p} for p in data["either"]))
     except (KeyError, TypeError, ValueError) as e:
         raise ValueError(f"claim {data!r} is malformed: {e}") from e
     raise ValueError(f"claim {data!r} has none of cell, chain or either")
@@ -105,7 +104,7 @@ def save_record(record, path):
     path = Path(path)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(record, indent=1) + "\n")
-    os.replace(tmp, path)
+    tmp.replace(path)
 
 
 class State:
@@ -114,8 +113,10 @@ class State:
     def __init__(self, rules):
         n = rules["size"]
         self.size = n
+        # Outside cells are variables too; leaving them out would let a proof
+        # skip a clue's digit beside the grid.
         self.candidates = {
-            (r, c): frozenset(range(1, n + 1)) for r in range(n) for c in range(n)
+            cell: frozenset(range(1, n + 1)) for cell in rules_file.cells(rules)
         }
         for given in rules["givens"]:
             self.candidates[tuple(given["cell"])] = frozenset([given["digit"]])
@@ -133,9 +134,15 @@ class State:
     def snapshot(self):
         n = self.size
         rows = [[sorted(self.candidates[r, c]) for c in range(n)] for r in range(n)]
+        on_grid = {(r, c) for r in range(n) for c in range(n)}
         return {
             "grid": [[d[0] if len(d) == 1 else 0 for d in row] for row in rows],
             "candidates": rows,
+            "outside": [
+                {"cell": list(cell), "candidates": sorted(digits)}
+                for cell, digits in sorted(self.candidates.items())
+                if cell not in on_grid
+            ],
         }
 
 
@@ -203,7 +210,11 @@ class Search:
         """{cell: digits} that constraint `name` alone removes, each digit
         proved gone by `prove` from `name` only."""
         cells = self.registry[name].cells
-        key = (name, tuple(self.state.candidates[c] for c in cells), len(self.state.given))
+        key = (
+            name,
+            tuple(self.state.candidates[c] for c in cells),
+            len(self.state.given),
+        )
         if key not in self.cache:
             removed = {}
             for cell in cells:
@@ -278,8 +289,13 @@ class Search:
                     if len(result.irreducible_set) == 2:
                         return claim, result.irreducible_set
                     found.append(
-                        (len(result.irreducible_set), len(claim.digits) != 1,
-                         cell, claim, result.irreducible_set)
+                        (
+                            len(result.irreducible_set),
+                            len(claim.digits) != 1,
+                            cell,
+                            claim,
+                            result.irreducible_set,
+                        )
                     )
             if found:
                 *_, claim, named = min(found, key=lambda f: f[:3])
@@ -299,6 +315,22 @@ class Search:
         )
         self.record["stuck"] = None
         save_record(self.record, self.path)
+
+    def hint(self, claim, named):
+        """Prove `claim` from the constraints `named`; when proved, append it
+        as a step by "hint". Returns `prove`'s result. Raises ValueError for a
+        name that is not a house or clue, or a cell not on the board."""
+        result = prove(
+            self.state.candidates,
+            self.registry,
+            named,
+            claim,
+            given=self.state.given,
+            time_limit=self.limit,
+        )
+        if result.status == "proved":
+            self.take(claim, named, by="hint")
+        return result
 
     def run(self, max_steps=None):
         """Search until solved, stuck, or `max_steps` steps taken this run.

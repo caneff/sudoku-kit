@@ -9,7 +9,10 @@ holding `cells` is puzzle JSON; one holding `size` is a rules file. Writes
 `rules.json` and `checks.json` (`rules_file.check`) into the output
 directory. When the checks pass it runs the step search (`step_search`),
 saving `steps.json`, the step record, after every step; a `steps.json`
-already there is resumed from.
+already there is resumed from. `--hint` gives a claim, as the step record
+writes one, and `--named` each constraint it uses: the hint is proved from
+those alone and appended before the search goes on; a hint not proved is
+reported (a refuted one with its witness) and nothing is searched.
 
 Exits 0 when the search reached the solution or stopped at `--max-steps`, 1
 when a check failed, 2 when the input or a hint cannot be read or imported
@@ -56,8 +59,13 @@ def main(argv=None):
     parser.add_argument(
         "--proof-limit", type=float, default=60.0, help="seconds per search proof"
     )
+    parser.add_argument("--max-steps", type=int, help="stop after this many new steps")
+    parser.add_argument("--hint", help="a claim as JSON, proved before the search")
     parser.add_argument(
-        "--max-steps", type=int, help="stop after this many new steps"
+        "--named",
+        action="append",
+        default=[],
+        help="a constraint the hint uses; repeat for each",
     )
     args = parser.parse_args(argv)
     try:
@@ -86,15 +94,33 @@ def _search(rules, args):
     path = args.output / "steps.json"
     try:
         record = step_search.load_record(path)
+        search = step_search.Search(rules, record, path, args.proof_limit)
+        if args.hint is not None:
+            claim = step_search.claim_from_json(_hint_json(args.hint))
+            result = search.hint(claim, args.named)
     except ValueError as e:
         print(f"solve-guide: {e}", file=sys.stderr)
         return 2
-    search = step_search.Search(rules, record, path, args.proof_limit)
+    if args.hint is not None and result.status != "proved":
+        print(f"hint: {result.status}")
+        if result.witness:
+            cells = " ".join(
+                f"{rules_file.cell_name(c)}={d}" for c, d in result.witness.items()
+            )
+            print(f"witness: {cells}")
+        return 4
     outcome = search.run(args.max_steps)
     steps = record["steps"]
     hard = sum(step["hard"] for step in steps)
     print(f"search: {outcome} after {len(steps)} steps ({hard} hard)")
     return 3 if outcome == "stuck" else 0
+
+
+def _hint_json(text):
+    try:
+        return json.loads(text)
+    except ValueError as e:
+        raise ValueError(f"hint {text[:60]!r} is not JSON: {e}") from e
 
 
 if __name__ == "__main__":

@@ -36,7 +36,8 @@ from sudoku_kit.uniqueness import check_uniqueness
 REQUIRED = ("size", "regions", "givens", "clues")
 
 
-def _name(cell):
+def cell_name(cell):
+    """A cell as r<row>c<column>, counted from 1."""
     return f"r{cell[0] + 1}c{cell[1] + 1}"
 
 
@@ -48,7 +49,9 @@ def _outside_cells(rules):
     return list(dict.fromkeys(cell for cell in named if cell not in on_grid))
 
 
-def _cells(rules):
+def cells(rules):
+    """Every cell that is a solver variable: the grid's, row by row, then the
+    outside cells."""
     n = rules["size"]
     return [(r, c) for r in range(n) for c in range(n)] + _outside_cells(rules)
 
@@ -175,7 +178,7 @@ def registry(rules):
 def _model(rules, named):
     m = cp_model.CpModel()
     n = rules["size"]
-    x = {cell: m.NewIntVar(1, n, _name(cell)) for cell in _cells(rules)}
+    x = {cell: m.NewIntVar(1, n, cell_name(cell)) for cell in cells(rules)}
     for poster in named.values():
         poster.post(m, {cell: x[cell] for cell in poster.cells})
     return m, x
@@ -213,7 +216,7 @@ def _check_solution(rules, named, time_limit):
         for entry in rules.get("solution_outside") or []
     }
     failing = [
-        f"given {_name(given['cell'])}"
+        f"given {cell_name(given['cell'])}"
         for given in rules["givens"]
         if solution[given["cell"][0]][given["cell"][1]] != given["digit"]
     ]
