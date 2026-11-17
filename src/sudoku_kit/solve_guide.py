@@ -2,8 +2,10 @@
 
     python -m sudoku_kit.solve_guide <input> <output directory>
 
-`<input>` is a SudokuPad link, short id, encoded string or link file
-(imported by `sudokupad_import`), or a `.json` rules file. Writes
+`<input>` is a SudokuPad link, short id, encoded string or link file, or a
+`.json` file holding the puzzle JSON `sudokupad_codec.read_puzzle` returns
+(each imported by `sudokupad_import`), or a `.json` rules file. A `.json`
+holding `cells` is puzzle JSON; one holding `size` is a rules file. Writes
 `rules.json` and `checks.json` (`rules_file.check`) into the output
 directory. Exits 0 when every check that ran passed, 1 when one failed, and 2
 when the input cannot be read or imported, writing nothing.
@@ -19,7 +21,18 @@ from sudoku_kit import rules_file, sudokupad_codec, sudokupad_import
 
 def _read(source):
     if source.endswith(".json"):
-        return rules_file.load(source)
+        try:
+            data = json.loads(Path(source).read_text())
+        except ValueError as e:
+            raise ValueError(f"{source} is not JSON: {e}") from e
+        if isinstance(data, dict) and "cells" in data:
+            return sudokupad_import.rules_file(data)
+        if isinstance(data, dict) and "size" in data:
+            return rules_file.load(source)
+        raise ValueError(
+            f"{source} is neither SudokuPad puzzle JSON (no cells) nor a rules "
+            "file (no size)"
+        )
     return sudokupad_import.rules_file(sudokupad_codec.read_puzzle(source))
 
 

@@ -2,20 +2,30 @@
 on Diagonal Dots (Logic Masters 000HUJ, `tests/solve_guide/`, copied from the
 lmd-archive backup).
 
+The cases read the puzzle JSON committed beside the link, so they run with no
+node and no recording of SudokuPad's app; the link's body decodes only through
+SudokuPad's loader. One case, which needs both, pins the link to that JSON.
+
 The expected clues are read off the puzzle's picture: eight dots, each on a
 grid corner, each joining both diagonal pairs around that corner.
 """
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
-from lzstring import LZString
 
 from sudoku_kit import sudokupad_codec
 from sudoku_kit.solve_guide import main
 
-DIAGONAL_DOTS = Path(__file__).parent / "solve_guide" / "diagonal-dots-000HUJ.txt"
+FIXTURES = Path(__file__).parent / "solve_guide"
+DIAGONAL_DOTS = FIXTURES / "diagonal-dots-000HUJ.json"
+DIAGONAL_DOTS_LINK = FIXTURES / "diagonal-dots-000HUJ.txt"
+needs_app = pytest.mark.skipif(
+    not shutil.which("node") or not Path(sudokupad_codec.default_har()).exists(),
+    reason="node, or the recording of SudokuPad's app, is missing",
+)
 SOLUTION = "534162612543256431143256325614461325"
 
 
@@ -63,6 +73,28 @@ def test_diagonal_dots_imports_to_a_rules_file_that_passes_both_checks(tmp_path)
     assert _clue(rules, "difference", [0, 3], [1, 2])["values"] == [1]
 
 
+@needs_app
+def test_the_committed_puzzle_json_is_what_the_link_decodes_to():
+    decoded = sudokupad_codec.read_puzzle(str(DIAGONAL_DOTS_LINK))
+    assert decoded == json.loads(DIAGONAL_DOTS.read_text())
+
+
+@needs_app
+def test_the_link_and_its_puzzle_json_import_to_the_same_rules_file(tmp_path):
+    _, from_link, _ = _run(DIAGONAL_DOTS_LINK, tmp_path / "link")
+    _, from_json, _ = _run(DIAGONAL_DOTS, tmp_path / "json")
+    assert from_link == from_json
+
+
+def test_a_json_file_that_is_neither_a_puzzle_nor_a_rules_file_is_refused(
+    tmp_path, capsys
+):
+    source = tmp_path / "other.json"
+    source.write_text(json.dumps({"hello": 1}))
+    assert main([str(source), str(tmp_path / "out")]) == 2
+    assert str(source) in capsys.readouterr().err
+
+
 def test_a_rules_file_with_one_dot_flipped_fails_a_check_naming_the_clue(tmp_path):
     _run(DIAGONAL_DOTS, tmp_path / "first")
     rules = json.loads((tmp_path / "first" / "rules.json").read_text())
@@ -93,11 +125,11 @@ def test_a_rules_file_with_no_single_solution_fails_the_uniqueness_check(tmp_pat
 
 
 def _link_file(tmp_path, change):
-    """Diagonal Dots re-encoded as a plain scl link file after `change(puzzle)`."""
-    puzzle = sudokupad_codec.read_puzzle(str(DIAGONAL_DOTS))
+    """Diagonal Dots' puzzle JSON, written to a file after `change(puzzle)`."""
+    puzzle = json.loads(DIAGONAL_DOTS.read_text())
     change(puzzle)
-    path = tmp_path / "changed.txt"
-    path.write_text("scl" + LZString().compressToBase64(json.dumps(puzzle)))
+    path = tmp_path / "changed.json"
+    path.write_text(json.dumps(puzzle))
     return path
 
 

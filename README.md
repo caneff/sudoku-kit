@@ -44,7 +44,8 @@ and grid-hunts. Neither imports the step prover.
   dots (orthogonal or diagonal) as a rules file, the rules text picking each
   colour's reading. It refuses any shape it does not read.
 - `sudoku_kit.solve_guide`: the command line, `uv run solve-guide <input>
-  <output directory>`: imports a SudokuPad link or reads a rules `.json`,
+  <output directory>`: imports a SudokuPad link or a `.json` of its puzzle JSON,
+  or reads a rules `.json`,
   then writes `rules.json` and `checks.json`; exit 1 when a check fails.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
