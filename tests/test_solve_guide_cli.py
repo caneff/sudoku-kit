@@ -339,3 +339,15 @@ def test_dutch_dots_link_decodes_to_its_committed_puzzle_json():
     assert sudokupad_codec.read_puzzle(str(DUTCH_DOTS_LINK)) == json.loads(
         DUTCH_DOTS.read_text()
     )
+
+
+def test_a_thermo_drawn_from_its_tip_to_its_bulb_is_written_bulb_first(tmp_path):
+    def reversed_lines(puzzle):
+        for line in puzzle["lines"]:
+            if line["color"] == "#aaaf":
+                line["wayPoints"].reverse()
+
+    assert main([str(_cool_s(tmp_path, reversed_lines)), str(tmp_path)]) == 0
+    rules = json.loads((tmp_path / "rules.json").read_text())
+    starts = sorted(c["cells"][0] for c in _by_rule(rules, "slow_thermo"))
+    assert starts == [[4, 8], [5, 6]]
