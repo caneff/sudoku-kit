@@ -32,6 +32,20 @@ and grid-hunts. Neither imports the step prover.
   shrinks a proved step to an irreducible set of constraints, and
   `propagation` checks whether propagation alone proves it. `house` and
   `table` build the constraints; a caller registers its own with `Poster`.
+- `sudoku_kit.rules_file`: the rules file, the one puzzle format the solve
+  guide reads: grid size, regions, givens, an optional solution and clues.
+  `load`, `validate`, `registry` (every house and clue as a named constraint
+  for the step prover) and `check` (exactly one solution; the stored solution
+  fits every named constraint).
+- `sudoku_kit.clue_rules`: per-clue rule functions, each turning one clue into
+  a step prover `Poster`: `difference` and `ratio` (Kropki dots), ported from
+  gridfind.
+- `sudoku_kit.sudokupad_import`: `rules_file`, a SudokuPad puzzle with Kropki
+  dots (orthogonal or diagonal) as a rules file, the rules text picking each
+  colour's reading. It refuses any shape it does not read.
+- `sudoku_kit.solve_guide`: the command line, `uv run solve-guide <input>
+  <output directory>`: imports a SudokuPad link or reads a rules `.json`,
+  then writes `rules.json` and `checks.json`; exit 1 when a check fails.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
 

@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = ["lzstring>=1.0.4", "ortools>=9.15"]
 
+[project.scripts]
+solve-guide = "sudoku_kit.solve_guide:main"
+
 [dependency-groups]
 dev = ["pytest", "ruff"]
 
