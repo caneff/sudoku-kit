@@ -89,9 +89,9 @@ def test_a_broken_second_difference_clue_breaks_the_whole_board():
 
 
 def test_the_difference_is_absolute_either_cell_may_hold_the_larger_digit():
-    # The first cell holds the larger digit: a directed `a - b == k` would
+    # The first cell holds the smaller digit: a directed `a - b == k` would
     # refuse it; the absolute relation must not.
-    grid = _solve([_difference([R1C1, R1C2], 4)], {R1C1: 9})
+    grid = _solve([_difference([R1C1, R1C2], 4)], {R1C1: 1})
     assert grid is not None
     assert grid[R1C2] == 5
 

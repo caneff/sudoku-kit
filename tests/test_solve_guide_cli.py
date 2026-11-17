@@ -109,7 +109,7 @@ def test_rules_text_naming_no_reading_for_a_dot_colour_is_refused(tmp_path, caps
         )
 
     assert main([str(_link_file(tmp_path, no_black_reading)), str(tmp_path)]) == 2
-    assert "black" in capsys.readouterr().err
+    assert "gives no reading for a black dot" in capsys.readouterr().err
     assert not (tmp_path / "rules.json").exists()
 
 
