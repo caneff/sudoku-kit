@@ -8,7 +8,13 @@ A rules file is a JSON object:
 - `givens`: a list of `{"cell": [row, column], "digit": d}`.
 - `solution`: optional, n rows of n digits.
 - `clues`: a list of clues, each `{"id", "rule", "cells", "values"}`, `rule` a
-  key of `clue_rules.RULES` and `id` stable and unique.
+  key of `clue_rules.RULES` and `id` stable and unique. A clue's cells may
+  include outside cells, one step off the grid ([row, -1] or [row, size], and
+  the same for columns): a clue digit the solver writes beside the grid, a
+  variable with digits 1..n that no row, column or region holds.
+- `solution_outside`: optional, `{"cell": [row, column], "digit": d}` for each
+  outside cell a clue uses, read when `solution` is. Stored apart from
+  `solution`, which stays n rows of n digits.
 - `title` and `rules_text`: optional, the source's title and rules text.
 
 `validate` refuses a malformed one, naming what is wrong. `registry` gives
@@ -34,9 +40,17 @@ def _name(cell):
     return f"r{cell[0] + 1}c{cell[1] + 1}"
 
 
+def _outside_cells(rules):
+    """The outside cells the clues name, in order of first use."""
+    n = rules["size"]
+    on_grid = {(r, c) for r in range(n) for c in range(n)}
+    named = (tuple(cell) for clue in rules["clues"] for cell in clue["cells"])
+    return list(dict.fromkeys(cell for cell in named if cell not in on_grid))
+
+
 def _cells(rules):
     n = rules["size"]
-    return [(r, c) for r in range(n) for c in range(n)]
+    return [(r, c) for r in range(n) for c in range(n)] + _outside_cells(rules)
 
 
 def _on_board(rules, cell, what):
@@ -49,6 +63,24 @@ def _on_board(rules, cell, what):
         raise ValueError(
             f"{what} names cell {cell!r}, which is not on the {n}x{n} grid"
         )
+
+
+def _is_outside(rules, cell):
+    """True for a cell one step off the grid, beside a row's or a column's end."""
+    n = rules["size"]
+    if not (
+        isinstance(cell, list | tuple)
+        and len(cell) == 2
+        and all(isinstance(i, int) for i in cell)
+    ):
+        return False
+    row, column = cell
+    return (row in (-1, n) and 0 <= column < n) or (column in (-1, n) and 0 <= row < n)
+
+
+def _in_clue(rules, cell, what):
+    if not _is_outside(rules, cell):
+        _on_board(rules, cell, what)
 
 
 def validate(rules):
@@ -80,8 +112,30 @@ def validate(rules):
             raise ValueError(f"clue id {clue.get('id')!r} is used twice")
         seen.add(clue["id"])
         for cell in clue["cells"]:
-            _on_board(rules, cell, f"clue {clue['id']!r}")
+            _in_clue(rules, cell, f"clue {clue['id']!r}")
         clue_rules.poster(clue)
+    _validate_outside_solution(rules)
+
+
+def _validate_outside_solution(rules):
+    n = rules["size"]
+    stored = rules.get("solution_outside") or []
+    for entry in stored:
+        if not _is_outside(rules, entry["cell"]):
+            raise ValueError(
+                f"solution_outside names cell {entry['cell']!r}, which is not "
+                f"beside the {n}x{n} grid"
+            )
+        if entry["digit"] not in range(1, n + 1):
+            raise ValueError(f"solution_outside {entry!r} is not a digit 1..{n}")
+    if rules.get("solution") is not None:
+        held = {tuple(entry["cell"]) for entry in stored}
+        missing = [c for c in _outside_cells(rules) if c not in held]
+        if missing:
+            raise ValueError(
+                f"the rules file has a solution but no solution_outside for "
+                f"{[list(c) for c in missing]}"
+            )
 
 
 def load(path):
@@ -135,10 +189,10 @@ def _check_unique(rules, named, time_limit):
     return {"status": result.status, "passed": result.unique}
 
 
-def _fits(poster, solution, time_limit):
+def _fits(poster, digit_at, time_limit):
     """True when the poster's constraint holds on its cells' solution digits."""
     m = cp_model.CpModel()
-    x = {cell: m.NewConstant(solution[cell[0]][cell[1]]) for cell in poster.cells}
+    x = {cell: m.NewConstant(digit_at[cell]) for cell in poster.cells}
     poster.post(m, x)
     status = solver(time_limit).Solve(m)
     check_valid(status, m)
@@ -151,6 +205,13 @@ def _check_solution(rules, named, time_limit):
     solution = rules.get("solution")
     if solution is None:
         return {"passed": None, "failing": []}
+    digit_at = {
+        (r, c): digit for r, row in enumerate(solution) for c, digit in enumerate(row)
+    }
+    digit_at |= {
+        tuple(entry["cell"]): entry["digit"]
+        for entry in rules.get("solution_outside") or []
+    }
     failing = [
         f"given {_name(given['cell'])}"
         for given in rules["givens"]
@@ -159,7 +220,7 @@ def _check_solution(rules, named, time_limit):
     failing += [
         name
         for name, poster in named.items()
-        if not _fits(poster, solution, time_limit)
+        if not _fits(poster, digit_at, time_limit)
     ]
     return {"passed": not failing, "failing": failing}
 

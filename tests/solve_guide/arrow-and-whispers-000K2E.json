@@ -1,0 +1,763 @@
+{
+ "id": "sxsm_ChinStrap_331b18168bedc86dd8a69e14f4fce763",
+ "metadata": {
+  "source": "Sudoku Maker v2024.08.18-67a6588",
+  "title": "The Arrow and the Whispers Should Be Friends",
+  "author": "ChinStrap ",
+  "rules": "Normal sudoku rules apply.\n\nDutch Whispers: Adjacent digits along an orange Dutch Whispers line must differ by at least 4.\n\nArrows: Digits on an arrow sum to the 2 digit number its pill, read top to bottom or left to right.\n\nWhite Kropki Dots: Digits separated by a white Kropki dot are consecutive.\n",
+  "solution": "487269351152738496369451827271694583548372619936185274614827935893516742725943168"
+ },
+ "cages": [],
+ "cellSize": 50,
+ "cells": [
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {
+    "value": 6
+   },
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ]
+ ],
+ "regions": [
+  [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    0,
+    2
+   ],
+   [
+    1,
+    0
+   ],
+   [
+    1,
+    1
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    2,
+    0
+   ],
+   [
+    2,
+    1
+   ],
+   [
+    2,
+    2
+   ]
+  ],
+  [
+   [
+    0,
+    3
+   ],
+   [
+    0,
+    4
+   ],
+   [
+    0,
+    5
+   ],
+   [
+    1,
+    3
+   ],
+   [
+    1,
+    4
+   ],
+   [
+    1,
+    5
+   ],
+   [
+    2,
+    3
+   ],
+   [
+    2,
+    4
+   ],
+   [
+    2,
+    5
+   ]
+  ],
+  [
+   [
+    0,
+    6
+   ],
+   [
+    0,
+    7
+   ],
+   [
+    0,
+    8
+   ],
+   [
+    1,
+    6
+   ],
+   [
+    1,
+    7
+   ],
+   [
+    1,
+    8
+   ],
+   [
+    2,
+    6
+   ],
+   [
+    2,
+    7
+   ],
+   [
+    2,
+    8
+   ]
+  ],
+  [
+   [
+    3,
+    0
+   ],
+   [
+    3,
+    1
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    4,
+    0
+   ],
+   [
+    4,
+    1
+   ],
+   [
+    4,
+    2
+   ],
+   [
+    5,
+    0
+   ],
+   [
+    5,
+    1
+   ],
+   [
+    5,
+    2
+   ]
+  ],
+  [
+   [
+    3,
+    3
+   ],
+   [
+    3,
+    4
+   ],
+   [
+    3,
+    5
+   ],
+   [
+    4,
+    3
+   ],
+   [
+    4,
+    4
+   ],
+   [
+    4,
+    5
+   ],
+   [
+    5,
+    3
+   ],
+   [
+    5,
+    4
+   ],
+   [
+    5,
+    5
+   ]
+  ],
+  [
+   [
+    3,
+    6
+   ],
+   [
+    3,
+    7
+   ],
+   [
+    3,
+    8
+   ],
+   [
+    4,
+    6
+   ],
+   [
+    4,
+    7
+   ],
+   [
+    4,
+    8
+   ],
+   [
+    5,
+    6
+   ],
+   [
+    5,
+    7
+   ],
+   [
+    5,
+    8
+   ]
+  ],
+  [
+   [
+    6,
+    0
+   ],
+   [
+    6,
+    1
+   ],
+   [
+    6,
+    2
+   ],
+   [
+    7,
+    0
+   ],
+   [
+    7,
+    1
+   ],
+   [
+    7,
+    2
+   ],
+   [
+    8,
+    0
+   ],
+   [
+    8,
+    1
+   ],
+   [
+    8,
+    2
+   ]
+  ],
+  [
+   [
+    6,
+    3
+   ],
+   [
+    6,
+    4
+   ],
+   [
+    6,
+    5
+   ],
+   [
+    7,
+    3
+   ],
+   [
+    7,
+    4
+   ],
+   [
+    7,
+    5
+   ],
+   [
+    8,
+    3
+   ],
+   [
+    8,
+    4
+   ],
+   [
+    8,
+    5
+   ]
+  ],
+  [
+   [
+    6,
+    6
+   ],
+   [
+    6,
+    7
+   ],
+   [
+    6,
+    8
+   ],
+   [
+    7,
+    6
+   ],
+   [
+    7,
+    7
+   ],
+   [
+    7,
+    8
+   ],
+   [
+    8,
+    6
+   ],
+   [
+    8,
+    7
+   ],
+   [
+    8,
+    8
+   ]
+  ]
+ ],
+ "lines": [
+  {
+   "wayPoints": [
+    [
+     1.5,
+     7.5
+    ],
+    [
+     1.5,
+     2.5
+    ],
+    [
+     2.5,
+     2.5
+    ],
+    [
+     1.5,
+     1.5
+    ]
+   ],
+   "color": "#ffa600ff",
+   "thickness": 10
+  },
+  {
+   "wayPoints": [
+    [
+     2.5,
+     4.5
+    ],
+    [
+     2.5,
+     8.5
+    ],
+    [
+     3.5,
+     8.5
+    ],
+    [
+     3.5,
+     7.5
+    ]
+   ],
+   "color": "#ffa600ff",
+   "thickness": 10
+  },
+  {
+   "wayPoints": [
+    [
+     6.5,
+     7.5
+    ],
+    [
+     5.5,
+     7.5
+    ],
+    [
+     5.5,
+     6.5
+    ]
+   ],
+   "color": "#ffa600ff",
+   "thickness": 10
+  },
+  {
+   "wayPoints": [
+    [
+     4.5,
+     6.5
+    ],
+    [
+     4.5,
+     1.5
+    ]
+   ],
+   "color": "#ffa600ff",
+   "thickness": 10
+  },
+  {
+   "wayPoints": [
+    [
+     6.5,
+     1.5
+    ],
+    [
+     8.5,
+     1.5
+    ]
+   ],
+   "color": "#ffa600ff",
+   "thickness": 10
+  },
+  {
+   "wayPoints": [
+    [
+     8.5,
+     3.5
+    ],
+    [
+     7.5,
+     3.5
+    ],
+    [
+     7.5,
+     4.5
+    ]
+   ],
+   "color": "#ffa600ff",
+   "thickness": 10
+  }
+ ],
+ "overlays": [
+  {
+   "center": [
+    1,
+    0.5
+   ],
+   "width": 1.82,
+   "height": 0.82,
+   "stroke": "none",
+   "thickness": 1,
+   "angle": 90,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#aaaf"
+  },
+  {
+   "center": [
+    3,
+    0.5
+   ],
+   "width": 1.82,
+   "height": 0.82,
+   "stroke": "none",
+   "thickness": 1,
+   "angle": 90,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#aaaf"
+  },
+  {
+   "center": [
+    4.5,
+    8
+   ],
+   "width": 1.82,
+   "height": 0.82,
+   "stroke": "none",
+   "thickness": 1,
+   "angle": 0,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#aaaf"
+  },
+  {
+   "center": [
+    8.5,
+    7
+   ],
+   "width": 1.82,
+   "height": 0.82,
+   "stroke": "none",
+   "thickness": 1,
+   "angle": 0,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#aaaf"
+  },
+  {
+   "center": [
+    5.5,
+    4
+   ],
+   "width": 1.82,
+   "height": 0.82,
+   "stroke": "none",
+   "thickness": 1,
+   "angle": 0,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#aaaf"
+  },
+  {
+   "center": [
+    0.5,
+    2
+   ],
+   "width": 0.34,
+   "height": 0.34,
+   "stroke": "none",
+   "thickness": 1,
+   "text": "",
+   "color": "#000000",
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "center": [
+    3,
+    0.5
+   ],
+   "width": 0.34,
+   "height": 0.34,
+   "stroke": "none",
+   "thickness": 1,
+   "text": "",
+   "color": "#000000",
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "center": [
+    2,
+    8.5
+   ],
+   "width": 0.34,
+   "height": 0.34,
+   "stroke": "none",
+   "thickness": 1,
+   "text": "",
+   "color": "#000000",
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  }
+ ],
+ "arrows": [
+  {
+   "wayPoints": [
+    [
+     0.5,
+     0.899
+    ],
+    [
+     0.5,
+     8.5
+    ]
+   ],
+   "headLength": 0.35,
+   "color": "#aaaf",
+   "thickness": 3
+  },
+  {
+   "wayPoints": [
+    [
+     3.5,
+     0.899
+    ],
+    [
+     3.5,
+     6.5
+    ]
+   ],
+   "headLength": 0.35,
+   "color": "#aaaf",
+   "thickness": 3
+  },
+  {
+   "wayPoints": [
+    [
+     4.899,
+     8.5
+    ],
+    [
+     8.5,
+     8.5
+    ]
+   ],
+   "headLength": 0.35,
+   "color": "#aaaf",
+   "thickness": 3
+  },
+  {
+   "wayPoints": [
+    [
+     8.101,
+     6.5
+    ],
+    [
+     6.5,
+     6.5
+    ]
+   ],
+   "headLength": 0.35,
+   "color": "#aaaf",
+   "thickness": 3
+  },
+  {
+   "wayPoints": [
+    [
+     5.5,
+     3.101
+    ],
+    [
+     5.5,
+     0.5
+    ]
+   ],
+   "headLength": 0.35,
+   "color": "#aaaf",
+   "thickness": 3
+  }
+ ]
+}

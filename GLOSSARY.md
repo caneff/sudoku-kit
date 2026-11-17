@@ -81,6 +81,13 @@ stable id, a rule type, its cells and its values. Each clue is one named
 constraint a step can use; rows, columns and regions are the others.
 _Avoid_: Constraint (for one drawn mark), element, shape
 
+**Outside cell**:
+A cell one step off the grid, beside the end of a row or column, that a clue
+names: a skyscraper's or numbered room's clue digit, or an arrow's bulb. A
+variable with digits 1..n that no house holds. A rules file's
+`solution_outside` stores its solved digit.
+_Avoid_: Border cell, ring cell, clue cell
+
 **Step record**:
 The saved list of steps a solve-path search has made so far, each with its
 claim and named constraints, plus any proofs that timed out. A stopped search

@@ -38,11 +38,16 @@ and grid-hunts. Neither imports the step prover.
   for the step prover) and `check` (exactly one solution; the stored solution
   fits every named constraint).
 - `sudoku_kit.clue_rules`: per-clue rule functions, each turning one clue into
-  a step prover `Poster`: `difference` and `ratio` (Kropki dots), ported from
-  gridfind.
-- `sudoku_kit.sudokupad_import`: `rules_file`, a SudokuPad puzzle with Kropki
-  dots (orthogonal or diagonal) as a rules file, the rules text picking each
-  colour's reading. It refuses any shape it does not read.
+  a step prover `Poster`: `difference` and `ratio` (Kropki dots), the line
+  rules (thermo, slow thermo, renban, whisper, lockout), and the sum and
+  outside-clue rules (arrow, killer cage, little killer, skyscraper, numbered
+  rooms, anti-knight), ported from gridfind where it has a layer.
+- `sudoku_kit.sudokupad_import`: `rules_file`, a SudokuPad puzzle as a rules
+  file: Kropki dots, coloured lines, arrows, killer cages, little killers,
+  skyscrapers, numbered rooms and anti-knight, the rules text picking each
+  reading. A sheet with a ring of outside clue cells is read by its regions;
+  an outside cell is one step off the grid in the rules file. It refuses any
+  shape it does not read.
 - `sudoku_kit.solve_guide`: the command line, `uv run solve-guide <input>
   <output directory>`: imports a SudokuPad link or a `.json` of its puzzle JSON,
   or reads a rules `.json`,
