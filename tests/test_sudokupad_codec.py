@@ -160,7 +160,7 @@ def test_a_scl_query_url_keeps_a_plus_in_its_base64():
 def test_a_foreign_host_is_refused_without_a_fetch(monkeypatch):
     seen = serve(monkeypatch, scl(PLAIN))
 
-    with pytest.raises(ValueError, match="evil.example"):
+    with pytest.raises(ValueError, match=r"evil\.example"):
         sudokupad_codec.read_puzzle("https://evil.example/og8j5c3tiw")
     assert seen == []
 
@@ -258,7 +258,7 @@ def test_a_string_back_from_the_loader_is_a_failure_naming_the_input(stub_app):
 
 @needs_node
 def test_an_error_thrown_by_the_loader_names_the_input_too(stub_app):
-    with pytest.raises(ValueError, match="the-link.*the loader threw on fpuzzlesboom"):
+    with pytest.raises(ValueError, match=r"the-link.*the loader threw on fpuzzlesboom"):
         sudokupad_codec.decode("fpuzzlesboom", "the-link")
 
 
@@ -289,7 +289,7 @@ def test_a_recording_without_the_loader_names_the_missing_file(tmp_path, monkeyp
         sudokupad_codec.decode("fpuzzlesABC", "src")
 
 
-def hoisted(puzzle, monkeypatch=None):
+def hoisted(puzzle):
     return sudokupad_codec.decode("fpuzzles" + json.dumps(puzzle), "src").puzzle
 
 
