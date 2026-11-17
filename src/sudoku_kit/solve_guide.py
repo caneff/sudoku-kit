@@ -7,8 +7,14 @@
 (each imported by `sudokupad_import`), or a `.json` rules file. A `.json`
 holding `cells` is puzzle JSON; one holding `size` is a rules file. Writes
 `rules.json` and `checks.json` (`rules_file.check`) into the output
-directory. Exits 0 when every check that ran passed, 1 when one failed, and 2
-when the input cannot be read or imported, writing nothing.
+directory. When the checks pass it runs the step search (`step_search`),
+saving `steps.json`, the step record, after every step; a `steps.json`
+already there is resumed from.
+
+Exits 0 when the search reached the solution or stopped at `--max-steps`, 1
+when a check failed, 2 when the input or a hint cannot be read or imported
+(writing nothing), 3 when the search is stuck, and 4 when a hint was not
+proved.
 """
 
 import argparse
@@ -16,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from sudoku_kit import rules_file, sudokupad_codec, sudokupad_import
+from sudoku_kit import rules_file, step_search, sudokupad_codec, sudokupad_import
 
 
 def _read(source):
@@ -45,7 +51,13 @@ def main(argv=None):
     parser.add_argument("input", help="SudokuPad link or file, or a rules .json")
     parser.add_argument("output", type=Path, help="directory to write into")
     parser.add_argument(
-        "--time-limit", type=float, default=60.0, help="seconds per solve"
+        "--time-limit", type=float, default=60.0, help="seconds per check solve"
+    )
+    parser.add_argument(
+        "--proof-limit", type=float, default=60.0, help="seconds per search proof"
+    )
+    parser.add_argument(
+        "--max-steps", type=int, help="stop after this many new steps"
     )
     args = parser.parse_args(argv)
     try:
@@ -65,7 +77,24 @@ def main(argv=None):
         print(f"solution fits: {'yes' if fits['passed'] else 'no'}")
         for name in fits["failing"]:
             print(f"  the stored solution breaks {name}")
-    return 0 if rules_file.passed(checks) else 1
+    if not rules_file.passed(checks):
+        return 1
+    return _search(rules, args)
+
+
+def _search(rules, args):
+    path = args.output / "steps.json"
+    try:
+        record = step_search.load_record(path)
+    except ValueError as e:
+        print(f"solve-guide: {e}", file=sys.stderr)
+        return 2
+    search = step_search.Search(rules, record, path, args.proof_limit)
+    outcome = search.run(args.max_steps)
+    steps = record["steps"]
+    hard = sum(step["hard"] for step in steps)
+    print(f"search: {outcome} after {len(steps)} steps ({hard} hard)")
+    return 3 if outcome == "stuck" else 0
 
 
 if __name__ == "__main__":
