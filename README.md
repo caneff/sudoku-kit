@@ -18,6 +18,14 @@ and grid-hunts. Neither imports the step prover.
   (or a file holding one) with one POST and checks it resolves back to the
   payload sent; `uv run --directory <repo> python -m sudoku_kit.link_codec
   shorten <link-or-file>...` prints one per source.
+- `sudoku_kit.sudokupad_codec`: the SudokuPad link reader. `read_puzzle` returns the puzzle
+  JSON (cells, regions, cages, lines, arrows, overlays, underlays, metadata including any
+  stored solution) that a SudokuPad link, short id, bare `scl`/`ctc`/`fpuzzles`/`fpuz` string
+  or a file holding one stands for; `decode` also returns the form the link carried. A short
+  id is resolved with one GET of `sudokupad.app/api/puzzle/<id>`. A plain `scl` body decodes
+  in Python; the other forms run SudokuPad's own loader in `node` over a recording of the app
+  (`$SUDOKUPAD_HAR`, else `~/.cache/sudokupad-art/sudokupad.har`), so they need `node` and
+  that recording.
 - `sudoku_kit.step_prover`: `prove`, which reports whether a step's claim
   (`Chain`, `Place` or `Either`) is `proved` from its named constraints,
   `refuted` with a witness, `contradictory` or `timeout`. `irreducible`
