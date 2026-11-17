@@ -1,0 +1,704 @@
+{
+ "form": "scl",
+ "puzzle": {
+  "id": "penpaf1262e8ee348cb959b29607bab9d364b",
+  "cellSize": 64,
+  "cells": [
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ],
+   [
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {},
+    {}
+   ]
+  ],
+  "lines": [
+   {
+    "target": "cell-grids",
+    "thickness": 4.3,
+    "color": "#000000",
+    "wayPoints": [
+     [
+      9,
+      0
+     ],
+     [
+      0,
+      0
+     ],
+     [
+      0,
+      9
+     ],
+     [
+      9,
+      9
+     ],
+     [
+      9,
+      0
+     ]
+    ]
+   },
+   {
+    "target": "cell-grids",
+    "thickness": 4.3,
+    "color": "#000000",
+    "wayPoints": [
+     [
+      4,
+      6
+     ],
+     [
+      4,
+      9
+     ]
+    ]
+   }
+  ],
+  "underlays": [
+   {
+    "class": "board-position",
+    "backgroundColor": "#FFFFFF00",
+    "center": [
+     4.5,
+     4.5
+    ],
+    "width": 13,
+    "height": 13
+   },
+   {
+    "backgroundColor": "#CFCFCF",
+    "center": [
+     -1.5,
+     4.5
+    ],
+    "width": 13,
+    "height": 1
+   },
+   {
+    "backgroundColor": "#CFCFCF",
+    "center": [
+     4.5,
+     -1.5
+    ],
+    "width": 1,
+    "height": 11
+   },
+   {
+    "backgroundColor": "#CFCFCF",
+    "center": [
+     4.5,
+     10.5
+    ],
+    "width": 1,
+    "height": 11
+   },
+   {
+    "backgroundColor": "#CFCFCF",
+    "center": [
+     10.5,
+     4.5
+    ],
+    "width": 13,
+    "height": 1
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     -1.5,
+     1.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     -1.5,
+     5.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     -1.5,
+     6.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#FFFFFF",
+    "rounded": 1,
+    "center": [
+     0.5,
+     -0.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     0.5,
+     10.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     1.5,
+     -1.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     4.5,
+     -1.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#FFFFFF",
+    "rounded": 1,
+    "center": [
+     4.5,
+     -0.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#FFFFFF",
+    "rounded": 1,
+    "center": [
+     7.5,
+     9.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     7.5,
+     10.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     8.5,
+     -1.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#FFFFFF",
+    "rounded": 1,
+    "center": [
+     9.5,
+     9.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     10.5,
+     -1.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     10.5,
+     1.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   },
+   {
+    "borderSize": 1.7,
+    "borderColor": "#000000",
+    "backgroundColor": "#CFCFCF",
+    "rounded": 1,
+    "center": [
+     10.5,
+     10.5
+    ],
+    "width": 0.886,
+    "height": 0.886
+   }
+  ],
+  "overlays": [
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 21.6,
+    "text": "Ath+Bth",
+    "center": [
+     -1.36,
+     -1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     -1.24,
+     1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     -1.24,
+     5.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     -1.24,
+     6.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 21.6,
+    "text": "A+B",
+    "center": [
+     -0.36,
+     -0.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 3,
+    "center": [
+     -0.24,
+     0.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     0.76,
+     -1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 7,
+    "center": [
+     0.76,
+     -0.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 4,
+    "center": [
+     0.76,
+     10.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 7,
+    "center": [
+     1.76,
+     -1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "x",
+    "center": [
+     1.7,
+     -0.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "y",
+    "center": [
+     1.7,
+     9.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 7,
+    "center": [
+     1.76,
+     10.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     2.76,
+     9.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     4.76,
+     -1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 14,
+    "center": [
+     4.76,
+     -0.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 14,
+    "center": [
+     7.76,
+     9.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     7.76,
+     10.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     8.76,
+     -1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 34.4,
+    "text": ">15",
+    "center": [
+     9.7,
+     -0.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 11,
+    "center": [
+     9.76,
+     4.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 11,
+    "center": [
+     9.76,
+     9.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": 6,
+    "center": [
+     10.76,
+     -1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     10.76,
+     1.5
+    ],
+    "height": 0,
+    "width": 0
+   },
+   {
+    "stroke-width": 0,
+    "dominant-baseline": "alphabetic",
+    "fontSize": 40.8,
+    "text": "?",
+    "center": [
+     10.76,
+     10.5
+    ],
+    "height": 0,
+    "width": 0
+   }
+  ],
+  "cages": [
+   {
+    "unique": false,
+    "hidden": true,
+    "cells": [
+     [
+      0,
+      0
+     ],
+     [
+      8,
+      8
+     ]
+    ]
+   }
+  ],
+  "metadata": {
+   "solution": "258673941136795824387419562412957638594861273623548197769124385871236459945382716",
+   "title": "Position Sums (9x9 Chaos Construction)",
+   "author": "ONeill",
+   "rules": "1. Divide the grid into nine orthogonally connected regions, each containing nine cells. Some region borders are given.\n\n2. Each row, column and region must contain the digits 1 to 9.\n\n3. Let A and B be the digits in the first and second cells of the grid from any direction\na) Unshaded clues outside the grid indicate the sum of A and B\nb) Shaded clues indicate the sum of the digits in positions A and B from that direction\n\n4. If a clue is circled, the cells that are part of its sum belong to the same region. If a clue is not circled, the cells that are part of its sum belong to different regions.\n\n5. A question mark can stand for any positive integer (including 2-digit numbers).\n\n6. The sum of x and y is 10."
+  }
+ }
+}
