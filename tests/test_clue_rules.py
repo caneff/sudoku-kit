@@ -10,6 +10,8 @@ leaves out. Between lines have no rule function: no puzzle of the test set
 uses one (spec #106, Out of Scope).
 """
 
+import itertools
+
 import pytest
 from ortools.sat.python import cp_model
 
@@ -218,7 +220,7 @@ def test_a_slow_thermo_longer_than_the_digits_still_has_a_completion():
     longer = [*ROW, (1, 8)]
     grid = _solve([_line("slow_thermo", longer)])
     assert grid is not None
-    assert all(grid[a] <= grid[b] for a, b in zip(longer, longer[1:]))
+    assert all(grid[a] <= grid[b] for a, b in itertools.pairwise(longer))
 
 
 # whisper

@@ -1,4 +1,5 @@
-"""SudokuPad puzzle JSON to a rules file, for normal sudoku plus Kropki dots.
+"""SudokuPad puzzle JSON to a rules file, for normal sudoku plus Kropki dots and
+coloured lines (thermo, renban, whispers).
 
 `rules_file(puzzle)` reads the grid, regions, givens and stored solution, and
 turns each dot overlay into clues. The puzzle's rules text picks the reading:
@@ -8,11 +9,23 @@ ratio 2. A dot on an edge joins the two cells either side of it. A dot on a
 grid corner joins both diagonal pairs around it, and is read only when the
 rules text says "diagonal".
 
-Any shape it does not read (a line, an arrow, a cage, an underlay, any other
-overlay) is refused by name, so a rule is never dropped silently; a rules
-file for such a puzzle is written by hand. Every refusal is a ValueError.
+A line's colour picks its rule through the rules text, the same way: a
+sentence naming a colour (orange, pink, grey) and "whisper", "renban" or
+"thermo" reads that colour as that rule. A whisper's smallest step is the
+number after "at least" in the sentence (4 for Dutch whispers, 5 for German);
+a sentence with "slow" reads a thermo as slow. The bulb of a thermo is the
+round underlay under one end of its line, and the path is written from it.
+Waypoints run along cell centres, straight or diagonal, and fill in the cells
+between. Lockout lines are not read.
+
+Any shape it does not read (an arrow, a cage, an underlay that is not a
+thermo's bulb, a line whose colour the text does not name, any other overlay)
+is refused by name, so a rule is never dropped silently; a rules file for such
+a puzzle is written by hand. Every refusal is a ValueError.
 """
 
+import colorsys
+import itertools
 import re
 
 from sudoku_kit.rules_file import validate
@@ -27,7 +40,12 @@ READINGS = {
     "black": (re.compile(r"2:1|ratio|double"), "ratio", 2),
 }
 DOT_MAX_SIZE = 0.5
-UNREAD_KINDS = ("lines", "arrows", "underlays")
+UNREAD_KINDS = ("arrows",)
+LINE_RULES = (
+    ("whisper", re.compile(r"whisper")),
+    ("renban", re.compile(r"renban")),
+    ("thermo", re.compile(r"thermo")),
+)
 
 
 def _preview(item):
@@ -103,6 +121,133 @@ def _refuse_unread(puzzle):
             )
 
 
+def _hue_name(colour):
+    """ "orange", "pink", "grey", "black" or "white" for a SudokuPad hex colour
+    (#rgb, #rgba, #rrggbb or #rrggbbaa, alpha ignored), else None."""
+    digits = str(colour).lstrip("#")
+    if len(digits) in (3, 4):
+        digits = "".join(d * 2 for d in digits)
+    try:
+        r, g, b = (int(digits[i : i + 2], 16) / 255 for i in (0, 2, 4))
+    except ValueError:
+        return None
+    h, sat, v = colorsys.rgb_to_hsv(r, g, b)
+    if sat < 0.2:
+        return "black" if v < 0.15 else "white" if v > 0.85 else "grey"
+    degrees = h * 360
+    if 20 <= degrees <= 50:
+        return "orange"
+    if 280 <= degrees <= 345:
+        return "pink"
+    return None
+
+
+def _line_readings(text):
+    """{colour: (rule, value)} for each line colour a sentence of `text`
+    names beside a line word."""
+    found = {}
+    for sentence in re.split(r"[.;\n]", text.lower()):
+        rule = next((r for r, pat in LINE_RULES if pat.search(sentence)), None)
+        if rule is None:
+            continue
+        value = None
+        if rule == "whisper":
+            at_least = re.search(r"at least (\d+)", sentence)
+            if not at_least:
+                raise ValueError(
+                    f"a whispers sentence with no 'at least <number>': {_preview(sentence)}"
+                )
+            value = int(at_least.group(1))
+        if rule == "thermo" and "slow" in sentence:
+            rule = "slow_thermo"
+        for colour in ("orange", "pink", "grey", "gray"):
+            if colour in sentence:
+                found["grey" if colour == "gray" else colour] = (rule, value)
+    return found
+
+
+def _path(line):
+    """The cells a line's waypoints run through, centre to centre in straight
+    or diagonal steps."""
+    points = []
+    for point in line["wayPoints"]:
+        cell = tuple(round(v - 0.5) for v in point)
+        if any(abs(v - 0.5 - c) > 1e-6 for v, c in zip(point, cell, strict=False)):
+            raise ValueError(f"a line off the cell centres: {_preview(line)}")
+        points.append(cell)
+    cells = [points[0]]
+    for (r0, c0), (r1, c1) in itertools.pairwise(points):
+        dr, dc = r1 - r0, c1 - c0
+        if dr and dc and abs(dr) != abs(dc):
+            raise ValueError(f"a line bending between cells: {_preview(line)}")
+        steps = max(abs(dr), abs(dc))
+        if not steps:
+            continue
+        cells += [
+            (r0 + dr // steps * k, c0 + dc // steps * k) for k in range(1, steps + 1)
+        ]
+    return cells
+
+
+def _bulb_ends(underlays):
+    """The cells that carry a round underlay, the bulbs a thermo may start at."""
+    return {
+        tuple(round(v - 0.5) for v in u["center"])
+        for u in underlays
+        if u.get("rounded")
+        and all(abs(v - 0.5 - round(v - 0.5)) < 1e-6 for v in u["center"])
+    }
+
+
+def _line_clues(puzzle, n, text):
+    lines = puzzle.get("lines") or []
+    underlays = puzzle.get("underlays") or []
+    readings = _line_readings(text)
+    bulbs, used, clues, seen = _bulb_ends(underlays), set(), [], set()
+    for line in lines:
+        colour = _hue_name(line.get("color", ""))
+        if colour not in readings:
+            raise ValueError(
+                "the importer does not read lines of colour "
+                f"{colour or line.get('color')}: the rules text gives no reading "
+                f"for it: {_preview(line)}"
+            )
+        rule, value = readings[colour]
+        cells = _path(line)
+        if rule in ("thermo", "slow_thermo"):
+            if cells[0] in bulbs:
+                used.add(cells[0])
+            elif cells[-1] in bulbs:
+                cells.reverse()
+                used.add(cells[0])
+            else:
+                raise ValueError(f"a thermo line with no bulb: {_preview(line)}")
+        key = (rule, tuple(cells))
+        if key in seen or key[1][::-1] in {k[1] for k in seen if k[0] == rule}:
+            continue
+        seen.add(key)
+        base = f"{rule}-{_name(cells[0])}-{_name(cells[-1])}"
+        clue_id = base
+        while clue_id in {c["id"] for c in clues}:
+            clue_id += "-b"
+        clues.append(
+            {
+                "id": clue_id,
+                "rule": rule,
+                "cells": [list(c) for c in cells],
+                "values": [] if value is None else [value],
+            }
+        )
+    for underlay in underlays:
+        centre = tuple(round(v - 0.5) for v in underlay["center"])
+        if centre not in used or not underlay.get("rounded"):
+            raise ValueError(
+                "the importer does not read underlays other than a thermo's "
+                f"bulb: {_preview(underlay)}"
+            )
+    return clues
+
+
 def _solution(text, n):
     if text is None:
         return None
@@ -167,7 +312,7 @@ def _rules_file(puzzle):
             if cell.get("value") not in (None, "")
         ],
         "solution": _solution(metadata.get("solution"), n),
-        "clues": _clues(puzzle, n, text),
+        "clues": _clues(puzzle, n, text) + _line_clues(puzzle, n, text),
         "title": metadata.get("title", ""),
         "rules_text": text,
     }

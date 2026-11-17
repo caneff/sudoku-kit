@@ -195,3 +195,147 @@ def test_a_shape_the_importer_does_not_read_is_refused_by_name(tmp_path, capsys,
 
     assert main([str(_link_file(tmp_path, add)), str(tmp_path)]) == 2
     assert kind in capsys.readouterr().err
+
+
+COOL_S = FIXTURES / "cool-s-000K0Q.json"
+COOL_S_LINK = FIXTURES / "cool-s-000K0Q.txt"
+
+
+def _by_rule(rules, rule):
+    return [c for c in rules["clues"] if c["rule"] == rule]
+
+
+def test_cool_s_imports_its_lines_and_passes_both_checks(tmp_path):
+    """Logic Masters 000K0Q: slow thermos, renbans, Dutch whispers and a white
+    dot on a 9x9, the stored solution satisfying every one."""
+    code, rules, checks = _run(COOL_S, tmp_path)
+
+    assert code == 0
+    assert checks["unique"]["status"] == "unique"
+    assert checks["solution_fits"] == {"passed": True, "failing": []}
+    assert len(rules["clues"]) == 13
+    assert len(_by_rule(rules, "renban")) == 2
+    assert len(_by_rule(rules, "slow_thermo")) == 2
+    assert len(_by_rule(rules, "whisper")) == 8
+    assert len(_by_rule(rules, "difference")) == 1
+    assert len({c["id"] for c in rules["clues"]}) == 13
+
+
+def test_cool_s_thermos_run_from_the_bulb_and_whispers_read_four(tmp_path):
+    _, rules, _ = _run(COOL_S, tmp_path)
+
+    # The bulbs sit at r5c9 and r6c7; each path starts there, seven cells long.
+    starts = sorted(c["cells"][0] for c in _by_rule(rules, "slow_thermo"))
+    assert starts == [[4, 8], [5, 6]]
+    assert all(len(c["cells"]) == 7 for c in _by_rule(rules, "slow_thermo"))
+    assert all(c["values"] == [4] for c in _by_rule(rules, "whisper"))
+    # The whisper drawn r1c7, then a diagonal step to r2c6, then r1c6.
+    row = [c for c in _by_rule(rules, "whisper") if c["cells"][0] == [0, 6]]
+    assert [c["cells"] for c in row] == [[[0, 6], [1, 5], [0, 5]]]
+
+
+@needs_app
+def test_cool_s_link_decodes_to_its_committed_puzzle_json():
+    assert sudokupad_codec.read_puzzle(str(COOL_S_LINK)) == json.loads(
+        COOL_S.read_text()
+    )
+
+
+def _cool_s(tmp_path, change):
+    puzzle = json.loads(COOL_S.read_text())
+    change(puzzle)
+    path = tmp_path / "changed.json"
+    path.write_text(json.dumps(puzzle))
+    return path
+
+
+def test_a_thermo_without_the_word_slow_reads_as_a_strict_thermo(tmp_path):
+    def strict(puzzle):
+        text = puzzle["metadata"]["rules"].replace("Slow Thermometer", "Thermometer")
+        puzzle["metadata"]["rules"] = text.replace("slow thermometer", "thermometer")
+
+    # Read strict, the puzzle's own solution breaks them: the clue's rule moved.
+    assert main([str(_cool_s(tmp_path, strict)), str(tmp_path)]) == 1
+    rules = json.loads((tmp_path / "rules.json").read_text())
+    assert len(_by_rule(rules, "thermo")) == 2
+    assert _by_rule(rules, "slow_thermo") == []
+
+
+def test_a_german_whispers_sentence_reads_its_own_minimum(tmp_path):
+    def german(puzzle):
+        text = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = text.replace("at least 4", "at least 5")
+
+    main([str(_cool_s(tmp_path, german)), str(tmp_path)])
+    rules = json.loads((tmp_path / "rules.json").read_text())
+    assert {tuple(c["values"]) for c in _by_rule(rules, "whisper")} == {(5,)}
+
+
+def test_a_whispers_sentence_with_no_minimum_is_refused(tmp_path, capsys):
+    def vague(puzzle):
+        text = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = text.replace("at least 4", "a lot")
+
+    assert main([str(_cool_s(tmp_path, vague)), str(tmp_path)]) == 2
+    assert "at least" in capsys.readouterr().err
+
+
+def test_a_line_colour_the_rules_text_never_names_is_refused(tmp_path, capsys):
+    def no_pink(puzzle):
+        text = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = text.replace("Pink", "Purple")
+
+    assert main([str(_cool_s(tmp_path, no_pink)), str(tmp_path)]) == 2
+    assert "pink" in capsys.readouterr().err
+
+
+def test_a_thermo_line_with_no_bulb_underlay_is_refused(tmp_path, capsys):
+    def bulbless(puzzle):
+        puzzle["underlays"] = puzzle["underlays"][:1]
+
+    assert main([str(_cool_s(tmp_path, bulbless)), str(tmp_path)]) == 2
+    assert "no bulb" in capsys.readouterr().err
+
+
+def test_an_underlay_that_is_no_thermo_bulb_is_refused(tmp_path, capsys):
+    def extra(puzzle):
+        puzzle["underlays"].append(
+            {"center": [0.5, 4.5], "width": 0.8, "height": 0.8, "rounded": True}
+        )
+
+    assert main([str(_cool_s(tmp_path, extra)), str(tmp_path)]) == 2
+    assert "bulb" in capsys.readouterr().err
+
+
+def test_a_line_that_bends_between_cells_is_refused(tmp_path, capsys):
+    def bent(puzzle):
+        puzzle["lines"][0]["wayPoints"][1] = [3.5, 7.5]
+
+    assert main([str(_cool_s(tmp_path, bent)), str(tmp_path)]) == 2
+    assert "bending" in capsys.readouterr().err
+
+
+DUTCH_DOTS = FIXTURES / "dutch-dots-000KVY.json"
+DUTCH_DOTS_LINK = FIXTURES / "dutch-dots-000KVY.txt"
+
+
+def test_dutch_dots_fills_in_the_cells_between_straight_waypoints(tmp_path):
+    """Logic Masters 000KVY: sixteen straight whisper lines of three cells,
+    each drawn with two waypoints, plus black dots."""
+    code, rules, checks = _run(DUTCH_DOTS, tmp_path)
+
+    assert code == 0
+    assert checks["unique"]["status"] == "unique"
+    assert checks["solution_fits"] == {"passed": True, "failing": []}
+    whispers = _by_rule(rules, "whisper")
+    assert len(whispers) == 16
+    assert all(len(c["cells"]) == 3 and c["values"] == [4] for c in whispers)
+    top_left = [c for c in whispers if c["cells"][0] == [0, 0]]
+    assert [c["cells"] for c in top_left] == [[[0, 0], [1, 0], [2, 0]]]
+
+
+@needs_app
+def test_dutch_dots_link_decodes_to_its_committed_puzzle_json():
+    assert sudokupad_codec.read_puzzle(str(DUTCH_DOTS_LINK)) == json.loads(
+        DUTCH_DOTS.read_text()
+    )

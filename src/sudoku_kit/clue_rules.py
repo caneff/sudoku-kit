@@ -18,6 +18,8 @@ derived it from the board, size // 2), and a whisper's smallest step is its
 value.
 """
 
+import itertools
+
 from sudoku_kit.step_prover import Poster
 
 
@@ -75,7 +77,7 @@ def _climb(clue, strict):
     cells = _line(clue, 0)
 
     def post(m, x):
-        for a, b in zip(cells, cells[1:]):
+        for a, b in itertools.pairwise(cells):
             m.Add(x[a] < x[b] if strict else x[a] <= x[b])
 
     return Poster(tuple(cells), post)
@@ -121,7 +123,7 @@ def whisper(clue):
     k = clue["values"][0]
 
     def post(m, x):
-        for i, (a, b) in enumerate(zip(cells, cells[1:])):
+        for i, (a, b) in enumerate(itertools.pairwise(cells)):
             _apart(m, x[a], x[b], k, f"{clue['id']}.gap{i}")
 
     return Poster(tuple(cells), post)

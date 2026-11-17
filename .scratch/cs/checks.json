@@ -1,0 +1,10 @@
+{
+ "unique": {
+  "status": "unique",
+  "passed": true
+ },
+ "solution_fits": {
+  "passed": true,
+  "failing": []
+ }
+}
