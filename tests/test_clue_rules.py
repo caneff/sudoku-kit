@@ -544,6 +544,8 @@ def test_a_digit_equal_to_the_tallest_so_far_is_not_seen_again():
     grid = _solve([_skyscraper(LEFT, ROW0[:3])], row)
     assert grid is not None
     assert grid[LEFT] == 2
+    # Counting the repeated 3 as seen would make the clue 3: that must fail.
+    assert _solve([_skyscraper(LEFT, ROW0[:3])], row | {LEFT: 3}) is None
 
 
 def test_a_skyscraper_reads_the_line_in_the_order_it_is_given():
