@@ -325,8 +325,14 @@ def test_a_link_sudokupads_loader_cannot_read_is_refused(tmp_path, monkeypatch, 
 
 
 def test_a_uniqueness_check_that_times_out_is_no_verdict(tmp_path):
+    _, _, rules = _run(DIAGONAL_DOTS, tmp_path / "import", "--max-steps", "0")
+    del rules["solution"]  # its check would time out first
+    source = tmp_path / "no-solution.json"
+    source.write_text(json.dumps(rules))
     out = tmp_path / "out"
-    code = main([str(DIAGONAL_DOTS), str(out), "--time-limit", "0.0"])
+
+    code = main([str(source), str(out), "--time-limit", "0.0"])
+
     checks = json.loads((out / "checks.json").read_text())
     assert code == 5
     assert checks["unique"] == {"status": "timeout", "passed": None}
