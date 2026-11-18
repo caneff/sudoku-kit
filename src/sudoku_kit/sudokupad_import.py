@@ -56,9 +56,10 @@ import colorsys
 import itertools
 import re
 
-from sudoku_kit.rules_file import validate
+from sudoku_kit.rules_file import cell_name, validate
 
 PREVIEW_CHARACTERS = 80
+SENTENCE_BREAK = re.compile(r"[.;\n]")
 COLOURS = {
     "white": {"#fff", "#ffff", "#ffffff", "#ffffffff", "white"},
     "black": {"#000", "#000f", "#000000", "#000000ff", "black"},
@@ -80,6 +81,23 @@ def _preview(item):
     return repr(item)[:PREVIEW_CHARACTERS]
 
 
+def _sentences(text):
+    return SENTENCE_BREAK.split(text.lower())
+
+
+def _cell_of(point):
+    """The sheet cell a point on the sheet falls in."""
+    return tuple(int((v + 1e-9) // 1) for v in point)
+
+
+def _way_points(item):
+    """The waypoints of a line or arrow, refusing one with none."""
+    points = item["wayPoints"]
+    if not points:
+        raise ValueError(f"a line or arrow with no waypoints: {_preview(item)}")
+    return points
+
+
 def _colour(overlay):
     """ "white" or "black" for a Kropki dot overlay, else None."""
     size = (overlay.get("width"), overlay.get("height"))
@@ -93,7 +111,7 @@ def _colour(overlay):
 
 def _readings(text):
     """{colour: (rule, value)} for each colour a sentence of `text` reads."""
-    sentences = re.split(r"[.;\n]", text.lower())
+    sentences = _sentences(text)
     found = {}
     for colour, (pattern, rule, value) in READINGS.items():
         if any(colour in s and pattern.search(s) for s in sentences):
@@ -128,10 +146,6 @@ def _pairs(center, n, diagonal, overlay):
     return on_board
 
 
-def _name(cell):
-    return f"r{cell[0] + 1}c{cell[1] + 1}"
-
-
 def _hue_name(colour):
     """ "orange", "pink", "grey", "black" or "white" for a SudokuPad hex colour
     (#rgb, #rgba, #rrggbb or #rrggbbaa, alpha ignored), else None."""
@@ -157,7 +171,7 @@ def _line_readings(text):
     """({colour: (rule, value)}, [(rule, value)]) for the line rules a sentence
     of `text` names: by colour where it names one, else the colourless list."""
     found, colourless = {}, []
-    for sentence in re.split(r"[.;\n]", text.lower()):
+    for sentence in _sentences(text):
         rule = next((r for r, pat in LINE_RULES if pat.search(sentence)), None)
         if rule is None:
             continue
@@ -183,8 +197,8 @@ def _path(line):
     """The cells a line's waypoints run through, centre to centre in straight
     or diagonal steps."""
     points = []
-    for point in line["wayPoints"]:
-        cell = tuple(round(v - 0.5) for v in point)
+    for point in _way_points(line):
+        cell = _cell_of(point)
         if any(abs(v - 0.5 - c) > 1e-6 for v, c in zip(point, cell, strict=False)):
             raise ValueError(f"a line off the cell centres: {_preview(line)}")
         points.append(cell)
@@ -205,7 +219,7 @@ def _path(line):
 def _bulb_ends(underlays):
     """The cells that carry a round underlay, the bulbs a thermo may start at."""
     return {
-        tuple(round(v - 0.5) for v in u["center"])
+        _cell_of(u["center"])
         for u in underlays
         if u.get("rounded")
         and all(abs(v - 0.5 - round(v - 0.5)) < 1e-6 for v in u["center"])
@@ -217,7 +231,7 @@ def _decoration(line):
     boxes round clue cells. No rule runs there, since a rule's line runs
     through cell centres."""
     return line.get("target") == "overlay" and all(
-        abs(v - round(v)) < 1e-6 for point in line["wayPoints"] for v in point
+        abs(v - round(v)) < 1e-6 for point in _way_points(line) for v in point
     )
 
 
@@ -264,7 +278,7 @@ def _line_clues(puzzle, text):
             }
         )
     for underlay in underlays:
-        centre = tuple(round(v - 0.5) for v in underlay["center"])
+        centre = _cell_of(underlay["center"])
         if centre not in used or not underlay.get("rounded"):
             raise ValueError(
                 "the importer does not read underlays other than a thermo's "
@@ -276,13 +290,8 @@ def _line_clues(puzzle, text):
 def _says(text, *patterns):
     """True when one sentence of `text` matches every pattern."""
     return any(
-        all(re.search(p, sentence) for p in patterns)
-        for sentence in re.split(r"[.;\n]", text.lower())
+        all(re.search(p, sentence) for p in patterns) for sentence in _sentences(text)
     )
-
-
-def _cell_of(point):
-    return tuple(int((v + 1e-9) // 1) for v in point)
 
 
 def _board(puzzle, size):
@@ -382,10 +391,11 @@ def _sign(value):
     return (value > 0) - (value < 0)
 
 
-def _diagonal(start, arrow, board, overlay):
+def _diagonal(start, arrow, board):
     """The cells a little killer's arrow points along from the clue cell
     `start`, to the grid's edge."""
-    (r0, c0), (r1, c1) = arrow["wayPoints"][0], arrow["wayPoints"][-1]
+    points = _way_points(arrow)
+    (r0, c0), (r1, c1) = points[0], points[-1]
     if not r1 - r0 or abs(abs(r1 - r0) - abs(c1 - c0)) > 0.1:
         raise ValueError(
             f"a little killer arrow that is not diagonal: {_preview(arrow)}"
@@ -415,7 +425,7 @@ def _arrow_clues(puzzle, text, board):
             numbers[_cell_of(overlay["center"])] = i
     clues, used = [], set()
     for arrow in puzzle.get("arrows") or []:
-        start = _cell_of(arrow["wayPoints"][0])
+        start = _cell_of(_way_points(arrow)[0])
         if start in bulbs:
             if not _says(text, "arrow"):
                 raise ValueError(
@@ -450,7 +460,7 @@ def _arrow_clues(puzzle, text, board):
                 {
                     "prefix": "little-killer",
                     "rule": "little_killer",
-                    "cells": _diagonal(start, arrow, board, overlay),
+                    "cells": _diagonal(start, arrow, board),
                     "values": [int(overlay["text"])],
                 }
             )
@@ -505,7 +515,7 @@ def _cage_clues(puzzle, text, board):
 
 
 def _knight_clues(text, board):
-    sentences = [x for x in re.split(r"[.;\n]", text.lower()) if "knight" in x]
+    sentences = [x for x in _sentences(text) if "knight" in x]
     if not sentences:
         return []
     if not any(re.search(r"\b(not|no|never|anti)\b|anti-|n't", x) for x in sentences):
@@ -571,7 +581,7 @@ def _finish(raw, top, left):
     clues, ids = [], set()
     for clue in raw:
         cells = [[r - top, c - left] for r, c in clue["cells"]]
-        base = f"{clue['prefix']}-{_name(cells[0])}-{_name(cells[-1])}"
+        base = f"{clue['prefix']}-{cell_name(cells[0])}-{cell_name(cells[-1])}"
         clue_id = base
         while clue_id in ids:
             clue_id += "-b"

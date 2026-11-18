@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from sudoku_kit import sudokupad_codec
+from sudoku_kit import sudokupad_codec, sudokupad_import
 from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
@@ -52,6 +52,16 @@ def _clue(rules, rule, a, b):
     ]
     assert len(found) == 1, (rule, a, b, rules["clues"])
     return found[0]
+
+
+def _edited_rules(tmp_path, source, edit, name):
+    """`source`'s rules file after `edit(rules)`, written to `tmp_path / name`."""
+    _run(source, tmp_path / "first")
+    rules = json.loads((tmp_path / "first" / "rules.json").read_text())
+    edit(rules)
+    path = tmp_path / name
+    path.write_text(json.dumps(rules))
+    return path
 
 
 def test_diagonal_dots_imports_to_a_rules_file_that_passes_both_checks(tmp_path):
@@ -102,26 +112,25 @@ def test_a_json_file_that_is_neither_a_puzzle_nor_a_rules_file_is_refused(
 
 
 def test_a_rules_file_with_one_dot_flipped_fails_a_check_naming_the_clue(tmp_path):
-    _run(DIAGONAL_DOTS, tmp_path / "first")
-    rules = json.loads((tmp_path / "first" / "rules.json").read_text())
-    flipped = _clue(rules, "difference", [0, 2], [1, 3])
-    flipped["rule"], flipped["values"] = "ratio", [2]
-    source = tmp_path / "flipped.json"
-    source.write_text(json.dumps(rules))
+    def flip(rules):
+        _clue(rules, "difference", [0, 2], [1, 3]).update(rule="ratio", values=[2])
 
-    code, _, checks = _run(source, tmp_path / "second")
+    source = _edited_rules(tmp_path, DIAGONAL_DOTS, flip, "flipped.json")
 
+    code, rules, checks = _run(source, tmp_path / "second")
+
+    flipped = _clue(rules, "ratio", [0, 2], [1, 3])
     assert code == 1
     assert checks["solution_fits"] == {"passed": False, "failing": [flipped["id"]]}
 
 
 def test_a_rules_file_with_no_single_solution_fails_the_uniqueness_check(tmp_path):
-    _run(DIAGONAL_DOTS, tmp_path / "first")
-    rules = json.loads((tmp_path / "first" / "rules.json").read_text())
-    rules["clues"] = []
-    rules["givens"] = []
-    source = tmp_path / "bare.json"
-    source.write_text(json.dumps(rules))
+    source = _edited_rules(
+        tmp_path,
+        DIAGONAL_DOTS,
+        lambda rules: rules.update(clues=[], givens=[]),
+        "bare.json",
+    )
 
     code, _, checks = _run(source, tmp_path / "second")
 
@@ -130,13 +139,17 @@ def test_a_rules_file_with_no_single_solution_fails_the_uniqueness_check(tmp_pat
     assert not checks["unique"]["passed"]
 
 
-def _link_file(tmp_path, change):
-    """Diagonal Dots' puzzle JSON, written to a file after `change(puzzle)`."""
-    puzzle = json.loads(DIAGONAL_DOTS.read_text())
+def _changed(tmp_path, source, change, name="changed.json"):
+    """`source`'s puzzle JSON, written to a file after `change(puzzle)`."""
+    puzzle = json.loads(source.read_text())
     change(puzzle)
-    path = tmp_path / "changed.json"
+    path = tmp_path / name
     path.write_text(json.dumps(puzzle))
     return path
+
+
+def _link_file(tmp_path, change):
+    return _changed(tmp_path, DIAGONAL_DOTS, change)
 
 
 def test_rules_text_naming_no_reading_for_a_dot_colour_is_refused(tmp_path, capsys):
@@ -252,11 +265,7 @@ def test_cool_s_link_decodes_to_its_committed_puzzle_json():
 
 
 def _cool_s(tmp_path, change):
-    puzzle = json.loads(COOL_S.read_text())
-    change(puzzle)
-    path = tmp_path / "changed.json"
-    path.write_text(json.dumps(puzzle))
-    return path
+    return _changed(tmp_path, COOL_S, change)
 
 
 def test_a_thermo_without_the_word_slow_reads_as_a_strict_thermo(tmp_path):
@@ -468,14 +477,6 @@ def test_the_sum_and_outside_clue_links_decode_to_their_committed_json():
         assert decoded == json.loads((FIXTURES / f"{name}.json").read_text()), name
 
 
-def _changed(tmp_path, source, change, name="changed.json"):
-    puzzle = json.loads(source.read_text())
-    change(puzzle)
-    path = tmp_path / name
-    path.write_text(json.dumps(puzzle))
-    return path
-
-
 def _import(tmp_path, source, change):
     """Run the command line on `source` after `change(puzzle)`."""
     code = _import_only(
@@ -490,11 +491,12 @@ def _say(puzzle, sentence):
 
 
 def test_a_wrong_outside_digit_fails_the_check_naming_the_clue(tmp_path):
-    _run(SKYSCRAPER, tmp_path / "first")
-    rules = json.loads((tmp_path / "first" / "rules.json").read_text())
-    rules["solution_outside"][0]["digit"] = 4
-    source = tmp_path / "wrong.json"
-    source.write_text(json.dumps(rules))
+    source = _edited_rules(
+        tmp_path,
+        SKYSCRAPER,
+        lambda rules: rules["solution_outside"][0].update(digit=4),
+        "wrong.json",
+    )
 
     code, _, checks = _run(source, tmp_path / "second")
 
@@ -506,22 +508,22 @@ def test_a_wrong_outside_digit_fails_the_check_naming_the_clue(tmp_path):
 
 
 def test_a_rules_file_with_a_solution_and_no_outside_digit_is_refused(tmp_path, capsys):
-    _run(SKYSCRAPER, tmp_path / "first")
-    rules = json.loads((tmp_path / "first" / "rules.json").read_text())
-    del rules["solution_outside"]
-    source = tmp_path / "missing.json"
-    source.write_text(json.dumps(rules))
+    source = _edited_rules(
+        tmp_path,
+        SKYSCRAPER,
+        lambda rules: rules.pop("solution_outside"),
+        "missing.json",
+    )
 
     assert _import_only([str(source), str(tmp_path / "second")]) == 2
     assert "solution_outside" in capsys.readouterr().err
 
 
 def test_a_clue_cell_two_steps_off_the_grid_is_refused(tmp_path, capsys):
-    _run(SKYSCRAPER, tmp_path / "first")
-    rules = json.loads((tmp_path / "first" / "rules.json").read_text())
-    rules["clues"][-1]["cells"][0] = [-2, 3]
-    source = tmp_path / "far.json"
-    source.write_text(json.dumps(rules))
+    def far(rules):
+        rules["clues"][-1]["cells"][0] = [-2, 3]
+
+    source = _edited_rules(tmp_path, SKYSCRAPER, far, "far.json")
 
     assert _import_only([str(source), str(tmp_path / "second")]) == 2
     assert "[-2, 3]" in capsys.readouterr().err
@@ -708,3 +710,75 @@ def test_a_knight_sentence_that_forbids_nothing_is_refused(tmp_path, capsys):
     )
     assert code == 2
     assert "knight" in capsys.readouterr().err
+
+
+CENTRAL_HEATING = FIXTURES / "central-heating-000NOD.json"
+CENTRAL_HEATING_LINK = FIXTURES / "central-heating-000NOD.txt"
+
+
+def test_central_heating_imports_strict_thermos_and_passes_both_checks(tmp_path):
+    """Logic Masters 000NOD, Central Heating (rated 1): thermometers that rise
+    from the bulb with no 'slow', beside numbered rooms, on a 4x4."""
+    code, rules, checks = _run(CENTRAL_HEATING, tmp_path)
+
+    _passes(code, checks)
+    thermos = _by_rule(rules, "thermo")
+    assert len(thermos) == 3 and _by_rule(rules, "slow_thermo") == []
+    assert all(len(c["cells"]) >= 2 and c["values"] == [] for c in thermos)
+
+
+@needs_app
+def test_central_heating_link_decodes_to_its_committed_puzzle_json():
+    assert sudokupad_codec.read_puzzle(str(CENTRAL_HEATING_LINK)) == json.loads(
+        CENTRAL_HEATING.read_text()
+    )
+
+
+def test_a_given_the_stored_solution_breaks_fails_the_check_naming_the_cell(tmp_path):
+    def wrong_given(puzzle):
+        puzzle["cells"][4][5]["value"] = 1  # the stored solution holds 4 here
+
+    code, _ = _import(tmp_path, DIAGONAL_DOTS, wrong_given)
+    checks = json.loads((tmp_path / "out" / "checks.json").read_text())
+
+    assert code == 1
+    assert checks["solution_fits"]["failing"] == ["given r5c6"]
+
+
+def test_two_killer_cages_with_the_same_ends_get_distinct_ids(tmp_path):
+    def two_cages(puzzle):
+        # Both run r1c1 to r2c1 once sorted; the stored solution sums them 14 and 15.
+        puzzle["cages"] = [
+            {"cells": [[0, 0], [0, 1], [1, 0]], "value": "14", "unique": True},
+            {"cells": [[0, 0], [0, 2], [1, 0]], "value": "15", "unique": True},
+        ]
+        _say(puzzle, "Killer cages: digits in a cage differ and sum to its total.")
+
+    code, rules = _import(tmp_path, DIAGONAL_DOTS, two_cages)
+
+    assert code == 0
+    cages = _by_rule(rules, "killer_cage")
+    assert sorted(c["id"] for c in cages) == [
+        "killer-cage-r1c1-r2c1",
+        "killer-cage-r1c1-r2c1-b",
+    ]
+    assert sorted(c["values"] for c in cages) == [[14], [15]]
+
+
+@pytest.mark.parametrize(
+    ("source", "kind"), [(COOL_S, "lines"), (POINTS, "arrows")], ids=["line", "arrow"]
+)
+def test_a_line_or_arrow_with_no_waypoints_is_a_value_error(source, kind):
+    puzzle = json.loads(source.read_text())
+    puzzle[kind][0]["wayPoints"] = []
+
+    with pytest.raises(ValueError, match="no waypoints"):
+        sudokupad_import.rules_file(puzzle)
+
+
+def test_the_importer_validates_what_it_builds():
+    puzzle = json.loads(DIAGONAL_DOTS.read_text())
+    puzzle["cells"][4][5]["value"] = 9  # no digit of a 6x6 grid
+
+    with pytest.raises(ValueError, match=r"not a digit 1\.\.6"):
+        sudokupad_import.rules_file(puzzle)

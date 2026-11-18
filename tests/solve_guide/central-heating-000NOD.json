@@ -1,0 +1,787 @@
+{
+ "id": "sxsm_ChinStrap_b3757a684c16623388f41df53dd60ed0",
+ "metadata": {
+  "source": "Sudoku Maker v2025.05.11-efb8022",
+  "title": "Central Heating",
+  "author": "ChinStrap",
+  "rules": "Normal 4x4 sudoku rules apply.\n\nNumbered Rooms: All outside cells on a clue must contain a digit. That digit must also appear in the Nth position looking into the grid in the row/column, where N is the digit in the first position.\n\nThermometers: Digits on a thermometer must increase from the bulb.",
+  "solution": "....4..1432..3214.12143..4321..1...."
+ },
+ "cages": [
+  {
+   "cells": [
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     1,
+     4
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     2,
+     1
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     2,
+     4
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     3,
+     1
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     3,
+     4
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     4,
+     1
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     4,
+     3
+    ],
+    [
+     4,
+     4
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     3,
+     1
+    ],
+    [
+     4,
+     1
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     4,
+     2
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     1,
+     3
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     4,
+     3
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "cells": [
+    [
+     1,
+     4
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     4,
+     4
+    ]
+   ],
+   "unique": true,
+   "hidden": true
+  },
+  {
+   "value": "solution: ....4..1432..3214.12143..4321..1...."
+  }
+ ],
+ "cells": [
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ]
+ ],
+ "regions": [
+  [
+   [
+    1,
+    1
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    2,
+    1
+   ],
+   [
+    2,
+    2
+   ]
+  ],
+  [
+   [
+    1,
+    3
+   ],
+   [
+    1,
+    4
+   ],
+   [
+    2,
+    3
+   ],
+   [
+    2,
+    4
+   ]
+  ],
+  [
+   [
+    3,
+    1
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    4,
+    1
+   ],
+   [
+    4,
+    2
+   ]
+  ],
+  [
+   [
+    3,
+    3
+   ],
+   [
+    3,
+    4
+   ],
+   [
+    4,
+    3
+   ],
+   [
+    4,
+    4
+   ]
+  ]
+ ],
+ "lines": [
+  {
+   "wayPoints": [
+    [
+     3.5,
+     0.5
+    ],
+    [
+     1.5,
+     2.5
+    ]
+   ],
+   "color": "#cccf",
+   "thickness": 19.2
+  },
+  {
+   "wayPoints": [
+    [
+     5.5,
+     1.5
+    ],
+    [
+     3.5,
+     3.5
+    ]
+   ],
+   "color": "#cccf",
+   "thickness": 19.2
+  },
+  {
+   "wayPoints": [
+    [
+     0.5,
+     4.5
+    ],
+    [
+     1.5,
+     4.5
+    ]
+   ],
+   "color": "#cccf",
+   "thickness": 19.2
+  },
+  {
+   "wayPoints": [
+    [
+     2,
+     1
+    ],
+    [
+     2,
+     0
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     2,
+     0
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     1,
+     2
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     3,
+     0
+    ],
+    [
+     6,
+     0
+    ],
+    [
+     6,
+     6
+    ],
+    [
+     1,
+     6
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     0,
+     2
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     4,
+     0
+    ],
+    [
+     4,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     1,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     0,
+     3
+    ],
+    [
+     1,
+     3
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     0,
+     4
+    ],
+    [
+     1,
+     4
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     0,
+     5
+    ],
+    [
+     0,
+     6
+    ],
+    [
+     1,
+     6
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     2,
+     6
+    ],
+    [
+     2,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     3,
+     6
+    ],
+    [
+     3,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     4,
+     6
+    ],
+    [
+     4,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     5,
+     6
+    ],
+    [
+     5,
+     5
+    ],
+    [
+     6,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     6,
+     4
+    ],
+    [
+     5,
+     4
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     6,
+     3
+    ],
+    [
+     5,
+     3
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     6,
+     2
+    ],
+    [
+     5,
+     2
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     6,
+     1
+    ],
+    [
+     5,
+     1
+    ],
+    [
+     5,
+     0
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 3.2,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     3,
+     1
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     4,
+     0
+    ],
+    [
+     4,
+     1
+    ]
+   ],
+   "color": "#d7d7d7ff",
+   "thickness": 1.92,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     5,
+     1
+    ],
+    [
+     6,
+     1
+    ],
+    [
+     6,
+     2
+    ],
+    [
+     5,
+     2
+    ]
+   ],
+   "color": "#d7d7d7ff",
+   "thickness": 1.92,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     1,
+     4
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     1,
+     5
+    ]
+   ],
+   "color": "#d7d7d7ff",
+   "thickness": 1.92,
+   "target": "overlay"
+  },
+  {
+   "wayPoints": [
+    [
+     1,
+     1
+    ],
+    [
+     5,
+     1
+    ],
+    [
+     5,
+     5
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "color": "#000000",
+   "thickness": 4.48,
+   "target": "overlay"
+  }
+ ],
+ "underlays": [
+  {
+   "center": [
+    3.5,
+    0.5
+   ],
+   "width": 0.8,
+   "height": 0.8,
+   "rounded": true,
+   "backgroundColor": "#cccf"
+  },
+  {
+   "center": [
+    5.5,
+    1.5
+   ],
+   "width": 0.8,
+   "height": 0.8,
+   "rounded": true,
+   "backgroundColor": "#cccf"
+  },
+  {
+   "center": [
+    1.5,
+    4.5
+   ],
+   "width": 0.8,
+   "height": 0.8,
+   "rounded": true,
+   "backgroundColor": "#cccf"
+  }
+ ]
+}

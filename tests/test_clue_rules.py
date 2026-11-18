@@ -25,13 +25,17 @@ from ortools.sat.python import cp_model
 from sudoku_kit.clue_rules import poster
 
 
-def _clue(rule, cells, k, clue_id="c"):
+def _line(rule, cells, values=(), clue_id="c"):
     return {
         "id": clue_id,
         "rule": rule,
         "cells": [list(c) for c in cells],
-        "values": [k],
+        "values": list(values),
     }
+
+
+def _clue(rule, cells, k, clue_id="c"):
+    return _line(rule, cells, [k], clue_id)
 
 
 def _difference(cells, k, clue_id="c"):
@@ -163,15 +167,6 @@ def test_a_board_mixing_ratio_and_difference_clues_meets_both():
 
 
 # line rules
-
-
-def _line(rule, cells, values=(), clue_id="c"):
-    return {
-        "id": clue_id,
-        "rule": rule,
-        "cells": [list(c) for c in cells],
-        "values": list(values),
-    }
 
 
 ROW = [(0, c) for c in range(9)]
@@ -392,8 +387,6 @@ def test_a_clue_with_an_unknown_rule_is_refused_naming_the_rule():
 
 # arrow: cells are the bulb's, then the shaft's; the value is the bulb's length
 
-ROW0 = [(0, c) for c in range(9)]
-
 
 def _arrow(bulb, shaft, clue_id="arrow-1"):
     return _clue("arrow", [*bulb, *shaft], len(bulb), clue_id)
@@ -504,12 +497,7 @@ def test_a_little_killer_with_the_wrong_sum_has_no_completion():
 
 
 def _skyscraper(outside, line, clue_id="sky-1"):
-    return {
-        "id": clue_id,
-        "rule": "skyscraper",
-        "cells": [list(outside), *map(list, line)],
-        "values": [],
-    }
+    return _line("skyscraper", [outside, *line], clue_id=clue_id)
 
 
 LEFT = (0, -1)
@@ -518,8 +506,8 @@ ASCENDING = {(0, c): c + 1 for c in range(9)}
 
 
 def test_a_skyscraper_counts_the_digits_seen_from_the_clue():
-    left = _skyscraper(LEFT, ROW0, "left")
-    right = _skyscraper(RIGHT, ROW0[::-1], "right")
+    left = _skyscraper(LEFT, ROW, "left")
+    right = _skyscraper(RIGHT, ROW[::-1], "right")
     grid = _solve([left, right], ASCENDING, rows_distinct=True)
     assert grid is not None
     assert grid[LEFT] == 9  # 1 2 3 .. 9: every digit is taller than those before
@@ -527,13 +515,13 @@ def test_a_skyscraper_counts_the_digits_seen_from_the_clue():
 
 
 def test_a_skyscraper_clue_that_miscounts_has_no_completion():
-    assert _solve([_skyscraper(LEFT, ROW0)], ASCENDING | {LEFT: 8}) is None
+    assert _solve([_skyscraper(LEFT, ROW)], ASCENDING | {LEFT: 8}) is None
 
 
 def test_a_taller_digit_hides_the_ones_behind_it():
     # 9 first: nothing after it shows, so the clue reads 1.
-    row = dict(zip(ROW0, [9, 1, 2, 3, 4, 5, 6, 7, 8], strict=True))
-    grid = _solve([_skyscraper(LEFT, ROW0)], row, rows_distinct=True)
+    row = dict(zip(ROW, [9, 1, 2, 3, 4, 5, 6, 7, 8], strict=True))
+    grid = _solve([_skyscraper(LEFT, ROW)], row, rows_distinct=True)
     assert grid is not None
     assert grid[LEFT] == 1
 
@@ -541,19 +529,19 @@ def test_a_taller_digit_hides_the_ones_behind_it():
 def test_a_digit_equal_to_the_tallest_so_far_is_not_seen_again():
     # Without rows_distinct a repeat is possible: 3 3 9 shows 3 then 9 only.
     row = {(0, 0): 3, (0, 1): 3, (0, 2): 9}
-    grid = _solve([_skyscraper(LEFT, ROW0[:3])], row)
+    grid = _solve([_skyscraper(LEFT, ROW[:3])], row)
     assert grid is not None
     assert grid[LEFT] == 2
     # Counting the repeated 3 as seen would make the clue 3: that must fail.
-    assert _solve([_skyscraper(LEFT, ROW0[:3])], row | {LEFT: 3}) is None
+    assert _solve([_skyscraper(LEFT, ROW[:3])], row | {LEFT: 3}) is None
 
 
 def test_a_skyscraper_reads_the_line_in_the_order_it_is_given():
     descending = {(0, c): 9 - c for c in range(9)}
-    grid = _solve([_skyscraper(LEFT, ROW0)], descending, rows_distinct=True)
+    grid = _solve([_skyscraper(LEFT, ROW)], descending, rows_distinct=True)
     assert grid is not None
     assert grid[LEFT] == 1
-    grid = _solve([_skyscraper(RIGHT, ROW0[::-1])], descending, rows_distinct=True)
+    grid = _solve([_skyscraper(RIGHT, ROW[::-1])], descending, rows_distinct=True)
     assert grid is not None
     assert grid[RIGHT] == 9
 
@@ -562,7 +550,7 @@ def test_a_skyscraper_with_no_line_or_a_value_is_refused():
     with pytest.raises(ValueError, match="sky-9"):
         poster(_skyscraper(LEFT, [], "sky-9"))
     with pytest.raises(ValueError, match="sky-9"):
-        poster(_skyscraper(LEFT, ROW0, "sky-9") | {"values": [3]})
+        poster(_skyscraper(LEFT, ROW, "sky-9") | {"values": [3]})
 
 
 # numbered rooms: cells are the outside cell, then the line from the clue inward
@@ -575,18 +563,18 @@ def _room(outside, line, clue_id="room-1"):
 def test_the_outside_cell_holds_the_digit_at_the_position_the_near_cell_names():
     # The near cell holds 3, so the digit at the 3rd position is the clue.
     row = {(0, 0): 3, (0, 1): 1, (0, 2): 7}
-    grid = _solve([_room(LEFT, ROW0)], row, rows_distinct=True)
+    grid = _solve([_room(LEFT, ROW)], row, rows_distinct=True)
     assert grid is not None
     assert grid[LEFT] == 7
 
 
 def test_a_numbered_room_whose_outside_cell_misses_the_named_position_fails():
     row = {(0, 0): 3, (0, 1): 1, (0, 2): 7}
-    assert _solve([_room(LEFT, ROW0)], row | {LEFT: 1}, rows_distinct=True) is None
+    assert _solve([_room(LEFT, ROW)], row | {LEFT: 1}, rows_distinct=True) is None
 
 
 def test_a_near_cell_of_one_names_itself():
-    grid = _solve([_room(LEFT, ROW0)], {(0, 0): 1}, rows_distinct=True)
+    grid = _solve([_room(LEFT, ROW)], {(0, 0): 1}, rows_distinct=True)
     assert grid is not None
     assert grid[LEFT] == 1
 
@@ -595,13 +583,13 @@ def test_a_numbered_room_reads_from_the_clues_own_end():
     # From the right the near cell is column 9, holding 2: position 2 from the
     # right is column 8, so the clue is that cell's digit.
     row = {(0, 8): 2, (0, 7): 6}
-    grid = _solve([_room(RIGHT, ROW0[::-1])], row, rows_distinct=True)
+    grid = _solve([_room(RIGHT, ROW[::-1])], row, rows_distinct=True)
     assert grid is not None
     assert grid[RIGHT] == 6
 
 
 def test_a_numbered_room_names_a_position_on_a_short_line_only():
-    line = ROW0[:3]
+    line = ROW[:3]
     assert _solve([_room(LEFT, line)], {(0, 0): 4}) is None
     assert _solve([_room(LEFT, line)], {(0, 0): 3}) is not None
 
@@ -610,12 +598,7 @@ def test_a_numbered_room_names_a_position_on_a_short_line_only():
 
 
 def _knight(a, b, clue_id="knight-1"):
-    return {
-        "id": clue_id,
-        "rule": "anti_knight",
-        "cells": [list(a), list(b)],
-        "values": [],
-    }
+    return _line("anti_knight", [a, b], clue_id=clue_id)
 
 
 def test_two_cells_a_knight_move_apart_may_not_share_a_digit():
@@ -625,6 +608,12 @@ def test_two_cells_a_knight_move_apart_may_not_share_a_digit():
 
 def test_an_anti_knight_pair_posts_on_its_two_cells():
     assert poster(_knight(R1C1, (1, 2))).cells == (R1C1, (1, 2))
+
+
+def test_an_anti_knight_clue_with_three_cells_is_refused_naming_the_clue():
+    clue = _line("anti_knight", [R1C1, (1, 2), (2, 4)], clue_id="knight-9")
+    with pytest.raises(ValueError, match="knight-9"):
+        poster(clue)
 
 
 def test_an_anti_knight_clue_with_one_cell_or_a_value_is_refused():

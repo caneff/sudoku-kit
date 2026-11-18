@@ -1,27 +1,24 @@
 // Decode a SudokuPad puzzle link with SudokuPad's own PuzzleLoader, in plain Node.
 //
-//   echo -n "<fpuz…|ctc…|scl…>" | node sudokupad_loader.js <hosts-json>   prints the puzzle as JSON
+//   echo -n "<fpuz…|ctc…|scl…>" | node sudokupad_loader.js <hosts-json> <har-file>   prints the puzzle as JSON
 //
 // `PuzzleLoader.parsePuzzleData(id)` is SudokuPad's own conversion of an encoded body (`scl`, `ctc`, `fpuz`,
-// `fpuzzles`) into puzzle JSON. The app files come from a recording of the app (a HAR file: $SUDOKUPAD_HAR, else
-// ~/.cache/sudokupad-art/sudokupad.har, which sudokupad-art's `render_real.js --record` writes), never from this
+// `fpuzzles`) into puzzle JSON. The app files come from a recording of the app (a HAR file that sudokupad-art's
+// `render_real.js --record` writes), never from this
 // repo, because SudokuPad is not open source. `<hosts-json>` is the JSON list of the app's hostnames, whose
-// entries the recording is searched for.
+// entries the recording is searched for; `<har-file>` is the recording's path, which sudokupad_codec.default_har
+// chooses, so the default path lives in that one place.
 //
 // Exit 1 and a message on stderr when the body does not parse (`parsePuzzleData` hands the input string back on
 // a parse error instead of throwing, so a string result is that failure); exit 2 when the recording is missing,
 // holds no loader or holds code that does not load, which is the environment, not the link.
 const crypto = require('crypto');
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const vm = require('vm');
 
 // puzpatcher.bundle.js defines `loadFPuzzle` (the f-puzzles converter) and `PuzzleZipper` (the compact-format
 // unzipper) that puzzleloader.js destructures at load.
 const APP_FILES = ['puzpatcher.bundle.js', 'puzzleloader.js'];
-
-const defaultHar = () => process.env.SUDOKUPAD_HAR || path.join(os.homedir(), '.cache', 'sudokupad-art', 'sudokupad.har');
 
 function requireHar(file) {
   if (!fs.existsSync(file)) throw new Error(`no recording of SudokuPad's app at ${file}: record one first with sudokupad-art's render_real.js --record`);
@@ -62,7 +59,7 @@ async function parseLink(encoded, { loader, logs }) {
 
 async function main() {
   let app;
-  try { app = loadApp(requireHar(defaultHar()), JSON.parse(process.argv[2])); }
+  try { app = loadApp(requireHar(process.argv[3]), JSON.parse(process.argv[2])); }
   catch (e) { console.error(e.message); process.exit(2); }
   let input = '';
   for await (const chunk of process.stdin) input += chunk;

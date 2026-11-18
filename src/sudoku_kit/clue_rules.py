@@ -34,15 +34,28 @@ import itertools
 from sudoku_kit.step_prover import Poster
 
 
+def _read(clue, fewest, values, most=None):
+    """The clue's cells as tuples, refusing fewer than `fewest`, more than
+    `most` (any number when None) and any count of values but `values`."""
+    cells = [tuple(cell) for cell in clue["cells"]]
+    if (
+        len(cells) < fewest
+        or (most is not None and len(cells) > most)
+        or len(clue["values"]) != values
+    ):
+        wanted = str(fewest) if most == fewest else f"{fewest} or more"
+        raise ValueError(
+            f"clue {clue['id']!r} ({clue['rule']}) needs {wanted} cells and "
+            f"{values} value(s), got cells {clue['cells']} and values "
+            f"{clue['values']}"
+        )
+    return cells
+
+
 def _pair(clue):
     """The clue's two cells and its one value, refusing any other shape."""
-    cells = [tuple(cell) for cell in clue["cells"]]
-    if len(cells) != 2 or len(clue["values"]) != 1:
-        raise ValueError(
-            f"clue {clue['id']!r} ({clue['rule']}) needs two cells and one value, "
-            f"got cells {clue['cells']} and values {clue['values']}"
-        )
-    return cells[0], cells[1], clue["values"][0]
+    a, b = _read(clue, 2, 1, 2)
+    return a, b, clue["values"][0]
 
 
 def difference(clue):
@@ -71,21 +84,8 @@ def ratio(clue):
     return Poster((a, b), post)
 
 
-def _line(clue, values):
-    """The clue's path of two or more cells, refusing any other shape and any
-    count of values but `values`."""
-    cells = [tuple(cell) for cell in clue["cells"]]
-    if len(cells) < 2 or len(clue["values"]) != values:
-        raise ValueError(
-            f"clue {clue['id']!r} ({clue['rule']}) needs two or more cells and "
-            f"{values} value(s), got cells {clue['cells']} and values "
-            f"{clue['values']}"
-        )
-    return cells
-
-
 def _climb(clue, strict):
-    cells = _line(clue, 0)
+    cells = _read(clue, 2, 0)
 
     def post(m, x):
         for a, b in itertools.pairwise(cells):
@@ -108,7 +108,7 @@ def renban(clue):
     """The path's digits are all different and, sorted, consecutive. Posted as
     all-different plus every pair within n - 1 of each other: n distinct
     digits spanning at most n - 1 are consecutive."""
-    cells = _line(clue, 0)
+    cells = _read(clue, 2, 0)
 
     def post(m, x):
         m.AddAllDifferent([x[c] for c in cells])
@@ -130,7 +130,7 @@ def _apart(m, a, b, k, name):
 def whisper(clue):
     """Every two neighbours on the path differ by at least the clue's value:
     4 on a Dutch whispers line, 5 on a German one."""
-    cells = _line(clue, 1)
+    cells = _read(clue, 2, 1)
     k = clue["values"][0]
 
     def post(m, x):
@@ -145,7 +145,7 @@ def lockout(clue):
     between them is strictly outside the closed range of the ends' digits,
     equal to neither. Outside is below both ends or above both, so which end is
     larger does not matter. A two-cell path still checks the gap."""
-    cells = _line(clue, 1)
+    cells = _read(clue, 2, 1)
     k = clue["values"][0]
 
     def post(m, x):
@@ -162,24 +162,11 @@ def lockout(clue):
     return Poster(tuple(cells), post)
 
 
-def _clue_cells(clue, minimum, values):
-    """The clue's cells, refusing fewer than `minimum` and any count of values
-    but `values`."""
-    cells = [tuple(cell) for cell in clue["cells"]]
-    if len(cells) < minimum or len(clue["values"]) != values:
-        raise ValueError(
-            f"clue {clue['id']!r} ({clue['rule']}) needs {minimum} or more cells "
-            f"and {values} value(s), got cells {clue['cells']} and values "
-            f"{clue['values']}"
-        )
-    return cells
-
-
 def arrow(clue):
     """The shaft's digits sum to the bulb: its one value is the bulb's length,
     the first cells; two or more read as a number, first cell most
     significant. The shaft may repeat digits."""
-    cells = _clue_cells(clue, 2, 1)
+    cells = _read(clue, 2, 1)
     width = clue["values"][0]
     if not 1 <= width < len(cells):
         raise ValueError(
@@ -196,7 +183,7 @@ def arrow(clue):
 
 def killer_cage(clue):
     """The cage's digits all differ and sum to the clue's value."""
-    cells = _clue_cells(clue, 2, 1)
+    cells = _read(clue, 2, 1)
 
     def post(m, x):
         m.AddAllDifferent([x[c] for c in cells])
@@ -207,7 +194,7 @@ def killer_cage(clue):
 
 def little_killer(clue):
     """The diagonal's digits sum to the clue's value; repeats are allowed."""
-    cells = _clue_cells(clue, 2, 1)
+    cells = _read(clue, 2, 1)
 
     def post(m, x):
         m.Add(sum(x[c] for c in cells) == clue["values"][0])
@@ -218,7 +205,7 @@ def little_killer(clue):
 def skyscraper(clue):
     """The outside cell holds how many digits of the line show from the clue:
     a digit shows when it is taller than every digit before it."""
-    cells = _clue_cells(clue, 2, 0)
+    cells = _read(clue, 2, 0)
     line = cells[1:]
 
     def post(m, x):
@@ -243,7 +230,7 @@ def numbered_rooms(clue):
     """The outside cell holds the digit the line holds at the position its near
     cell's digit names: near cell 3 puts the outside digit third from the
     clue."""
-    cells = _clue_cells(clue, 2, 0)
+    cells = _read(clue, 2, 0)
     outside, line = cells[0], cells[1:]
 
     def post(m, x):
@@ -260,11 +247,7 @@ def numbered_rooms(clue):
 
 def anti_knight(clue):
     """The two cells, a chess knight's move apart, differ."""
-    a, b = _clue_cells(clue, 2, 0)[:2]
-    if len(clue["cells"]) != 2:
-        raise ValueError(
-            f"clue {clue['id']!r} (anti_knight) needs two cells, got {clue['cells']}"
-        )
+    a, b = _read(clue, 2, 0, 2)
 
     def post(m, x):
         m.Add(x[a] != x[b])

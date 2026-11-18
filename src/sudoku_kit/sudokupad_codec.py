@@ -19,11 +19,13 @@ Only the decode lives here: the drawing helpers, build runner and `save` stay
 in sudokupad-art.
 """
 
+import http.client
 import json
 import os
 import re
 import subprocess
 import typing
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -48,7 +50,8 @@ class Decoded(typing.NamedTuple):
 
 
 def default_har():
-    """Where the recording of SudokuPad's app is read from."""
+    """Where the recording of SudokuPad's app is read from; the one place the
+    path is chosen, and handed to the loader on its command line."""
     return os.environ.get("SUDOKUPAD_HAR") or str(
         Path.home() / ".cache" / "sudokupad-art" / "sudokupad.har"
     )
@@ -84,15 +87,32 @@ def encoded_string(src):
         raise ValueError(
             f"unrecognised puzzle link form, not a link: {src[:PREVIEW_CHARACTERS]!r}"
         )
-    with urllib.request.urlopen(
-        f"{BASE_URL}api/puzzle/{token}", timeout=FETCH_TIMEOUT_SECONDS
-    ) as response:
-        blob = response.read().decode().strip()
+    blob = _fetch_blob(token)
     if not blob.startswith("scl"):
         raise ValueError(
             f"unexpected payload for id={token!r}: {blob[:PREVIEW_CHARACTERS]!r}"
         )
     return blob
+
+
+def _fetch_blob(token):
+    """The text the API holds for short id `token`. A refusal, an unreachable
+    host or a timeout names the id in the error it raises."""
+    url = f"{BASE_URL}api/puzzle/{token}"
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT_SECONDS) as response:
+            return response.read().decode().strip()
+    except urllib.error.HTTPError as error:
+        raise ValueError(
+            f"{url} answered {error.code} {error.reason} for id={token!r}"
+        ) from error
+    except (OSError, http.client.HTTPException, UnicodeDecodeError) as error:
+        reason = error.reason if isinstance(error, urllib.error.URLError) else error
+        if isinstance(reason, TimeoutError):
+            raise TimeoutError(f"{url} timed out for id={token!r}") from error
+        raise ValueError(
+            f"{url} could not be read for id={token!r}: {reason!r}"
+        ) from error
 
 
 def _plain_scl(encoded):
@@ -113,7 +133,7 @@ def _sudokupad_parse(encoded):
     ValueError is a bad body; RuntimeError is the recording, its app code or node."""
     try:
         run = subprocess.run(
-            ["node", str(LOADER), json.dumps(SUDOKUPAD_HOSTS)],
+            ["node", str(LOADER), json.dumps(SUDOKUPAD_HOSTS), default_har()],
             input=encoded,
             capture_output=True,
             text=True,

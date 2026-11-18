@@ -8,6 +8,7 @@ import io
 import json
 import shutil
 import subprocess
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,13 @@ needs_app = pytest.mark.skipif(
     not shutil.which("node") or not HAR.exists(),
     reason="node, or the recording of SudokuPad's app, is missing",
 )
-GOLDEN = ["scl-with-solution", "ctc-link", "fpuz-link", "compact-position-sums"]
+GOLDEN = [
+    "scl-with-solution",
+    "ctc-link",
+    "fpuz-link",
+    "fpuzzles-link",
+    "compact-position-sums",
+]
 # The forms that need no loader: SudokuPad's own scl body is plain JSON.
 PLAIN = {"lines": [{"color": "#000f", "thickness": 1, "d": "M0 0 L1 1"}]}
 
@@ -129,6 +136,37 @@ def test_an_api_payload_that_is_not_scl_names_the_id(monkeypatch):
     serve(monkeypatch, "<html>nope</html>")
 
     with pytest.raises(ValueError, match="og8j5c3tiw"):
+        sudokupad_codec.read_puzzle("og8j5c3tiw")
+
+
+def refuse_fetch(monkeypatch, error):
+    def fail(url, timeout=None):
+        raise error
+
+    monkeypatch.setattr("urllib.request.urlopen", fail)
+
+
+def test_a_short_link_the_api_refuses_names_the_id_and_the_status(monkeypatch):
+    refuse_fetch(
+        monkeypatch,
+        urllib.error.HTTPError("u", 404, "Not Found", None, None),
+    )
+
+    with pytest.raises(ValueError, match=r"og8j5c3tiw.*404 Not Found"):
+        sudokupad_codec.read_puzzle("og8j5c3tiw")
+
+
+def test_a_short_link_the_network_cannot_reach_names_the_id(monkeypatch):
+    refuse_fetch(monkeypatch, urllib.error.URLError("no route to host"))
+
+    with pytest.raises(ValueError, match=r"og8j5c3tiw.*no route to host"):
+        sudokupad_codec.read_puzzle("og8j5c3tiw")
+
+
+def test_a_short_link_that_times_out_is_a_timeout_naming_the_id(monkeypatch):
+    refuse_fetch(monkeypatch, urllib.error.URLError(TimeoutError("timed out")))
+
+    with pytest.raises(TimeoutError, match="og8j5c3tiw"):
         sudokupad_codec.read_puzzle("og8j5c3tiw")
 
 
