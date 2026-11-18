@@ -29,8 +29,14 @@ needs_app = pytest.mark.skipif(
 SOLUTION = "534162612543256431143256325614461325"
 
 
+def _import_only(args):
+    """The command line with no search step: these cases check the import and
+    the checks, and a search on every fixture would take minutes."""
+    return main([*args, "--max-steps", "0"])
+
+
 def _run(source, out):
-    code = main([str(source), str(out)])
+    code = _import_only([str(source), str(out)])
     rules = json.loads((out / "rules.json").read_text())
     checks = json.loads((out / "checks.json").read_text())
     return code, rules, checks
@@ -91,7 +97,7 @@ def test_a_json_file_that_is_neither_a_puzzle_nor_a_rules_file_is_refused(
 ):
     source = tmp_path / "other.json"
     source.write_text(json.dumps({"hello": 1}))
-    assert main([str(source), str(tmp_path / "out")]) == 2
+    assert _import_only([str(source), str(tmp_path / "out")]) == 2
     assert str(source) in capsys.readouterr().err
 
 
@@ -140,7 +146,9 @@ def test_rules_text_naming_no_reading_for_a_dot_colour_is_refused(tmp_path, caps
             "diagonally joined by a white dot are consecutive."
         )
 
-    assert main([str(_link_file(tmp_path, no_black_reading)), str(tmp_path)]) == 2
+    assert (
+        _import_only([str(_link_file(tmp_path, no_black_reading)), str(tmp_path)]) == 2
+    )
     assert "gives no reading for a black dot" in capsys.readouterr().err
     assert not (tmp_path / "rules.json").exists()
 
@@ -152,7 +160,9 @@ def test_a_corner_dot_without_diagonal_rules_text_is_refused(tmp_path, capsys):
             "consecutive; cells joined by a black dot are in a 2:1 ratio."
         )
 
-    assert main([str(_link_file(tmp_path, orthogonal_text)), str(tmp_path)]) == 2
+    assert (
+        _import_only([str(_link_file(tmp_path, orthogonal_text)), str(tmp_path)]) == 2
+    )
     assert "corner" in capsys.readouterr().err
 
 
@@ -170,7 +180,7 @@ def test_an_orthogonal_dot_joins_the_two_cells_either_side_of_its_edge(tmp_path)
         )
         puzzle["metadata"]["rules"] += " Orthogonal dots follow the same rules."
 
-    main([str(_link_file(tmp_path, add_edge_dot)), str(tmp_path)])
+    _import_only([str(_link_file(tmp_path, add_edge_dot)), str(tmp_path)])
     rules = json.loads((tmp_path / "rules.json").read_text())
 
     assert _clue(rules, "difference", [3, 0], [3, 1])["values"] == [1]
@@ -193,7 +203,7 @@ def test_a_shape_the_importer_does_not_read_is_refused_by_name(tmp_path, capsys,
     def add(puzzle):
         puzzle.setdefault(kind, []).append(item)
 
-    assert main([str(_link_file(tmp_path, add)), str(tmp_path)]) == 2
+    assert _import_only([str(_link_file(tmp_path, add)), str(tmp_path)]) == 2
     assert kind in capsys.readouterr().err
 
 
@@ -255,7 +265,7 @@ def test_a_thermo_without_the_word_slow_reads_as_a_strict_thermo(tmp_path):
         puzzle["metadata"]["rules"] = text.replace("slow thermometer", "thermometer")
 
     # Read strict, the puzzle's own solution breaks them: the clue's rule moved.
-    assert main([str(_cool_s(tmp_path, strict)), str(tmp_path)]) == 1
+    assert _import_only([str(_cool_s(tmp_path, strict)), str(tmp_path)]) == 1
     rules = json.loads((tmp_path / "rules.json").read_text())
     assert len(_by_rule(rules, "thermo")) == 2
     assert _by_rule(rules, "slow_thermo") == []
@@ -266,7 +276,7 @@ def test_a_german_whispers_sentence_reads_its_own_minimum(tmp_path):
         text = puzzle["metadata"]["rules"]
         puzzle["metadata"]["rules"] = text.replace("at least 4", "at least 5")
 
-    main([str(_cool_s(tmp_path, german)), str(tmp_path)])
+    _import_only([str(_cool_s(tmp_path, german)), str(tmp_path)])
     rules = json.loads((tmp_path / "rules.json").read_text())
     assert {tuple(c["values"]) for c in _by_rule(rules, "whisper")} == {(5,)}
 
@@ -276,7 +286,7 @@ def test_a_whispers_sentence_with_no_minimum_is_refused(tmp_path, capsys):
         text = puzzle["metadata"]["rules"]
         puzzle["metadata"]["rules"] = text.replace("at least 4", "a lot")
 
-    assert main([str(_cool_s(tmp_path, vague)), str(tmp_path)]) == 2
+    assert _import_only([str(_cool_s(tmp_path, vague)), str(tmp_path)]) == 2
     assert "at least" in capsys.readouterr().err
 
 
@@ -285,7 +295,7 @@ def test_a_line_colour_the_rules_text_never_names_is_refused(tmp_path, capsys):
         text = puzzle["metadata"]["rules"]
         puzzle["metadata"]["rules"] = text.replace("Pink", "Purple")
 
-    assert main([str(_cool_s(tmp_path, no_pink)), str(tmp_path)]) == 2
+    assert _import_only([str(_cool_s(tmp_path, no_pink)), str(tmp_path)]) == 2
     assert "pink" in capsys.readouterr().err
 
 
@@ -293,7 +303,7 @@ def test_a_thermo_line_with_no_bulb_underlay_is_refused(tmp_path, capsys):
     def bulbless(puzzle):
         puzzle["underlays"] = puzzle["underlays"][:1]
 
-    assert main([str(_cool_s(tmp_path, bulbless)), str(tmp_path)]) == 2
+    assert _import_only([str(_cool_s(tmp_path, bulbless)), str(tmp_path)]) == 2
     assert "no bulb" in capsys.readouterr().err
 
 
@@ -303,7 +313,7 @@ def test_an_underlay_that_is_no_thermo_bulb_is_refused(tmp_path, capsys):
             {"center": [0.5, 4.5], "width": 0.8, "height": 0.8, "rounded": True}
         )
 
-    assert main([str(_cool_s(tmp_path, extra)), str(tmp_path)]) == 2
+    assert _import_only([str(_cool_s(tmp_path, extra)), str(tmp_path)]) == 2
     assert "bulb" in capsys.readouterr().err
 
 
@@ -311,7 +321,7 @@ def test_a_line_that_bends_between_cells_is_refused(tmp_path, capsys):
     def bent(puzzle):
         puzzle["lines"][0]["wayPoints"][1] = [3.5, 7.5]
 
-    assert main([str(_cool_s(tmp_path, bent)), str(tmp_path)]) == 2
+    assert _import_only([str(_cool_s(tmp_path, bent)), str(tmp_path)]) == 2
     assert "bending" in capsys.readouterr().err
 
 
@@ -347,7 +357,7 @@ def test_a_thermo_drawn_from_its_tip_to_its_bulb_is_written_bulb_first(tmp_path)
             if line["color"] == "#aaaf":
                 line["wayPoints"].reverse()
 
-    assert main([str(_cool_s(tmp_path, reversed_lines)), str(tmp_path)]) == 0
+    assert _import_only([str(_cool_s(tmp_path, reversed_lines)), str(tmp_path)]) == 0
     rules = json.loads((tmp_path / "rules.json").read_text())
     starts = sorted(c["cells"][0] for c in _by_rule(rules, "slow_thermo"))
     assert starts == [[4, 8], [5, 6]]
@@ -468,7 +478,9 @@ def _changed(tmp_path, source, change, name="changed.json"):
 
 def _import(tmp_path, source, change):
     """Run the command line on `source` after `change(puzzle)`."""
-    code = main([str(_changed(tmp_path, source, change)), str(tmp_path / "out")])
+    code = _import_only(
+        [str(_changed(tmp_path, source, change)), str(tmp_path / "out")]
+    )
     out = tmp_path / "out" / "rules.json"
     return code, json.loads(out.read_text()) if out.exists() else None
 
@@ -500,7 +512,7 @@ def test_a_rules_file_with_a_solution_and_no_outside_digit_is_refused(tmp_path, 
     source = tmp_path / "missing.json"
     source.write_text(json.dumps(rules))
 
-    assert main([str(source), str(tmp_path / "second")]) == 2
+    assert _import_only([str(source), str(tmp_path / "second")]) == 2
     assert "solution_outside" in capsys.readouterr().err
 
 
@@ -511,7 +523,7 @@ def test_a_clue_cell_two_steps_off_the_grid_is_refused(tmp_path, capsys):
     source = tmp_path / "far.json"
     source.write_text(json.dumps(rules))
 
-    assert main([str(source), str(tmp_path / "second")]) == 2
+    assert _import_only([str(source), str(tmp_path / "second")]) == 2
     assert "[-2, 3]" in capsys.readouterr().err
 
 
