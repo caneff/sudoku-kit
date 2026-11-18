@@ -344,11 +344,11 @@ def _describe(step):
 def _singles(numbers, steps):
     span = f"{numbers[0]}-{numbers[-1]}"
     houses = ", ".join(dict.fromkeys(n for s in steps for n in s["named"]))
-    results = "; ".join(_describe(s) for s in steps)
+    claims = "; ".join(_describe(s) for s in steps)
     label = f"Step {numbers[0]}" if len(numbers) == 1 else f"Steps {span}"
     return (
         f'<p class="singles" data-steps="{span}">{label}: {len(steps)} from '
-        f"{html.escape(houses)} alone. {html.escape(results)}.</p>"
+        f"{html.escape(houses)} alone. {html.escape(claims)}.</p>"
     )
 
 
@@ -385,9 +385,14 @@ def _stuck(rules, stuck):
         for c, digits in enumerate(row)
     }
     held |= {tuple(o["cell"]): set(o["candidates"]) for o in stuck["outside"]}
+    why = (
+        f"{stuck['timeouts']} proofs ran out of time"
+        if stuck.get("timeouts")
+        else "no further step was proved"
+    )
     return (
-        '<section class="stuck"><p>The search is stuck here: no further step was '
-        "proved. These are the candidates left.</p>"
+        f'<section class="stuck"><p>The search is stuck here: {why}. '
+        "These are the candidates left.</p>"
         f"{render(rules, held, prefix='stuck')}</section>"
     )
 

@@ -56,7 +56,7 @@ def _solve(clues, givens=(), rows_distinct=False):
             m.AddAllDifferent([x[r, c] for c in range(9)])
     for clue in clues:
         p = poster(clue)
-        for cell in p.cells:  # an outside clue cell, one step off the board
+        for cell in p.cells:  # an outside cell, one step off the board
             if cell not in x:
                 x[cell] = m.NewIntVar(1, 9, f"x{cell}")
         p.post(m, {cell: x[cell] for cell in p.cells})

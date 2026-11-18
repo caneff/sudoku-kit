@@ -12,6 +12,7 @@ import urllib.error
 from pathlib import Path
 
 import pytest
+from link_helpers import needs_app
 from lzstring import LZString
 
 from sudoku_kit import sudokupad_codec
@@ -19,10 +20,6 @@ from sudoku_kit import sudokupad_codec
 FIXTURES = Path(__file__).parent / "sudokupad"
 HAR = Path(sudokupad_codec.default_har())
 needs_node = pytest.mark.skipif(not shutil.which("node"), reason="node not installed")
-needs_app = pytest.mark.skipif(
-    not shutil.which("node") or not HAR.exists(),
-    reason="node, or the recording of SudokuPad's app, is missing",
-)
 GOLDEN = [
     "scl-with-solution",
     "ctc-link",

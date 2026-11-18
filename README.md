@@ -45,13 +45,19 @@ and grid-hunts. Neither imports the step prover.
 - `sudoku_kit.sudokupad_import`: `rules_file`, a SudokuPad puzzle as a rules
   file: Kropki dots, coloured lines, arrows, killer cages, little killers,
   skyscrapers, numbered rooms and anti-knight, the rules text picking each
-  reading. A sheet with a ring of outside clue cells is read by its regions;
+  reading. A sheet with a ring of outside cells is read by its regions;
   an outside cell is one step off the grid in the rules file. It refuses any
   shape it does not read.
 - `sudoku_kit.solve_guide`: the command line, `uv run solve-guide <input>
   <output directory>`: imports a SudokuPad link or a `.json` of its puzzle JSON,
-  or reads a rules `.json`,
-  then writes `rules.json` and `checks.json`; exit 1 when a check fails.
+  or reads a rules `.json`, writes `rules.json`, `checks.json` and
+  `render.html`, then runs the step search (`steps.json`, resumed when
+  present) and writes `guide.html`. `--hint`/`--named` add a checked step and
+  `--image` puts the original beside the render. Exit codes are in its
+  docstring: 0 done, 1 a check failed, 2 unreadable input (nothing written),
+  3 stuck, 4 a hint not proved, 5 a time limit.
+- `sudoku_kit.step_search`: the step search and the step record.
+- `sudoku_kit.guide_html`: the solve guide page and the plain render.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
 

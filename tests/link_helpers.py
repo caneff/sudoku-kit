@@ -1,12 +1,22 @@
-"""What the link tests share: one fake of the SudokuMaker app's `/api/puzzles`
-and the builders of a D payload."""
+"""What the link tests share: one fake of the SudokuMaker app's `/api/puzzles`,
+the builders of a D payload, and `needs_app`, the mark on a test that runs
+SudokuPad's own loader."""
 
 import base64
 import io
 import json
+import shutil
 import zlib
+from pathlib import Path
 
-from sudoku_kit import link_codec
+import pytest
+
+from sudoku_kit import link_codec, sudokupad_codec
+
+needs_app = pytest.mark.skipif(
+    not shutil.which("node") or not Path(sudokupad_codec.default_har()).exists(),
+    reason="node, or the recording of SudokuPad's app, is missing",
+)
 
 
 def puzzle_answer_body(puzzle):

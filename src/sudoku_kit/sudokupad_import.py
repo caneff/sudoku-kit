@@ -1,5 +1,6 @@
-"""SudokuPad puzzle JSON to a rules file, for normal sudoku plus Kropki dots and
-coloured lines (thermo, renban, whispers).
+"""SudokuPad puzzle JSON to a rules file: normal sudoku plus Kropki dots,
+coloured lines (thermo, renban, whispers), arrows, killer cages, little
+killers, skyscrapers, numbered rooms and anti-knight.
 
 `rules_file(puzzle)` reads the grid, regions, givens and stored solution, and
 turns each dot overlay into clues. The puzzle's rules text picks the reading:
@@ -19,7 +20,7 @@ Waypoints run along cell centres, straight or diagonal, and fill in the cells
 between. Lockout lines are not read.
 
 A sheet bigger than the grid (SudokuMaker's outside-clue puzzles draw the grid
-inside a ring of clue cells) is read by its regions: the square they cover is
+inside a ring of outside cells) is read by its regions: the square they cover is
 the grid, and its coordinates are the rules file's. Outside cells then sit one
 step off the grid, and a rule reads one only where the stored solution holds a
 digit there.
@@ -42,7 +43,7 @@ names it:
 - Anti-knight ("knight" with "not", "no", "never" or "anti"): every pair of
   cells a knight's move apart.
 
-Lines drawn on grid corners (the frame, the boxes round clue cells) are
+Lines drawn on grid corners (the frame, the boxes round outside cells) are
 decoration and are skipped. A line is read as the one line rule a sentence
 names without a colour only when no sentence names a colour.
 
@@ -228,7 +229,7 @@ def _bulb_ends(underlays):
 
 def _decoration(line):
     """True for a line drawn over the grid along cell corners: the frame, the
-    boxes round clue cells. No rule runs there, since a rule's line runs
+    boxes round outside cells. No rule runs there, since a rule's line runs
     through cell centres."""
     return line.get("target") == "overlay" and all(
         abs(v - round(v)) < 1e-6 for point in _way_points(line) for v in point
@@ -392,7 +393,7 @@ def _sign(value):
 
 
 def _diagonal(start, arrow, board):
-    """The cells a little killer's arrow points along from the clue cell
+    """The cells a little killer's arrow points along from the outside cell
     `start`, to the grid's edge."""
     points = _way_points(arrow)
     (r0, c0), (r1, c1) = points[0], points[-1]

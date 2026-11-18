@@ -11,10 +11,10 @@ grid corner, each joining both diagonal pairs around that corner.
 """
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
+from link_helpers import needs_app
 
 from sudoku_kit import sudokupad_codec, sudokupad_import
 from sudoku_kit.solve_guide import main
@@ -22,10 +22,6 @@ from sudoku_kit.solve_guide import main
 FIXTURES = Path(__file__).parent / "solve_guide"
 DIAGONAL_DOTS = FIXTURES / "diagonal-dots-000HUJ.json"
 DIAGONAL_DOTS_LINK = FIXTURES / "diagonal-dots-000HUJ.txt"
-needs_app = pytest.mark.skipif(
-    not shutil.which("node") or not Path(sudokupad_codec.default_har()).exists(),
-    reason="node, or the recording of SudokuPad's app, is missing",
-)
 SOLUTION = "534162612543256431143256325614461325"
 
 
@@ -409,7 +405,7 @@ def test_the_arrow_and_the_whispers_import_with_two_digit_pills(tmp_path):
 
 
 def test_nextdoor_imports_skyscrapers_whose_digits_are_outside_cells(tmp_path):
-    """Logic Masters 000N2S, Nextdoor: a 4x4 inside a ring of clue cells, four
+    """Logic Masters 000N2S, Nextdoor: a 4x4 inside a ring of outside cells, four
     skyscraper clues and four renbans."""
     code, rules, checks = _run(SKYSCRAPER, tmp_path)
 
@@ -429,7 +425,7 @@ def test_nextdoor_imports_skyscrapers_whose_digits_are_outside_cells(tmp_path):
         {"cell": [1, 4], "digit": 1},
         {"cell": [2, 4], "digit": 3},
     ]
-    # The pink renban from the top clue cell runs through it.
+    # The pink renban from the top outside cell runs through it.
     assert any([-1, 3] in c["cells"] for c in _by_rule(rules, "renban"))
 
 
@@ -453,7 +449,7 @@ def test_berlin_hostel_imports_numbered_rooms_and_a_german_whisper(tmp_path):
 
 def test_points_of_interest_reads_an_arrow_whose_bulb_is_an_outside_cell(tmp_path):
     """Logic Masters 000MWP, Points of Interest: skyscrapers and arrows, one
-    arrow's bulb being the skyscraper clue cell beside row 3."""
+    arrow's bulb being the skyscraper outside cell beside row 3."""
     code, rules, checks = _run(POINTS, tmp_path)
 
     _passes(code, checks)
