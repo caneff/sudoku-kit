@@ -25,7 +25,13 @@ import json
 import sys
 from pathlib import Path
 
-from sudoku_kit import rules_file, step_search, sudokupad_codec, sudokupad_import
+from sudoku_kit import (
+    guide_html,
+    rules_file,
+    step_search,
+    sudokupad_codec,
+    sudokupad_import,
+)
 
 
 def _read(source):
@@ -67,6 +73,9 @@ def main(argv=None):
         default=[],
         help="a constraint the hint uses; repeat for each",
     )
+    parser.add_argument(
+        "--image", help="the original puzzle image, shown at the top of the guide"
+    )
     args = parser.parse_args(argv)
     try:
         rules = _read(args.input)
@@ -77,6 +86,7 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=True)
     _write(args.output / "rules.json", rules)
     _write(args.output / "checks.json", checks)
+    (args.output / "render.html").write_text(guide_html.plain_page(rules, args.image))
     unique, fits = checks["unique"], checks["solution_fits"]
     print(f"unique: {unique['status']}")
     if fits["passed"] is None:
@@ -113,6 +123,9 @@ def _search(rules, args):
     steps = record["steps"]
     hard = sum(step["hard"] for step in steps)
     print(f"search: {outcome} after {len(steps)} steps ({hard} hard)")
+    (args.output / "guide.html").write_text(
+        guide_html.guide_page(rules, record, args.image)
+    )
     return 3 if outcome == "stuck" else 0
 
 
