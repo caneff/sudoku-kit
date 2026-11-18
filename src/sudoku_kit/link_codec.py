@@ -49,6 +49,7 @@ FETCH_TIMEOUT_SECONDS = 15
 # The app refuses a longer payload (error code `puzzle_too_large`).
 MAX_PAYLOAD_CHARACTERS = 200_000
 PREVIEW_CHARACTERS = 60
+MAX_UTF8_BYTES_PER_CHARACTER = 4
 # A 429 with no usable Retry-After waits this long before its one retry.
 DEFAULT_RETRY_AFTER_SECONDS = 60
 # A longer Retry-After is refused at once instead of slept (Chris, 2026-11-15).
@@ -143,8 +144,9 @@ def _answer_field(request, field, what, where):
     when the header is missing or not a whole number of seconds), says so on
     stderr, and sends the same request once more. The app refused the request,
     so a retry cannot mint a second record. A second 429 raises like any other
-    refusal, naming the `Retry-After` it carried. A `Retry-After` over
-    `MAX_RETRY_AFTER_SECONDS` raises the same refusal at once, without waiting.
+    refusal, naming the `Retry-After` it carried and the start of the body the
+    app answered with. A `Retry-After` over `MAX_RETRY_AFTER_SECONDS` raises the
+    same refusal at once, without waiting.
     """
     try:
         return _fetch_field(request, field, what, where)
@@ -167,7 +169,22 @@ def _answer_field(request, field, what, where):
 def _too_many_requests(where, refusal, note=""):
     header = refusal.headers.get("Retry-After")
     carried = "no Retry-After" if header is None else f"Retry-After: {header}"
-    return f"{where} answered 429 {refusal.reason} ({carried}{', ' + note if note else ''})"
+    body = _body_preview(refusal)
+    shown = [carried, note, f"body: {body!r}" if body else ""]
+    return f"{where} answered 429 {refusal.reason} ({', '.join(filter(None, shown))})"
+
+
+def _body_preview(refusal):
+    """The first `PREVIEW_CHARACTERS` of the refusal's body, "" when blank or unreadable.
+
+    The body is read off the socket, so a dropped connection must not replace
+    the 429 the caller is told about.
+    """
+    try:
+        raw = refusal.read(PREVIEW_CHARACTERS * MAX_UTF8_BYTES_PER_CHARACTER)
+    except (OSError, http.client.HTTPException):
+        return ""
+    return raw.decode("utf-8", "replace")[:PREVIEW_CHARACTERS].strip()
 
 
 def _retry_after_seconds(header):
