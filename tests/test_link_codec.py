@@ -1,4 +1,5 @@
 import http.client
+import io
 import json
 import random
 import string
@@ -651,9 +652,10 @@ def test_read_puzzle_names_what_is_not_a_link():
         read_puzzle("examples/no-such/PUZZLE_LINK.txt")
 
 
-def too_many_requests(retry_after=None):
+def too_many_requests(retry_after=None, body=None):
     headers = {} if retry_after is None else {"Retry-After": retry_after}
-    return urllib.error.HTTPError("u", 429, "Too Many Requests", headers, None)
+    fp = None if body is None else io.BytesIO(body)
+    return urllib.error.HTTPError("u", 429, "Too Many Requests", headers, fp)
 
 
 @pytest.fixture
@@ -725,6 +727,26 @@ def test_a_second_429_raises_with_the_retry_after_it_carried(
     assert shown in str(error.value)
     assert waits == [1]
     assert len(app.posts) == 2
+
+
+def test_a_refused_429_shows_the_start_of_the_body_the_app_answered(monkeypatch, waits):
+    body = b'{"error": "rate_limited", "detail": "' + b"x" * 200 + b'"}'
+    ShortLinkApp(
+        monkeypatch,
+        refusals=[too_many_requests("1"), too_many_requests("2", body)],
+    )
+    with pytest.raises(ValueError) as error:
+        shorten_link(LINKS / "fillomino.txt")
+    assert "rate_limited" in str(error.value)
+    assert "x" * 200 not in str(error.value)
+
+
+def test_a_429_cap_refusal_shows_the_body_too(monkeypatch, waits):
+    ShortLinkApp(
+        monkeypatch, refusals=[too_many_requests("86400", b'{"error": "banned"}')]
+    )
+    with pytest.raises(ValueError, match="banned"):
+        shorten_link(LINKS / "fillomino.txt")
 
 
 def test_other_statuses_are_not_retried(monkeypatch, waits):

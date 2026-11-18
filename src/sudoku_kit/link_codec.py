@@ -143,7 +143,8 @@ def _answer_field(request, field, what, where):
     when the header is missing or not a whole number of seconds), says so on
     stderr, and sends the same request once more. The app refused the request,
     so a retry cannot mint a second record. A second 429 raises like any other
-    refusal, naming the `Retry-After` it carried. A `Retry-After` over
+    refusal, naming the `Retry-After` it carried and the start of the body the app
+    answered with. A `Retry-After` over
     `MAX_RETRY_AFTER_SECONDS` raises the same refusal at once, without waiting.
     """
     try:
@@ -167,7 +168,11 @@ def _answer_field(request, field, what, where):
 def _too_many_requests(where, refusal, note=""):
     header = refusal.headers.get("Retry-After")
     carried = "no Retry-After" if header is None else f"Retry-After: {header}"
-    return f"{where} answered 429 {refusal.reason} ({carried}{', ' + note if note else ''})"
+    body = refusal.read(PREVIEW_CHARACTERS * 4).decode("utf-8", "replace")[
+        :PREVIEW_CHARACTERS
+    ]
+    shown = [carried, note, f"body: {body!r}" if body.strip() else ""]
+    return f"{where} answered 429 {refusal.reason} ({', '.join(filter(None, shown))})"
 
 
 def _retry_after_seconds(header):
