@@ -14,6 +14,12 @@ writes one, and `--named` each constraint it uses: the hint is proved from
 those alone and appended before the search goes on; a hint not proved is
 reported (a refuted one with its witness) and nothing is searched.
 
+Writes `render.html` as soon as the rules file is read: the plain render
+(givens and clues, no step) beside the original image when `--image` names one,
+for the import comparison. After the search, whether it solved, stopped or got
+stuck, it writes `guide.html` (`guide_html`): the main steps, each on its own
+SVG grid, runs of singles as one line each, the image once at the top.
+
 Exits 0 when the search reached the solution or stopped at `--max-steps`, 1
 when a check failed, 2 when the input or a hint cannot be read or imported
 (writing nothing), 3 when the search is stuck, and 4 when a hint was not
@@ -25,7 +31,13 @@ import json
 import sys
 from pathlib import Path
 
-from sudoku_kit import rules_file, step_search, sudokupad_codec, sudokupad_import
+from sudoku_kit import (
+    guide_html,
+    rules_file,
+    step_search,
+    sudokupad_codec,
+    sudokupad_import,
+)
 
 
 def _read(source):
@@ -67,6 +79,9 @@ def main(argv=None):
         default=[],
         help="a constraint the hint uses; repeat for each",
     )
+    parser.add_argument(
+        "--image", help="the original puzzle image, shown at the top of the guide"
+    )
     args = parser.parse_args(argv)
     try:
         rules = _read(args.input)
@@ -77,6 +92,7 @@ def main(argv=None):
     args.output.mkdir(parents=True, exist_ok=True)
     _write(args.output / "rules.json", rules)
     _write(args.output / "checks.json", checks)
+    (args.output / "render.html").write_text(guide_html.plain_page(rules, args.image))
     unique, fits = checks["unique"], checks["solution_fits"]
     print(f"unique: {unique['status']}")
     if fits["passed"] is None:
@@ -113,6 +129,9 @@ def _search(rules, args):
     steps = record["steps"]
     hard = sum(step["hard"] for step in steps)
     print(f"search: {outcome} after {len(steps)} steps ({hard} hard)")
+    (args.output / "guide.html").write_text(
+        guide_html.guide_page(rules, record, args.image)
+    )
     return 3 if outcome == "stuck" else 0
 
 
