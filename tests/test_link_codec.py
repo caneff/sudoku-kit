@@ -652,10 +652,11 @@ def test_read_puzzle_names_what_is_not_a_link():
         read_puzzle("examples/no-such/PUZZLE_LINK.txt")
 
 
-def too_many_requests(retry_after=None, body=None):
+def too_many_requests(retry_after=None, body=b""):
     headers = {} if retry_after is None else {"Retry-After": retry_after}
-    fp = None if body is None else io.BytesIO(body)
-    return urllib.error.HTTPError("u", 429, "Too Many Requests", headers, fp)
+    return urllib.error.HTTPError(
+        "u", 429, "Too Many Requests", headers, io.BytesIO(body)
+    )
 
 
 @pytest.fixture
@@ -739,6 +740,52 @@ def test_a_refused_429_shows_the_start_of_the_body_the_app_answered(monkeypatch,
         shorten_link(LINKS / "fillomino.txt")
     assert "rate_limited" in str(error.value)
     assert "x" * 200 not in str(error.value)
+
+
+class UnreadableBody:
+    def read(self, size=-1):
+        raise ConnectionResetError("reset mid-body")
+
+    def close(self):
+        pass
+
+
+class RecordingBody(io.BytesIO):
+    sizes = None
+
+    def read(self, size=-1):
+        self.sizes.append(size)
+        return super().read(size)
+
+
+def test_a_429_whose_body_cannot_be_read_still_raises_the_429(monkeypatch, waits):
+    unreadable = urllib.error.HTTPError(
+        "u", 429, "Too Many Requests", {"Retry-After": "86400"}, UnreadableBody()
+    )
+    ShortLinkApp(monkeypatch, refusals=[unreadable])
+    with pytest.raises(ValueError, match=r"answered 429.*Retry-After: 86400") as error:
+        shorten_link(LINKS / "fillomino.txt")
+    assert "body" not in str(error.value)
+
+
+@pytest.mark.parametrize("body", [b"", b"  \n "])
+def test_a_blank_429_body_is_left_out(monkeypatch, waits, body):
+    ShortLinkApp(monkeypatch, refusals=[too_many_requests("86400", body)])
+    with pytest.raises(ValueError) as error:
+        shorten_link(LINKS / "fillomino.txt")
+    assert "body" not in str(error.value)
+
+
+def test_a_429_body_is_read_in_a_bounded_chunk(monkeypatch, waits):
+    fp = RecordingBody(b"y" * 100_000)
+    fp.sizes = []
+    refusal = urllib.error.HTTPError(
+        "u", 429, "Too Many Requests", {"Retry-After": "86400"}, fp
+    )
+    ShortLinkApp(monkeypatch, refusals=[refusal])
+    with pytest.raises(ValueError):
+        shorten_link(LINKS / "fillomino.txt")
+    assert len(fp.sizes) == 1 and 0 < fp.sizes[0] <= 1000
 
 
 def test_a_429_cap_refusal_shows_the_body_too(monkeypatch, waits):
