@@ -2,10 +2,13 @@
 its own SVG grid, redrawn from the rules file (spec #106).
 
 `shown(rules, record)` picks the main steps mechanically, so two runs over the
-same record show the same ones. A step is shown when it is the break-in (the
-first step that places a digit), names a clue (a variant rule), or names two
-or more constraints. Every other step names one row, column or region, and
-each unbroken run of those collapses into one line.
+same record show the same ones. A step is shown when it names a clue (a
+variant rule) or two or more constraints, or when it carries a chain or
+`either` claim. Every other step names one row, column or region, and each
+unbroken run of those collapses into one line. The break-in (`break_in`) is
+the first step that names a clue or two or more constraints: its section is
+labelled, and a hard step (more than 3 named constraints) is marked as hard.
+A stuck record ends the guide with the grid and candidates at the stuck point.
 
 A shown step's grid draws the candidates before the step, with the digits the
 step removes struck out. Cells of the constraints it names are marked `used`
@@ -29,7 +32,6 @@ import itertools
 from sudoku_kit import rules_file, step_search
 
 CELL = 48
-HOUSE_PREFIXES = ("row ", "column ", "region ")
 LINE_COLOURS = {
     "thermo": "#999",
     "slow_thermo": "#999",
@@ -50,13 +52,29 @@ img.original { max-width: 24rem; }
 .solved { font-size: 26px; fill: #236; }
 .cand { font-size: 11px; fill: #555; }
 .cand.struck { fill: #c22; text-decoration: line-through; }
+.breakin, .hard { font-weight: bold; color: #b00; }
 .label { font-size: 12px; fill: #b00; font-weight: bold; }
 .arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
 """
 
 
-def is_house(name):
-    return name.startswith(HOUSE_PREFIXES)
+def _single_house(rules, step):
+    """True when the step names exactly one row, column or region."""
+    houses = rules_file.house_names(rules)
+    return len(step["named"]) == 1 and step["named"][0] in houses
+
+
+def break_in(rules, record):
+    """The number of the first step naming a clue or two or more constraints,
+    or None when there is no such step."""
+    return next(
+        (
+            i
+            for i, step in enumerate(record["steps"], 1)
+            if not _single_house(rules, step)
+        ),
+        None,
+    )
 
 
 def shown(rules, record):
@@ -64,20 +82,10 @@ def shown(rules, record):
     step and ("singles", [numbers], [steps]) for each run of the rest. Step
     numbers count from 1."""
     steps = record["steps"]
-    break_in = next(
-        (
-            i
-            for i, step in enumerate(steps, 1)
-            if len(step["claim"].get("digits", ())) == 1
-        ),
-        None,
-    )
     items, run = [], []
     for i, step in enumerate(steps, 1):
         main = (
-            i == break_in
-            or len(step["named"]) > 1
-            or not is_house(step["named"][0])
+            not _single_house(rules, step)
             or "chain" in step["claim"]
             or "either" in step["claim"]
         )
@@ -188,12 +196,9 @@ def _clue(grid, clue):
         out.append(_text(x - 12, y - 10, "cagesum", values[0]))
         return "".join(out)
     if rule in ("skyscraper", "numbered_rooms"):
-        x, y = grid.centre(cells[0])
-        stored = {
-            tuple(e["cell"]): e["digit"] for e in grid.rules.get("solution_outside", [])
-        }
-        digit = stored.get(cells[0])
-        return _text(x, y + 8, "clue", "" if digit is None else digit)
+        # The clue's digit is the solver's to find: its outside cell is drawn
+        # empty, like any cell, and fills only through the candidates.
+        return ""
     return f'<polyline class="line" points="{points}" fill="none" stroke="#888"/>'
 
 
@@ -225,7 +230,7 @@ def _annotation(grid, note, prefix):
     raise ValueError(f"annotation {note!r} has no known type (arrow, circle, label)")
 
 
-def _claim_marks(claim, state_after):
+def _claim_marks(claim):
     """(changed cells, default annotations) the claim gives."""
     if "cell" in claim:
         return {tuple(claim["cell"])}, []
@@ -250,7 +255,7 @@ def render(rules, candidates=None, step=None, prefix="g"):
         for name in step["named"]:
             used.update(registry[name].cells)
         claim = step["claim"]
-        changed, notes = _claim_marks(claim, None)
+        changed, notes = _claim_marks(claim)
         if "cell" in claim:
             cell = tuple(claim["cell"])
             removed[cell] = candidates[cell] - set(claim["digits"])
@@ -340,22 +345,29 @@ def _singles(numbers, steps):
     span = f"{numbers[0]}-{numbers[-1]}"
     houses = ", ".join(dict.fromkeys(n for s in steps for n in s["named"]))
     results = "; ".join(_describe(s) for s in steps)
-    label = (
-        f"Step {numbers[0]}"
-        if len(numbers) == 1
-        else f"Steps {numbers[0]}-{numbers[-1]}"
-    )
+    label = f"Step {numbers[0]}" if len(numbers) == 1 else f"Steps {span}"
     return (
         f'<p class="singles" data-steps="{span}">{label}: {len(steps)} from '
         f"{html.escape(houses)} alone. {html.escape(results)}.</p>"
     )
 
 
-def _step_section(rules, number, step, before):
+def _step_section(rules, number, step, before, is_break_in):
     named = ", ".join(step["named"])
     drawn = dict(step, number=number)
     parts = [
         f"<section><h2>Step {number}: {html.escape(_describe(step))}</h2>",
+    ]
+    if is_break_in:
+        parts.append(
+            '<p class="breakin">Break-in: the first step that needs a clue.</p>'
+        )
+    if len(step["named"]) > step_search.HARD:
+        parts.append(
+            f'<p class="hard">Hard step: it uses {len(step["named"])} constraints '
+            "together.</p>"
+        )
+    parts += [
         f"<p>Uses {html.escape(named)}.</p>",
         render(rules, before, drawn, prefix=f"s{number}"),
     ]
@@ -363,6 +375,21 @@ def _step_section(rules, number, step, before):
         parts.append(f"<p>{html.escape(step['text'])}</p>")
     parts.append("</section>")
     return "".join(parts)
+
+
+def _stuck(rules, stuck):
+    """The stuck point: the candidates the search ended with, on one grid."""
+    held = {
+        (r, c): set(digits)
+        for r, row in enumerate(stuck["candidates"])
+        for c, digits in enumerate(row)
+    }
+    held |= {tuple(o["cell"]): set(o["candidates"]) for o in stuck["outside"]}
+    return (
+        '<section class="stuck"><p>The search is stuck here: no further step was '
+        "proved. These are the candidates left.</p>"
+        f"{render(rules, held, prefix='stuck')}</section>"
+    )
 
 
 def _page(title, body):
@@ -393,12 +420,15 @@ def guide_page(rules, record, image=None):
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:
         body.append(_image(image))
+    first = break_in(rules, record)
     for item in shown(rules, record):
         if item[0] == "singles":
             body.append(_singles(item[1], item[2]))
         else:
             _, number, step = item
-            body.append(_step_section(rules, number, step, before[number]))
+            body.append(
+                _step_section(rules, number, step, before[number], number == first)
+            )
     if record.get("stuck"):
-        body.append("<p>The search is stuck here: no further step was proved.</p>")
+        body.append(_stuck(rules, record["stuck"]))
     return _page("Solve guide", "".join(body))

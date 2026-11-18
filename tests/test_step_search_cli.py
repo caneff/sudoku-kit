@@ -11,11 +11,13 @@ from pathlib import Path
 
 import pytest
 
-from sudoku_kit import rules_file
+from sudoku_kit import rules_file, step_search
 from sudoku_kit.solve_guide import main
 from sudoku_kit.step_prover import Place, prove
 
-DIAGONAL_DOTS = Path(__file__).parent / "solve_guide" / "diagonal-dots-000HUJ.json"
+FIXTURES = Path(__file__).parent / "solve_guide"
+DIAGONAL_DOTS = FIXTURES / "diagonal-dots-000HUJ.json"
+DUTCH_DOTS = FIXTURES / "dutch-dots-000KVY.json"
 
 
 def _replay(rules, steps):
@@ -66,7 +68,7 @@ def test_outside_cells_are_carried_as_candidates_to_the_stuck_point(tmp_path):
         - {(r, c) for r in range(n) for c in range(n)}
     )
 
-    assert code == 3
+    assert code == 5
     assert outside
     assert record["stuck"]["outside"] == [
         {"cell": list(cell), "candidates": list(range(1, n + 1))} for cell in outside
@@ -99,6 +101,27 @@ def test_on_a_puzzle_with_outside_cells_the_path_solves_them_too(tmp_path):
         assert final[tuple(entry["cell"])] == [entry["digit"]]
 
 
+def test_a_solved_grid_with_unsolved_outside_cells_is_not_finished(tmp_path):
+    _, _, rules = _run(SKYSCRAPERS, tmp_path / "import", "--max-steps", "0")
+    n = rules["size"]
+    rules["givens"] = [
+        {"cell": [r, c], "digit": rules["solution"][r][c]}
+        for r in range(n)
+        for c in range(n)
+    ]
+    source = tmp_path / "all-given.json"
+    source.write_text(json.dumps(rules))
+
+    code, record, rules = _run(source, tmp_path / "out")
+
+    assert code == 0
+    assert record["steps"]
+    _reproves(rules, record)
+    *_, (final, _) = _replay(rules, record["steps"])
+    for entry in rules["solution_outside"]:
+        assert final[tuple(entry["cell"])] == [entry["digit"]]
+
+
 def test_a_stopped_run_saved_the_first_steps_of_the_full_path(solved, tmp_path):
     _, full, _ = solved
     code, stopped, _ = _run(DIAGONAL_DOTS, tmp_path, "--max-steps", "5")
@@ -110,9 +133,15 @@ def test_a_stopped_run_saved_the_first_steps_of_the_full_path(solved, tmp_path):
 @pytest.mark.parametrize("left", [5, 30])
 def test_a_run_resumes_from_its_step_record_to_the_same_path(solved, tmp_path, left):
     _, full, _ = solved
-    stopped = dict(full, steps=full["steps"][:-left], timeouts=[])
-    tmp_path.mkdir(exist_ok=True)
+    kept = len(full["steps"]) - left
+    stopped = dict(full, steps=full["steps"][:kept], timeouts=[])
     (tmp_path / "steps.json").write_text(json.dumps(stopped))
+
+    code, resumed, _ = _run(DIAGONAL_DOTS, tmp_path, "--max-steps", "2")
+
+    # A fresh run would stop after 2 steps; a resumed one after kept + 2.
+    assert code == 0
+    assert resumed["steps"] == full["steps"][: kept + 2]
 
     code, resumed, _ = _run(DIAGONAL_DOTS, tmp_path)
 
@@ -120,18 +149,87 @@ def test_a_run_resumes_from_its_step_record_to_the_same_path(solved, tmp_path, l
     assert resumed["steps"] == full["steps"]
 
 
+def test_the_step_record_is_saved_after_every_step(tmp_path, monkeypatch):
+    on_disk = []
+    save = step_search.save_record
+
+    def saving(record, path):
+        save(record, path)
+        on_disk.append(len(json.loads(path.read_text())["steps"]))
+
+    monkeypatch.setattr(step_search, "save_record", saving)
+    code, record, _ = _run(DIAGONAL_DOTS, tmp_path, "--max-steps", "3")
+
+    assert code == 0
+    assert len(record["steps"]) == 3
+    assert on_disk[:3] == [1, 2, 3]
+
+
+def test_a_search_step_names_only_its_irreducible_set(solved):
+    _, record, rules = solved
+    named = rules_file.registry(rules)
+    steps = record["steps"]
+    for cands, step in _replay(rules, steps):
+        if step is None:
+            break
+        claim = Place(tuple(step["claim"]["cell"]), step["claim"]["digits"])
+        for drop in step["named"]:
+            fewer = [n for n in step["named"] if n != drop]
+            result = prove(cands, named, fewer, claim, time_limit=60)
+            assert result.status == "refuted", (step, drop)
+
+
+def test_a_step_record_from_another_puzzle_is_refused_and_nothing_written(
+    tmp_path, capsys
+):
+    first = tmp_path / "first"
+    code, record, _ = _run(DIAGONAL_DOTS, first, "--max-steps", "3")
+    assert code == 0
+    second = tmp_path / "second"
+    second.mkdir()
+    (second / "steps.json").write_text(json.dumps(record))
+
+    code = main([str(DUTCH_DOTS), str(second)])
+
+    assert code == 2
+    assert "step 1" in capsys.readouterr().err
+    assert sorted(p.name for p in second.iterdir()) == ["steps.json"]
+    assert json.loads((second / "steps.json").read_text()) == record
+
+
+def test_a_step_record_a_changed_clue_breaks_is_refused(solved, tmp_path, capsys):
+    _, full, rules = solved
+    used = next(n for s in full["steps"] for n in s["named"] if n in _clue_ids(rules))
+    rules["clues"] = [c for c in rules["clues"] if c["id"] != used]
+    source = tmp_path / "changed.json"
+    source.write_text(json.dumps(rules))
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "steps.json").write_text(json.dumps(full))
+
+    code = main([str(source), str(out)])
+
+    assert code == 2
+    assert used in capsys.readouterr().err
+
+
+def _clue_ids(rules):
+    return {clue["id"] for clue in rules["clues"]}
+
+
 @pytest.fixture
 def stuck(tmp_path):
     """Diagonal Dots stopped at the start: every proof forced to time out."""
     code, record, _ = _run(DIAGONAL_DOTS, tmp_path, "--proof-limit", "0.0")
-    assert code == 3
+    assert code == 5
     return tmp_path, record
 
 
-def test_a_search_whose_proofs_all_time_out_records_a_stuck_point(stuck):
+def test_a_search_whose_proofs_all_time_out_records_a_timed_out_stuck_point(stuck):
     _, record = stuck
     assert record["steps"] == []
     assert record["timeouts"]
+    assert record["stuck"]["timeouts"] == len(record["timeouts"])
     assert record["stuck"]["grid"][4][5] == 4
     assert record["stuck"]["grid"][0][0] == 0
     assert record["stuck"]["candidates"][0][0] == [1, 2, 3, 4, 5, 6]
@@ -191,3 +289,77 @@ def test_a_hint_naming_an_unknown_constraint_is_refused(stuck, capsys):
     assert code == 2
     assert "row 99" in capsys.readouterr().err
     assert json.loads((out / "steps.json").read_text()) == before
+
+
+def test_a_hint_with_no_named_constraint_is_refused_writing_nothing(tmp_path, capsys):
+    out = tmp_path / "out"
+    code = _hint(out, HINT)
+    assert code == 2
+    assert "constraint" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_hint_that_is_not_json_is_refused_writing_nothing(tmp_path, capsys):
+    out = tmp_path / "out"
+    code = main([str(DIAGONAL_DOTS), str(out), "--hint", "r5c1", "--named", "row 5"])
+    assert code == 2
+    assert "r5c1" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_missing_input_file_is_refused_by_name(tmp_path, capsys):
+    out = tmp_path / "out"
+    code = main([str(tmp_path / "missing.json"), str(out)])
+    assert code == 2
+    assert "missing.json" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_link_sudokupads_loader_cannot_read_is_refused(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SUDOKUPAD_HAR", str(tmp_path / "no-recording.har"))
+    out = tmp_path / "out"
+    code = main(["ctcN4IgzglgXgpiBcBOANCA5gJwgEwQbT2AF9AA", str(out)])
+    assert code == 2
+    assert "SudokuPad" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_uniqueness_check_that_times_out_is_no_verdict(tmp_path):
+    out = tmp_path / "out"
+    code = main([str(DIAGONAL_DOTS), str(out), "--time-limit", "0.0"])
+    checks = json.loads((out / "checks.json").read_text())
+    assert code == 5
+    assert checks["unique"] == {"status": "timeout", "passed": None}
+    assert not (out / "steps.json").exists()
+
+
+def test_an_image_path_is_written_relative_to_the_output_directory(tmp_path):
+    image = tmp_path / "pictures" / "original.png"
+    image.parent.mkdir()
+    image.write_bytes(b"")
+    out = tmp_path / "out"
+    main([str(DIAGONAL_DOTS), str(out), "--max-steps", "0", "--image", str(image)])
+    for page in ("render.html", "guide.html"):
+        assert 'src="../pictures/original.png"' in (out / page).read_text()
+
+
+def _empty_grid():
+    """A 4x4 grid with no givens and no clues: many solutions, so no claim
+    ever proves."""
+    boxes = [
+        [[r, c] for r in range(br, br + 2) for c in range(bc, bc + 2)]
+        for br in (0, 2)
+        for bc in (0, 2)
+    ]
+    return {"size": 4, "regions": boxes, "givens": [], "clues": []}
+
+
+def test_a_stuck_point_where_no_proof_timed_out_is_a_real_one(tmp_path):
+    record = step_search.new_record()
+    path = tmp_path / "steps.json"
+    search = step_search.Search(_empty_grid(), record, path, proof_limit=60)
+
+    assert search.run() == "stuck"
+    assert record["timeouts"] == []
+    assert record["stuck"]["timeouts"] == 0
+    assert record["stuck"]["candidates"][0][0] == [1, 2, 3, 4]

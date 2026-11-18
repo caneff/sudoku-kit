@@ -40,11 +40,21 @@ The step record is a JSON object:
   those digits), `{"chain": [cells]}` (a rising chain, assumed by every later
   step as a given chain) or `{"either": [[[cell, digit], ...], ...]}`.
 - `timeouts`: each `{"step", "claim", "named"}`, `step` the index of the step
-  being searched for when the proof timed out.
-- `stuck`: null, or `{"grid", "candidates", "outside"}`: n rows of digits, 0
-  where the cell is unsolved; n rows of each cell's candidate list; and each
-  outside cell as `{"cell", "candidates"}`. Outside cells are searched like
-  grid cells, and a path is finished only when they are solved too.
+  being searched for when the proof timed out, each proof once per step.
+- `stuck`: null, or `{"grid", "candidates", "outside", "timeouts"}`: n rows of
+  digits, 0 where the cell is unsolved; n rows of each cell's candidate list;
+  each outside cell as `{"cell", "candidates"}`; and how many proofs timed out
+  while searching for the next step. Outside cells are searched like grid
+  cells, and a path is finished only when they are solved too.
+
+A stuck point with no timeouts is a real one: every claim tried failed to
+prove. One with timeouts is no verdict (a timeout never is): the run ends
+"timeout", and a higher proof limit may find the next step.
+
+A run resumes from a record only after proving every step in it again from
+its named constraints on the rules file it is given, so a record left by
+another rules file, or by this one before a clue was changed, is refused
+rather than replayed.
 """
 
 import json
@@ -146,11 +156,39 @@ class State:
         }
 
 
-def replay(rules, record):
-    """The `State` after every step of `record`."""
+def replay(rules, record, proof_limit):
+    """The `State` after every step of `record`, each step proved again with
+    `prove` from its named constraints first. Raises ValueError for a step
+    these rules do not prove, and TimeoutError for one whose proof timed out."""
     state = State(rules)
-    for step in record["steps"]:
-        state.apply(claim_from_json(step["claim"]))
+    named = rules_file.registry(rules)
+    for k, step in enumerate(record["steps"], 1):
+        claim = claim_from_json(step["claim"])
+        try:
+            result = prove(
+                state.candidates,
+                named,
+                step["named"],
+                claim,
+                given=state.given,
+                time_limit=proof_limit,
+            )
+        except (KeyError, TypeError, ValueError) as e:
+            raise ValueError(
+                f"step {k} of the step record does not fit this rules file: {e}"
+            ) from e
+        if result.status == "timeout":
+            raise TimeoutError(
+                f"proving step {k} of the step record again hit the "
+                f"{proof_limit}s proof limit; no verdict"
+            )
+        if result.status != "proved":
+            raise ValueError(
+                f"step {k} of the step record is {result.status} on this rules "
+                f"file: the record was searched on another rules file, or "
+                f"before a clue changed; remove it or use a new directory"
+            )
+        state.apply(claim)
     return state
 
 
@@ -164,9 +202,10 @@ class Search:
         self.record = record
         self.path = path
         self.limit = proof_limit
-        self.state = replay(rules, record)
+        self.state = replay(rules, record, proof_limit)
         self.cache = {}
         self.verdicts = {}
+        self.step_timeouts = set()
 
     def _key(self, kind, claim, named):
         cells = set(claim.claim_cells())
@@ -198,6 +237,9 @@ class Search:
         return self._verdict(prove, claim, named).status == "proved"
 
     def _timed_out(self, claim, named):
+        if (claim, tuple(named)) in self.step_timeouts:
+            return
+        self.step_timeouts.add((claim, tuple(named)))
         self.record["timeouts"].append(
             {
                 "step": len(self.record["steps"]),
@@ -314,12 +356,27 @@ class Search:
             }
         )
         self.record["stuck"] = None
+        self.step_timeouts = set()
         save_record(self.record, self.path)
+
+    def check_hint(self, claim, named):
+        """Raise ValueError when the hint `claim` from `named` cannot be tried:
+        no named constraint, a name that is not a house or clue, or a cell
+        not on the board."""
+        if not named:
+            raise ValueError("a hint names at least one constraint it uses")
+        unknown = [name for name in named if name not in self.registry]
+        if unknown:
+            raise ValueError(f"the hint names {unknown}, not a house or clue")
+        off = [c for c in claim.claim_cells() if c not in self.state.candidates]
+        if off:
+            raise ValueError(f"the hint names cells {off}, not on the board")
 
     def hint(self, claim, named):
         """Prove `claim` from the constraints `named`; when proved, append it
-        as a step by "hint". Returns `prove`'s result. Raises ValueError for a
-        name that is not a house or clue, or a cell not on the board."""
+        as a step by "hint". Returns `prove`'s result. Raises `check_hint`'s
+        ValueErrors."""
+        self.check_hint(claim, named)
         result = prove(
             self.state.candidates,
             self.registry,
@@ -334,7 +391,8 @@ class Search:
 
     def run(self, max_steps=None):
         """Search until solved, stuck, or `max_steps` steps taken this run.
-        Returns "solved", "stuck" or "stopped"."""
+        Returns "solved", "stopped", "stuck" (a stuck point, no proof timed
+        out) or "timeout" (a stuck point where some proof timed out)."""
         taken = 0
         while not self.state.solved():
             if max_steps is not None and taken >= max_steps:
@@ -342,9 +400,10 @@ class Search:
                 return "stopped"
             step = self._single() or self._ringed()
             if step is None:
-                self.record["stuck"] = self.state.snapshot()
+                timeouts = len(self.step_timeouts)
+                self.record["stuck"] = self.state.snapshot() | {"timeouts": timeouts}
                 save_record(self.record, self.path)
-                return "stuck"
+                return "timeout" if timeouts else "stuck"
             self.take(*step, by="search")
             taken += 1
         save_record(self.record, self.path)

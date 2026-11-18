@@ -15,11 +15,13 @@ from pathlib import Path
 
 import pytest
 
+from sudoku_kit import guide_html, step_search
 from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
 PUZZLE = FIXTURES / "diagonal-dots-000HUJ.json"
 RECORD = FIXTURES / "diagonal-dots-000HUJ-steps.json"
+SKYSCRAPER = FIXTURES / "skyscraper-nextdoor-000N2S.json"
 
 
 class Page(HTMLParser):
@@ -111,13 +113,12 @@ def _is_house(name):
 
 
 def _expected_shown(steps):
-    """Step numbers shown: the first placement, and every step naming a clue
-    or two or more constraints."""
-    break_in = next(i for i, s in enumerate(steps, 1) if len(s["claim"]["digits"]) == 1)
+    """Step numbers shown: every step naming a clue or two or more
+    constraints."""
     return {
         i
         for i, s in enumerate(steps, 1)
-        if i == break_in or len(s["named"]) > 1 or not _is_house(s["named"][0])
+        if len(s["named"]) > 1 or not _is_house(s["named"][0])
     }
 
 
@@ -177,13 +178,104 @@ def test_runs_of_singles_appear_as_one_line_each(guide):
 
 
 def test_two_runs_on_the_same_puzzle_show_the_same_steps(tmp_path):
+    """Two fresh searches of the whole solve, about 45 seconds each."""
     shown = []
     for k in range(2):
-        code, page = _guide(tmp_path / str(k), "--max-steps", "14", seed=False)
+        code, page = _guide(tmp_path / str(k), seed=False)
         assert code == 0
         shown.append(page.grids())
     assert shown[0] == shown[1]
-    assert len(shown[0]) >= 1
+    assert len(shown[0]) == len(
+        _expected_shown(json.loads(RECORD.read_text())["steps"])
+    )
+
+
+def test_the_break_in_is_the_first_step_naming_a_clue_or_two_constraints(guide):
+    """Pinned on 000HUJ's committed record: step 13 is the first to name a clue
+    (a dot), though the first placement is step 41. Only it is labelled."""
+    _, page = guide
+    steps = json.loads(RECORD.read_text())["steps"]
+    first = next(
+        i
+        for i, s in enumerate(steps, 1)
+        if len(s["named"]) > 1 or not _is_house(s["named"][0])
+    )
+
+    assert first == 13
+    # The label sits above the grid it belongs to, so after the previous svg.
+    assert [e[3] + 1 for e in page.find("p", "breakin")] == [page.grids()[13]]
+    assert not page.find("p", "hard")
+
+
+def test_a_step_naming_more_than_three_constraints_is_marked_hard(tmp_path):
+    out = tmp_path / "out"
+    _guide(out)
+    rules = json.loads((out / "rules.json").read_text())
+    record = json.loads(RECORD.read_text())
+    record["steps"][12]["named"] = [
+        "row 5",
+        "column 1",
+        "region 3",
+        "black-dot-r5c1-r6c2",
+    ]
+
+    page = Page(guide_html.guide_page(rules, record))
+
+    assert len(page.find("p", "hard")) == 1
+    assert "4 constraints" in page.find("p", "hard")[0][2]
+
+
+def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(tmp_path):
+    out = tmp_path / "out"
+    _guide(out)
+    rules = json.loads((out / "rules.json").read_text())
+    record = json.loads(RECORD.read_text())
+    record["steps"] = record["steps"][:41]
+    state = step_search.State(rules)
+    for step in record["steps"]:
+        state.apply(step_search.claim_from_json(step["claim"]))
+    record["stuck"] = state.snapshot()
+
+    page = Page(guide_html.guide_page(rules, record))
+
+    stuck = page.find("svg", "grid")[-1][3]
+    assert not [e for e in page.grids().values() if e == stuck]
+    drawn = {
+        (e[1]["data-cell"], int(e[1]["data-digit"]))
+        for e in page.find("text", "cand")
+        if e[3] == stuck
+    }
+    held = state.candidates
+    # A cell still holding every digit is drawn blank.
+    unsolved = {c: d for c, d in held.items() if 1 < len(d) < rules["size"]}
+    assert unsolved
+    assert drawn == {(_name(c), d) for c, digits in unsolved.items() for d in digits}
+    assert [e[2] for e in page.find("text", "solved") if e[3] == stuck] == [
+        str(next(iter(d)))
+        for c, d in sorted(held.items())
+        if len(d) == 1 and c not in {tuple(g["cell"]) for g in rules["givens"]}
+    ]
+
+
+def test_outside_clue_cells_start_empty_on_every_grid(tmp_path):
+    """Nextdoor (000N2S): the four skyscraper digits are the solver's to find,
+    so the render and every step grid draw nothing in those cells."""
+    out = tmp_path / "out"
+    main([str(SKYSCRAPER), str(out), "--max-steps", "0"])
+    rules = json.loads((out / "rules.json").read_text())
+
+    assert rules["solution_outside"]
+    page = Page((out / "render.html").read_text())
+    assert not page.find("text", "clue")
+    assert [e[2] for e in page.find("text", "given")] == [
+        str(g["digit"]) for g in rules["givens"]
+    ]
+    assert not page.find("text", "solved")
+    assert len(page.find("rect", "cell")) == 16 + len(rules["solution_outside"])
+
+    record = {"steps": [], "timeouts": [], "stuck": None}
+    guide = Page(guide_html.guide_page(rules, record))
+    assert not guide.find("text", "clue")
 
 
 def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(tmp_path):

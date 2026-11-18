@@ -189,7 +189,11 @@ def _check_unique(rules, named, time_limit):
     for given in rules["givens"]:
         m.Add(x[tuple(given["cell"])] == given["digit"])
     result = check_uniqueness(m, x, time_limit=time_limit)
-    return {"status": result.status, "passed": result.unique}
+    if result.status == "invalid":
+        raise ValueError("CP-SAT rejected the rules file's model as invalid")
+    # A timeout is no verdict: passed is null, never false.
+    passed = None if result.status == "timeout" else result.unique
+    return {"status": result.status, "passed": passed}
 
 
 def _fits(poster, digit_at, time_limit):
@@ -232,9 +236,13 @@ def check(rules, time_limit=60.0):
     """The two checks on `rules`:
 
     - `unique`: `status` from `uniqueness.check_uniqueness` over every house,
-      clue and given; `passed` only on "unique", never on a timeout.
+      clue and given; `passed` true only on "unique" and null on "timeout",
+      which is no verdict.
     - `solution_fits`: `failing` names each given, house and clue the stored
       solution breaks; `passed` is None when there is no stored solution.
+
+    Raises ValueError when CP-SAT rejects the model, and TimeoutError when
+    checking the stored solution against a constraint hits `time_limit`.
     """
     named = registry(rules)
     return {
@@ -244,5 +252,7 @@ def check(rules, time_limit=60.0):
 
 
 def passed(checks):
-    """True unless a check that ran failed."""
-    return checks["unique"]["passed"] and checks["solution_fits"]["passed"] is not False
+    """True when the puzzle is unique and the stored solution, if any, fits."""
+    return bool(checks["unique"]["passed"]) and (
+        checks["solution_fits"]["passed"] is not False
+    )
