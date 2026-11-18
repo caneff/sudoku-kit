@@ -18,12 +18,46 @@ and grid-hunts. Neither imports the step prover.
   (or a file holding one) with one POST and checks it resolves back to the
   payload sent; `uv run --directory <repo> python -m sudoku_kit.link_codec
   shorten <link-or-file>...` prints one per source.
+- `sudoku_kit.sudokupad_codec`: the SudokuPad link reader. `read_puzzle` returns the puzzle
+  JSON (cells, regions, cages, lines, arrows, overlays, underlays, metadata including any
+  stored solution) that a SudokuPad link, short id, bare `scl`/`ctc`/`fpuzzles`/`fpuz` string
+  or a file holding one stands for; `decode` also returns the form the link carried. A short
+  id is resolved with one GET of `sudokupad.app/api/puzzle/<id>`. A plain `scl` body decodes
+  in Python; the other forms run SudokuPad's own loader in `node` over a recording of the app
+  (`$SUDOKUPAD_HAR`, else `~/.cache/sudokupad-art/sudokupad.har`), so they need `node` and
+  that recording.
 - `sudoku_kit.step_prover`: `prove`, which reports whether a step's claim
   (`Chain`, `Place` or `Either`) is `proved` from its named constraints,
   `refuted` with a witness, `contradictory` or `timeout`. `irreducible`
   shrinks a proved step to an irreducible set of constraints, and
   `propagation` checks whether propagation alone proves it. `house` and
   `table` build the constraints; a caller registers its own with `Poster`.
+- `sudoku_kit.rules_file`: the rules file, the one puzzle format the solve
+  guide reads: grid size, regions, givens, an optional solution and clues.
+  `load`, `validate`, `registry` (every house and clue as a named constraint
+  for the step prover) and `check` (exactly one solution; the stored solution
+  fits every named constraint).
+- `sudoku_kit.clue_rules`: per-clue rule functions, each turning one clue into
+  a step prover `Poster`: `difference` and `ratio` (Kropki dots), the line
+  rules (thermo, slow thermo, renban, whisper, lockout), and the sum and
+  outside-clue rules (arrow, killer cage, little killer, skyscraper, numbered
+  rooms, anti-knight), ported from gridfind where it has a layer.
+- `sudoku_kit.sudokupad_import`: `rules_file`, a SudokuPad puzzle as a rules
+  file: Kropki dots, coloured lines, arrows, killer cages, little killers,
+  skyscrapers, numbered rooms and anti-knight, the rules text picking each
+  reading. A sheet with a ring of outside cells is read by its regions;
+  an outside cell is one step off the grid in the rules file. It refuses any
+  shape it does not read.
+- `sudoku_kit.solve_guide`: the command line, `uv run solve-guide <input>
+  <output directory>`: imports a SudokuPad link or a `.json` of its puzzle JSON,
+  or reads a rules `.json`, writes `rules.json`, `checks.json` and
+  `render.html`, then runs the step search (`steps.json`, resumed when
+  present) and writes `guide.html`. `--hint`/`--named` add a checked step and
+  `--image` puts the original beside the render. Exit codes are in its
+  docstring: 0 done, 1 a check failed, 2 unreadable input (nothing written),
+  3 stuck, 4 a hint not proved, 5 a time limit.
+- `sudoku_kit.step_search`: the step search and the step record.
+- `sudoku_kit.guide_html`: the solve guide page and the plain render.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
 

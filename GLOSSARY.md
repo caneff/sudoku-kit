@@ -61,3 +61,44 @@ _Avoid_: Unsatisfiable premises, inconsistent
 Named constraints that still give the verdict with none of them removable,
 found by one greedy deletion pass. Another set may be shorter.
 _Avoid_: Smallest set, minimum set, core
+
+### Solve guide
+
+**Solve guide**:
+A short document for a stuck solver showing the break-in and the key steps of
+one puzzle, each drawn on its own grid, with runs of singles collapsed into
+one line.
+_Avoid_: Walkthrough, solution, write-up
+
+**Rules file**:
+The one JSON description of a puzzle every solve-guide stage reads: grid size,
+regions, givens, an optional solution, and its clues. Importers write it.
+_Avoid_: Puzzle file, puzzle JSON, spec
+
+**Clue**:
+One drawn rule of a puzzle in a rules file (a dot, a line, a cage), with a
+stable id, a rule type, its cells and its values. Each clue is one named
+constraint a step can use; rows, columns and regions are the others.
+_Avoid_: Constraint (for one drawn mark), element, shape
+
+**Outside cell**:
+A cell one step off the grid, beside the end of a row or column, that a clue
+names: a skyscraper's or numbered room's clue digit, or an arrow's bulb. A
+variable with digits 1..n that no house holds. A rules file's
+`solution_outside` stores its solved digit.
+_Avoid_: Border cell, ring cell, clue cell
+
+**Step record**:
+The saved list of steps a solve-path search has made so far, each with its
+claim and named constraints, plus any proofs that timed out. A stopped search
+resumes from it.
+_Avoid_: Log, trace, path file
+
+**Stuck point**:
+Where a solve-path search stops because no claim it tried is proved, recorded
+with the grid and candidates there. Never a guess.
+_Avoid_: Dead end, failure
+
+**Hard step**:
+A step whose irreducible set holds more than 3 named constraints.
+_Avoid_: Difficult step, advanced technique
