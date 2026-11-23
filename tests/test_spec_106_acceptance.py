@@ -21,21 +21,16 @@ committed JSON by the `needs_app` tests.
 
 import json
 import re
-from pathlib import Path
 
 import pytest
 
 from sudoku_kit import rules_file
-from sudoku_kit.solve_guide import main
 from sudoku_kit.step_prover import Place, prove
-
-DIAGONAL_DOTS = Path(__file__).parent / "solve_guide" / "diagonal-dots-000HUJ.json"
 
 
 @pytest.fixture(scope="module")
-def guide(tmp_path_factory):
-    out = tmp_path_factory.mktemp("guide")
-    code = main([str(DIAGONAL_DOTS), str(out)])
+def guide(diagonal_dots_run):
+    out, code = diagonal_dots_run
     read = lambda name: json.loads((out / name).read_text())
     return {
         "code": code,

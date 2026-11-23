@@ -1,9 +1,10 @@
 """The solve guide's HTML through the command line, on Diagonal Dots (Logic
 Masters 000HUJ, `tests/solve_guide/`).
 
-Most tests resume from a committed step record of the whole solve
-(`diagonal-dots-000HUJ-steps.json`), so they read the guide without paying for
-the search; one runs the search fresh, twice. The guide is read back as parsed
+Most tests resume from the step record of the session's one full search
+(`diagonal_dots_run` in `conftest.py`; the record is never committed), so they
+read the guide without paying for the search; one runs the search fresh once
+more. The guide is read back as parsed
 markup, and the expected shown steps and highlights are rebuilt here from the
 rules file and the record, not from the renderer.
 """
@@ -21,7 +22,6 @@ from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
 PUZZLE = FIXTURES / "diagonal-dots-000HUJ.json"
-RECORD = FIXTURES / "diagonal-dots-000HUJ-steps.json"
 SKYSCRAPER = FIXTURES / "skyscraper-nextdoor-000N2S.json"
 
 
@@ -78,18 +78,19 @@ class Page(HTMLParser):
         }
 
 
-def _guide(out, *extra, seed=True):
+def _guide(out, *extra, seed=None):
+    """Run the guide into `out`, resuming from the step record `seed` if given."""
     out.mkdir(parents=True, exist_ok=True)
     if seed:
-        shutil.copy(RECORD, out / "steps.json")
+        shutil.copy(seed, out / "steps.json")
     code = main([str(PUZZLE), str(out), *extra])
     return code, Page((out / "guide.html").read_text())
 
 
 @pytest.fixture(scope="module")
-def guide(tmp_path_factory):
+def guide(tmp_path_factory, diagonal_dots_run):
     out = tmp_path_factory.mktemp("guide")
-    code, page = _guide(out)
+    code, page = _guide(out, seed=diagonal_dots_run[0] / "steps.json")
     assert code == 0
     return out, page
 
@@ -123,10 +124,12 @@ def _expected_shown(steps):
     }
 
 
-def test_the_guide_has_one_grid_per_shown_step_with_that_steps_cells_lit(guide):
+def test_the_guide_has_one_grid_per_shown_step_with_that_steps_cells_lit(
+    guide, diagonal_dots_record
+):
     out, page = guide
     rules = json.loads((out / "rules.json").read_text())
-    steps = json.loads(RECORD.read_text())["steps"]
+    steps = diagonal_dots_record["steps"]
     shown = _expected_shown(steps)
 
     grids = page.grids()
@@ -145,9 +148,11 @@ def test_the_guide_has_one_grid_per_shown_step_with_that_steps_cells_lit(guide):
         assert page.cells(grids[i], "changed") == {_name(step["claim"]["cell"])}
 
 
-def test_a_step_grid_strikes_out_the_digits_the_step_removes(guide):
+def test_a_step_grid_strikes_out_the_digits_the_step_removes(
+    guide, diagonal_dots_record
+):
     _, page = guide
-    steps = json.loads(RECORD.read_text())["steps"]
+    steps = diagonal_dots_record["steps"]
     # Step 41 places r5c3 = 5; before it the cell still held 1, 3 and 5.
     assert steps[40]["claim"] == {"cell": [4, 2], "digits": [5]}
     struck = {
@@ -158,9 +163,9 @@ def test_a_step_grid_strikes_out_the_digits_the_step_removes(guide):
     assert struck == {1, 3}
 
 
-def test_runs_of_singles_appear_as_one_line_each(guide):
+def test_runs_of_singles_appear_as_one_line_each(guide, diagonal_dots_record):
     _, page = guide
-    steps = json.loads(RECORD.read_text())["steps"]
+    steps = diagonal_dots_record["steps"]
     shown = _expected_shown(steps)
     runs, run = [], []
     for i in range(1, len(steps) + 1):
@@ -178,24 +183,24 @@ def test_runs_of_singles_appear_as_one_line_each(guide):
     assert "r5c1" in lines[0][2]
 
 
-def test_two_runs_on_the_same_puzzle_show_the_same_steps(tmp_path):
-    """Two fresh searches of the whole solve, about 45 seconds each."""
-    shown = []
-    for k in range(2):
-        code, page = _guide(tmp_path / str(k), seed=False)
-        assert code == 0
-        shown.append(page.grids())
-    assert shown[0] == shown[1]
-    assert len(shown[0]) == len(
-        _expected_shown(json.loads(RECORD.read_text())["steps"])
-    )
+def test_a_second_fresh_run_shows_the_same_steps_as_the_sessions_run(
+    tmp_path, guide, diagonal_dots_record
+):
+    """One more fresh search of the whole solve, about 45 seconds."""
+    _, shared = guide
+    code, page = _guide(tmp_path)
+    assert code == 0
+    assert page.grids() == shared.grids()
+    assert len(page.grids()) == len(_expected_shown(diagonal_dots_record["steps"]))
 
 
-def test_the_break_in_is_the_first_step_naming_a_clue_or_two_constraints(guide):
-    """Pinned on 000HUJ's committed record: step 13 is the first to name a clue
-    (a dot), though the first placement is step 41. Only it is labelled."""
+def test_the_break_in_is_the_first_step_naming_a_clue_or_two_constraints(
+    guide, diagonal_dots_record
+):
+    """Pinned on 000HUJ's record: step 13 is the first to name a clue (a dot),
+    though the first placement is step 41. Only it is labelled."""
     _, page = guide
-    steps = json.loads(RECORD.read_text())["steps"]
+    steps = diagonal_dots_record["steps"]
     first = next(
         i
         for i, s in enumerate(steps, 1)
@@ -208,11 +213,12 @@ def test_the_break_in_is_the_first_step_naming_a_clue_or_two_constraints(guide):
     assert not page.find("p", "hard")
 
 
-def test_a_step_naming_more_than_three_constraints_is_marked_hard(tmp_path):
-    out = tmp_path / "out"
-    _guide(out)
+def test_a_step_naming_more_than_three_constraints_is_marked_hard(
+    guide, diagonal_dots_record
+):
+    out, _ = guide
     rules = json.loads((out / "rules.json").read_text())
-    record = json.loads(RECORD.read_text())
+    record = json.loads(json.dumps(diagonal_dots_record))
     record["steps"][12]["named"] = [
         "row 5",
         "column 1",
@@ -226,11 +232,12 @@ def test_a_step_naming_more_than_three_constraints_is_marked_hard(tmp_path):
     assert "4 constraints" in page.find("p", "hard")[0][2]
 
 
-def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(tmp_path):
-    out = tmp_path / "out"
-    _guide(out)
+def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(
+    guide, diagonal_dots_record
+):
+    out, _ = guide
     rules = json.loads((out / "rules.json").read_text())
-    record = json.loads(RECORD.read_text())
+    record = json.loads(json.dumps(diagonal_dots_record))
     record["steps"] = record["steps"][:41]
     state = step_search.State(rules)
     for step in record["steps"]:
@@ -279,8 +286,10 @@ def test_outside_clue_cells_start_empty_on_every_grid(tmp_path):
     assert not guide.find("text", "clue")
 
 
-def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(tmp_path):
-    record = json.loads(RECORD.read_text())
+def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(
+    tmp_path, diagonal_dots_record
+):
+    record = json.loads(json.dumps(diagonal_dots_record))
     record["steps"][40]["annotations"] = [
         {"type": "arrow", "from": [4, 1], "to": [5, 2]},
         {"type": "label", "cell": [3, 3], "text": "no 5 here"},
@@ -290,7 +299,7 @@ def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(tmp_pa
     out.mkdir()
     (out / "steps.json").write_text(json.dumps(record))
 
-    code, page = _guide(out, seed=False)
+    code, page = _guide(out)
 
     grid = page.grids()[41]
     assert code == 0
@@ -307,9 +316,12 @@ def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(tmp_pa
     assert not [e for e in page.find("line", "arrow") if e[3] != grid]
 
 
-def test_the_original_image_appears_once_at_the_top_when_given(tmp_path):
-    _, page = _guide(tmp_path / "with", "--image", "original.png")
-    _, bare = _guide(tmp_path / "without")
+def test_the_original_image_appears_once_at_the_top_when_given(
+    tmp_path, diagonal_dots_run
+):
+    seed = diagonal_dots_run[0] / "steps.json"
+    _, page = _guide(tmp_path / "with", "--image", "original.png", seed=seed)
+    _, bare = _guide(tmp_path / "without", seed=seed)
 
     images = page.find("img")
     assert [e[1]["src"] for e in images] == ["original.png"]
@@ -317,9 +329,11 @@ def test_the_original_image_appears_once_at_the_top_when_given(tmp_path):
     assert not bare.find("img")
 
 
-def test_the_command_line_writes_a_plain_render_beside_the_original(tmp_path):
+def test_the_command_line_writes_a_plain_render_beside_the_original(
+    tmp_path, diagonal_dots_run
+):
     out = tmp_path / "out"
-    _guide(out, "--image", "original.png")
+    _guide(out, "--image", "original.png", seed=diagonal_dots_run[0] / "steps.json")
     page = Page((out / "render.html").read_text())
 
     assert [e[1]["src"] for e in page.find("img")] == ["original.png"]
