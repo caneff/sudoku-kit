@@ -231,7 +231,8 @@ def _annotation(grid, note, prefix):
 
 
 def _claim_marks(claim):
-    """(changed cells, default annotations) the claim gives."""
+    """(changed cells, marks: arrows along a chain, circles round an `either`)
+    the claim gives."""
     if "cell" in claim:
         return {tuple(claim["cell"])}, []
     if "chain" in claim:
@@ -246,9 +247,9 @@ def _claim_marks(claim):
 
 def render(rules, candidates=None, idea=None, prefix="g"):
     """One grid as an SVG string. `candidates` ({cell: digits}) draws each
-    cell's digits; without it only givens show. `idea`, a key idea (a
-    deduction with its `key` number, `annotations` and `removed`, {cell:
-    digits}), marks its cells and strikes out what it removes."""
+    cell's digits; without it only givens show. `idea`, a key idea (its `key`
+    number, the `named` constraints and `claims` of its steps, and `removed`,
+    {cell: digits}), marks its cells and strikes out what it removes."""
     grid = Grid(rules)
     registry = rules_file.registry(rules)
     used, changed, removed, notes = set(), set(), {}, []
