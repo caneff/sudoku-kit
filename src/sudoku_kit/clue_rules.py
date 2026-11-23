@@ -245,14 +245,33 @@ def numbered_rooms(clue):
     return Poster(tuple(cells), post)
 
 
-def anti_knight(clue):
-    """The two cells, a chess knight's move apart, differ."""
+def _differ(clue):
+    """The clue's two cells differ."""
     a, b = _read(clue, 2, 0, 2)
 
     def post(m, x):
         m.Add(x[a] != x[b])
 
     return Poster((a, b), post)
+
+
+def anti_knight(clue):
+    """The two cells, a chess knight's move apart, differ."""
+    return _differ(clue)
+
+
+def tessellation(clue):
+    """The two cells, sharing an edge, differ. One clue per pair: on a tiling of
+    octagons and squares the importer pairs every two cells side by side and
+    every two octagons corner to corner, since those share an edge too."""
+    return _differ(clue)
+
+
+def consecutive_set(clue):
+    """The cells' digits are all different and, sorted, consecutive: a row or
+    column of a tessellation puzzle reads "a non-repeating consecutive set of
+    digits". The same constraint as a renban line."""
+    return renban(clue)
 
 
 RULES = {
@@ -269,6 +288,8 @@ RULES = {
     "skyscraper": skyscraper,
     "numbered_rooms": numbered_rooms,
     "anti_knight": anti_knight,
+    "tessellation": tessellation,
+    "consecutive_set": consecutive_set,
 }
 
 

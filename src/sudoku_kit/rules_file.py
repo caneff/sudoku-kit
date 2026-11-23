@@ -6,7 +6,10 @@ A rules file is a JSON object:
 - `size`: n for an n x n grid, digits 1..n; every row and column is a house.
 - `regions`: the boxes, each a list of [row, column] cells counted from 0.
 - `givens`: a list of `{"cell": [row, column], "digit": d}`.
-- `solution`: optional, n rows of n digits.
+- `holes`: optional, the [row, column] cells of the n x n grid that are not
+  part of the puzzle (a board that is not a full square, such as a diamond).
+  A hole is no variable, sits in no house and carries no clue or given.
+- `solution`: optional, n rows of n digits, null at each hole.
 - `clues`: a list of clues, each `{"id", "rule", "cells", "values"}`, `rule` a
   key of `clue_rules.RULES` and `id` stable and unique. A clue's cells may
   include outside cells, one step off the grid ([row, -1] or [row, size], and
@@ -41,6 +44,11 @@ def cell_name(cell):
     return f"r{cell[0] + 1}c{cell[1] + 1}"
 
 
+def holes(rules):
+    """The grid cells that are not part of the puzzle, as tuples."""
+    return {tuple(cell) for cell in rules.get("holes") or []}
+
+
 def _outside_cells(rules):
     """The outside cells the clues name, in order of first use."""
     n = rules["size"]
@@ -50,10 +58,11 @@ def _outside_cells(rules):
 
 
 def cells(rules):
-    """Every cell that is a solver variable: the grid's, row by row, then the
-    outside cells."""
-    n = rules["size"]
-    return [(r, c) for r in range(n) for c in range(n)] + _outside_cells(rules)
+    """Every cell that is a solver variable: the grid's but its holes, row by
+    row, then the outside cells."""
+    n, off = rules["size"], holes(rules)
+    on_grid = [(r, c) for r in range(n) for c in range(n) if (r, c) not in off]
+    return on_grid + _outside_cells(rules)
 
 
 def _on_board(rules, cell, what):
@@ -94,21 +103,25 @@ def validate(rules):
     n = rules["size"]
     if not isinstance(n, int) or n < 1:
         raise ValueError(f"the rules file's size is {n!r}, not a positive integer")
+    for cell in rules.get("holes") or []:
+        _on_board(rules, cell, "holes")
+    off = holes(rules)
     for k, region in enumerate(rules["regions"], 1):
         for cell in region:
             _on_board(rules, cell, f"region {k}")
+            if tuple(cell) in off:
+                raise ValueError(f"region {k} names cell {cell!r}, a hole")
     for given in rules["givens"]:
         _on_board(rules, given["cell"], f"given {given!r}")
+        if tuple(given["cell"]) in off:
+            raise ValueError(f"given {given!r} is on a hole")
         if given["digit"] not in range(1, n + 1):
             raise ValueError(f"given {given!r} is not a digit 1..{n}")
     solution = rules.get("solution")
-    if solution is not None and (
-        len(solution) != n
-        or any(
-            len(row) != n or not set(row) <= set(range(1, n + 1)) for row in solution
+    if solution is not None and not _solution_fits_grid(rules, solution):
+        raise ValueError(
+            f"the solution is not {n} rows of {n} digits 1..{n}, null at the holes"
         )
-    ):
-        raise ValueError(f"the solution is not {n} rows of {n} digits 1..{n}")
     seen = set(house_names(rules))
     for clue in rules["clues"]:
         if clue.get("id") in seen:
@@ -116,8 +129,22 @@ def validate(rules):
         seen.add(clue["id"])
         for cell in clue["cells"]:
             _in_clue(rules, cell, f"clue {clue['id']!r}")
+            if tuple(cell) in off:
+                raise ValueError(f"clue {clue['id']!r} names cell {cell!r}, a hole")
         clue_rules.poster(clue)
     _validate_outside_solution(rules)
+
+
+def _solution_fits_grid(rules, solution):
+    n, off = rules["size"], holes(rules)
+    return len(solution) == n and all(
+        len(row) == n
+        and all(
+            digit is None if (r, c) in off else digit in range(1, n + 1)
+            for c, digit in enumerate(row)
+        )
+        for r, row in enumerate(solution)
+    )
 
 
 def _validate_outside_solution(rules):
@@ -157,13 +184,19 @@ def load(path):
 
 
 def house_names(rules):
-    """{name: cells} for every row, column and region."""
-    n = rules["size"]
-    houses = {f"row {r + 1}": [(r, c) for c in range(n)] for r in range(n)}
-    houses |= {f"column {c + 1}": [(r, c) for r in range(n)] for c in range(n)}
+    """{name: cells} for every row, column and region, holes left out."""
+    n, off = rules["size"], holes(rules)
+    houses = {
+        f"row {r + 1}": [(r, c) for c in range(n) if (r, c) not in off]
+        for r in range(n)
+    }
+    houses |= {
+        f"column {c + 1}": [(r, c) for r in range(n) if (r, c) not in off]
+        for c in range(n)
+    }
     for k, region in enumerate(rules["regions"], 1):
         houses[f"region {k}"] = [tuple(cell) for cell in region]
-    return houses
+    return {name: cells for name, cells in houses.items() if cells}
 
 
 def registry(rules):
@@ -213,7 +246,10 @@ def _check_solution(rules, named, time_limit):
     if solution is None:
         return {"passed": None, "failing": []}
     digit_at = {
-        (r, c): digit for r, row in enumerate(solution) for c, digit in enumerate(row)
+        (r, c): digit
+        for r, row in enumerate(solution)
+        for c, digit in enumerate(row)
+        if digit is not None
     }
     digit_at |= {
         tuple(entry["cell"]): entry["digit"]

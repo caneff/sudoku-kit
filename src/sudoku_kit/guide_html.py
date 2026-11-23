@@ -284,18 +284,22 @@ def render(rules, candidates=None, step=None, prefix="g"):
 
 
 def _house_edges(grid):
-    """Thick lines on the board's outline and between regions."""
+    """Thick lines on the board's outline, round its holes and between regions."""
     n, edges = grid.n, []
+    holes = rules_file.holes(grid.rules)
+    on = lambda r, c: 0 <= r < n and 0 <= c < n and (r, c) not in holes
     for r in range(n):
         for c in range(n):
+            if not on(r, c):
+                continue
             region = grid.region.get((r, c))
-            if c == n - 1 or grid.region.get((r, c + 1)) != region:
+            if not on(r, c + 1) or grid.region.get((r, c + 1)) != region:
                 edges.append((c + 1, r, c + 1, r + 1))
-            if r == n - 1 or grid.region.get((r + 1, c)) != region:
+            if not on(r + 1, c) or grid.region.get((r + 1, c)) != region:
                 edges.append((c, r + 1, c + 1, r + 1))
-            if c == 0:
+            if not on(r, c - 1):
                 edges.append((c, r, c, r + 1))
-            if r == 0:
+            if not on(r - 1, c):
                 edges.append((c, r, c + 1, r))
     return [
         f'<line class="edge" x1="{grid.x(a)}" y1="{grid.y(b)}" x2="{grid.x(c)}" '

@@ -14,9 +14,9 @@ import json
 from pathlib import Path
 
 import pytest
-from link_helpers import needs_app
+from link_helpers import DIAMOND, needs_app
 
-from sudoku_kit import sudokupad_codec, sudokupad_import
+from sudoku_kit import rules_file, sudokupad_codec, sudokupad_import
 from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
@@ -778,3 +778,317 @@ def test_the_importer_validates_what_it_builds():
 
     with pytest.raises(ValueError, match=r"not a digit 1\.\.6"):
         sudokupad_import.rules_file(puzzle)
+
+
+LOCKOUT_TESSELLATION = FIXTURES / "lockout-tessellation-000PT1.json"
+LOCKOUT_TESSELLATION_LINK = FIXTURES / "lockout-tessellation-000PT1.txt"
+
+
+def test_lockout_tessellation_imports_and_passes_both_checks(tmp_path):
+    """Logic Masters 000PT1 (rated 2): a tessellation of octagons and squares on
+    a diamond of cells, rows and columns each a consecutive set, and three
+    lockout lines whose ends are drawn as diamonds."""
+    code, rules, checks = _run(LOCKOUT_TESSELLATION, tmp_path)
+
+    _passes(code, checks)
+    assert rules["size"] == 9 and rules["regions"] == []
+    assert rules["givens"] == [{"cell": [1, 4], "digit": 7}]
+    holes = {tuple(cell) for cell in rules["holes"]}
+    assert holes == {(r, c) for r in range(9) for c in range(9)} - DIAMOND
+    assert [rules["solution"][r][c] is None for r, c in sorted(holes)] == [True] * 40
+
+
+def test_lockout_tessellation_reads_the_three_lockout_lines(tmp_path):
+    """A stroke through a middle diamond is two lockout lines, each from one
+    diamond to the next; the white halo drawn under each stroke is no line."""
+    _, rules, _ = _run(LOCKOUT_TESSELLATION, tmp_path)
+
+    lockouts = _by_rule(rules, "lockout")
+    assert all(c["values"] == [4] for c in lockouts)
+    paths = sorted(
+        c["cells"] if c["cells"] < c["cells"][::-1] else c["cells"][::-1]
+        for c in lockouts
+    )
+    assert paths == [
+        [[2, 2], [1, 3], [0, 4], [1, 5], [2, 4], [3, 3]],
+        [[3, 3], [4, 2], [5, 1], [6, 2], [5, 3], [4, 4]],
+        [[4, 8], [5, 7], [6, 6], [7, 5]],
+    ]
+
+
+def test_lockout_tessellation_reads_a_consecutive_set_for_each_longer_line(tmp_path):
+    _, rules, _ = _run(LOCKOUT_TESSELLATION, tmp_path)
+
+    sets = [
+        {tuple(cell) for cell in c["cells"]} for c in _by_rule(rules, "consecutive_set")
+    ]
+    rows = [{(r, c) for c in range(9) if (r, c) in DIAMOND} for r in range(9)]
+    columns = [{(r, c) for r in range(9) if (r, c) in DIAMOND} for c in range(9)]
+    assert sorted(map(sorted, sets)) == sorted(
+        map(sorted, [line for line in rows + columns if len(line) > 1])
+    )
+
+
+def test_lockout_tessellation_pairs_every_two_cells_sharing_an_edge(tmp_path):
+    """Side by side always; corner to corner only for two octagons."""
+    _, rules, _ = _run(LOCKOUT_TESSELLATION, tmp_path)
+
+    pairs = {frozenset(map(tuple, c["cells"])) for c in _by_rule(rules, "tessellation")}
+    expected = set()
+    for r, c in DIAMOND:
+        for dr, dc in ((0, 1), (1, 0)):
+            if (r + dr, c + dc) in DIAMOND:
+                expected.add(frozenset({(r, c), (r + dr, c + dc)}))
+        for dc in (-1, 1):
+            if (r + 1, c + dc) in DIAMOND and (r + c) % 2 == 0:
+                expected.add(frozenset({(r, c), (r + 1, c + dc)}))
+    assert pairs == expected
+    assert len(_by_rule(rules, "tessellation")) == len(expected)
+
+
+@needs_app
+def test_lockout_tessellation_link_decodes_to_its_committed_puzzle_json():
+    assert sudokupad_codec.read_puzzle(str(LOCKOUT_TESSELLATION_LINK)) == json.loads(
+        LOCKOUT_TESSELLATION.read_text()
+    )
+
+
+def test_a_hole_in_a_stored_solution_beside_regions_is_refused(tmp_path, capsys):
+    def boxed(puzzle):
+        puzzle["regions"] = [[[r, c] for c in range(9)] for r in range(9)]
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, boxed)
+
+    assert code == 2
+    assert "stored solution" in capsys.readouterr().err
+
+
+def test_a_lockout_diamond_on_no_lockout_line_is_refused(tmp_path, capsys):
+    def stray(puzzle):
+        puzzle["overlays"].append({**puzzle["overlays"][0], "center": [0.5, 0.5]})
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, stray)
+
+    assert code == 2
+    assert "other than black and white dots" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "gone",
+    [[4.5, 8.5], [2.5, 2.5]],
+    ids=["a lone diamond left", "a middle diamond left beside the far end"],
+)
+def test_a_lockout_line_not_ending_on_a_diamond_at_both_ends_is_refused(
+    tmp_path, capsys, gone
+):
+    def no_end(puzzle):
+        puzzle["overlays"] = [o for o in puzzle["overlays"] if o["center"] != gone]
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, no_end)
+
+    assert code == 2
+    assert "does not start and end on a diamond" in capsys.readouterr().err
+
+
+def test_a_lockout_with_no_smallest_gap_is_refused(tmp_path, capsys):
+    def no_gap(puzzle):
+        rules = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = rules.replace("differ by at least 4", "differ")
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, no_gap)
+
+    assert code == 2
+    assert "at least" in capsys.readouterr().err
+
+
+def test_a_tessellation_with_no_tile_outlines_is_refused(tmp_path, capsys):
+    def bare(puzzle):
+        puzzle["lines"] = [x for x in puzzle["lines"] if x["thickness"] > 1]
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, bare)
+
+    assert code == 2
+    assert "tile" in capsys.readouterr().err
+
+
+def test_a_holed_board_with_no_stored_solution_is_refused(tmp_path, capsys):
+    def unsolved(puzzle):
+        del puzzle["metadata"]["solution"]
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, unsolved)
+
+    assert code == 2
+    assert "no regions and no stored solution" in capsys.readouterr().err
+
+
+def test_a_stored_solution_character_that_is_not_a_digit_or_a_dot_is_refused(
+    tmp_path, capsys
+):
+    def stray(puzzle):
+        solution = puzzle["metadata"]["solution"]
+        puzzle["metadata"]["solution"] = solution.replace("1", "?", 1)
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, stray)
+
+    assert code == 2
+    assert "no digit" in capsys.readouterr().err
+
+
+def test_an_edge_sentence_that_forbids_nothing_is_refused(tmp_path, capsys):
+    def mild(puzzle):
+        rules = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = rules.replace(
+            "Cells sharing an edge can't have the same digit.",
+            "Cells sharing an edge are tiles.",
+        )
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, mild)
+
+    assert code == 2
+    assert "forbid a repeat" in capsys.readouterr().err
+
+
+def test_a_consecutive_set_sentence_naming_no_row_or_column_is_refused(
+    tmp_path, capsys
+):
+    def boxed(puzzle):
+        rules = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = rules.replace(
+            "Each horizontal row and vertical column contains",
+            "Each box contains",
+        )
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, boxed)
+
+    assert code == 2
+    assert "naming no row or column" in capsys.readouterr().err
+
+
+def test_a_consecutive_set_sentence_about_a_line_is_a_line_rules(tmp_path):
+    """Cool S's renban sentence, reworded to say "consecutive set": the cells
+    still read as renbans, and no row or column gets a clue from the word
+    "arrow" or "narrow" in the text."""
+
+    def reworded(puzzle):
+        rules = puzzle["metadata"]["rules"]
+        puzzle["metadata"]["rules"] = (
+            rules + " A narrow pink renban line holds a consecutive set of digits."
+        )
+
+    code, rules = _import(tmp_path, COOL_S, reworded)
+
+    assert code in (0, 1)
+    assert _by_rule(rules, "consecutive_set") == []
+
+
+def test_an_edge_sentence_without_the_word_tessellation_is_not_read(tmp_path):
+    """Dutch Dots with a sentence about cells sharing an edge: no tessellation
+    tiles are asked for, so none are looked for."""
+
+    def edge(puzzle):
+        _say(puzzle, "Cells sharing an edge may not be consecutive.")
+
+    code, rules = _import(tmp_path, DUTCH_DOTS, edge)
+
+    assert code in (0, 1)
+    assert _by_rule(rules, "tessellation") == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "M160 160 l64 0 L352 96",  # a relative command
+        "M160 160 L224 160 288 160",  # a second point after one L
+        "M160 160 L225 160",  # a point off every cell centre, one on
+    ],
+    ids=["relative command", "implicit second point", "partly off the centres"],
+)
+def test_a_rule_line_stored_as_a_path_the_importer_cannot_read_is_refused(
+    tmp_path, capsys, path
+):
+    def bad(puzzle):
+        line = next(x for x in puzzle["lines"] if x["thickness"] == 12.8)
+        line["d"] = path
+
+    code, _ = _import(tmp_path, LOCKOUT_TESSELLATION, bad)
+
+    assert code == 2
+    err = capsys.readouterr().err
+    assert "path" in err or "centres" in err
+
+
+def _holed():
+    """A 3x3 rules file with its middle cell a hole, no clues."""
+    return {
+        "size": 3,
+        "regions": [],
+        "givens": [],
+        "clues": [],
+        "holes": [[1, 1]],
+        "solution": [[1, 2, 3], [2, None, 1], [3, 1, 2]],
+    }
+
+
+def test_a_holed_rules_file_validates_and_its_houses_leave_the_hole_out():
+    rules = _holed()
+    rules_file.validate(rules)
+    houses = rules_file.house_names(rules)
+    assert houses["row 2"] == [(1, 0), (1, 2)]
+    assert (1, 1) not in rules_file.cells(rules)
+
+
+def test_a_row_of_holes_is_no_house():
+    rules = _holed()
+    rules["holes"] = [[0, 0], [0, 1], [0, 2]]
+    rules["solution"][0] = [None, None, None]
+    assert "row 1" not in rules_file.house_names(rules)
+
+
+@pytest.mark.parametrize(
+    ("edit", "message"),
+    [
+        (lambda r: r.update(holes=[[3, 0]]), "holes names cell"),
+        (lambda r: r.update(givens=[{"cell": [1, 1], "digit": 2}]), "on a hole"),
+        (
+            lambda r: r.update(
+                clues=[
+                    {
+                        "id": "k",
+                        "rule": "anti_knight",
+                        "cells": [[1, 1], [0, 0]],
+                        "values": [],
+                    }
+                ]
+            ),
+            "a hole",
+        ),
+        (lambda r: r.update(regions=[[[0, 0], [1, 1]]]), "region 1 names cell"),
+        (lambda r: r["solution"][1].__setitem__(1, 2), "null at the holes"),
+        (lambda r: r["solution"][0].__setitem__(0, None), "null at the holes"),
+    ],
+    ids=[
+        "hole off the grid",
+        "given on a hole",
+        "clue on a hole",
+        "region on a hole",
+        "digit on a hole",
+        "null off a hole",
+    ],
+)
+def test_a_holed_rules_file_that_contradicts_itself_is_refused(edit, message):
+    rules = _holed()
+    edit(rules)
+    with pytest.raises(ValueError, match=message):
+        rules_file.validate(rules)
+
+
+def test_a_knight_rule_over_a_holed_board_pairs_only_cells_of_the_board():
+    puzzle = json.loads(LOCKOUT_TESSELLATION.read_text())
+    _say(puzzle, "No two cells a knight's move apart may match.")
+
+    rules = sudokupad_import.rules_file(puzzle)
+
+    knights = _by_rule(rules, "anti_knight")
+    holes = {tuple(h) for h in rules["holes"]}
+    assert knights
+    assert all(tuple(cell) not in holes for c in knights for cell in c["cells"])

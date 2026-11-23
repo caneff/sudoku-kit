@@ -90,3 +90,8 @@ def d_payload_of_stored(doc, *, pad):
 
 def d_payload(doc):
     return d_payload_of_text(json.dumps(doc))
+
+
+# Logic Masters 000PT1's board, read off its picture: a diamond of 41 cells on a
+# 9x9 sheet (1, 3, 5, 7, 9, 7, 5, 3, 1 cells a row).
+DIAMOND = {(r, c) for r in range(9) for c in range(9) if abs(r - 4) + abs(c - 4) <= 4}

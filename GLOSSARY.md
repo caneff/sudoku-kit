@@ -88,6 +88,12 @@ variable with digits 1..n that no house holds. A rules file's
 `solution_outside` stores its solved digit.
 _Avoid_: Border cell, ring cell, clue cell
 
+**Hole**:
+A cell of a rules file's n x n grid that is not part of the puzzle, as on a
+diamond-shaped board drawn on a square sheet. It is no variable, sits in no
+house and carries no given or clue; a rules file's `holes` lists them.
+_Avoid_: Blank cell, missing cell
+
 **Step record**:
 The saved list of steps a solve-path search has made so far, each with its
 claim and named constraints, plus any proofs that timed out. A stopped search

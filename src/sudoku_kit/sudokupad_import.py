@@ -1,6 +1,7 @@
 """SudokuPad puzzle JSON to a rules file: normal sudoku plus Kropki dots,
-coloured lines (thermo, renban, whispers), arrows, killer cages, little
-killers, skyscrapers, numbered rooms and anti-knight.
+coloured lines (thermo, renban, whispers, lockout), arrows, killer cages, little
+killers, skyscrapers, numbered rooms, anti-knight, tessellation and consecutive
+sets.
 
 `rules_file(puzzle)` reads the grid, regions, givens and stored solution, and
 turns each dot overlay into clues. The puzzle's rules text picks the reading:
@@ -17,7 +18,19 @@ number after "at least" in the sentence (4 for Dutch whispers, 5 for German);
 a sentence with "slow" reads a thermo as slow. The bulb of a thermo is the
 round underlay under one end of its line, and the path is written from it.
 Waypoints run along cell centres, straight or diagonal, and fill in the cells
-between. Lockout lines are not read.
+between.
+
+A lockout line ("lockout") is a line drawn through diamond overlays, a diamond
+at each end. Its smallest end gap is the "at least <number>" of the sentence
+that names the "endpoints". A diamond mid-line ends one lockout line and starts
+the next, so a stroke through a middle diamond is two lines. Lines SudokuPad
+stores as an SVG path (`d`, in 64-pixel cells, `M` and `L` only) are read like
+waypoints when every point is a cell centre; any other path is tile art. A
+white stroke drawn under a line is the same path again, and is read once.
+
+A puzzle with no regions is a board of no boxes: the sheet is the grid. Where
+its stored solution has no digit in a cell the cell is a hole, not part of the
+puzzle (a diamond board on a square sheet); `holes` in the rules file lists them.
 
 A sheet bigger than the grid (SudokuMaker's outside-clue puzzles draw the grid
 inside a ring of outside cells) is read by its regions: the square they cover is
@@ -42,6 +55,13 @@ names it:
   the solver's to find, over the row or column it sits beside.
 - Anti-knight ("knight" with "not", "no", "never" or "anti"): every pair of
   cells a knight's move apart.
+- Tessellation ("sharing an edge" with a refusal to repeat): the puzzle is a
+  tiling of octagons and squares, one tile a cell. Every two cells side by side
+  share an edge, and so do two octagons corner to corner. The squares are the
+  cells with a small square's four corners among the thin lines' points, all of
+  one parity of row plus column; a tessellation with none is refused.
+- Consecutive sets ("consecutive set" with "row" or "column"): each row, column
+  or both, over its cells but the holes, holds a consecutive set of digits.
 
 Lines drawn on grid corners (the frame, the boxes round outside cells) are
 decoration and are skipped. A line is read as the one line rule a sentence
@@ -75,7 +95,12 @@ LINE_RULES = (
     ("whisper", re.compile(r"whisper")),
     ("renban", re.compile(r"renban")),
     ("thermo", re.compile(r"thermo")),
+    ("lockout", re.compile(r"lockout")),
 )
+CELL_PIXELS = 64  # SudokuPad's cell size, the unit of a line's SVG path
+PATH_POINT = re.compile(r"([ML])\s*(-?[\d.]+)[\s,]+(-?[\d.]+)")
+PATH_COMMAND = re.compile(r"[A-Za-z]")
+TILE_HALF_SIDES = range(10, 29)  # pixels: a tessellation's small square
 
 
 def _preview(item):
@@ -91,9 +116,31 @@ def _cell_of(point):
     return tuple(int((v + 1e-9) // 1) for v in point)
 
 
+def _is_path(line):
+    """True for a line SudokuPad stores as an SVG path, not as waypoints."""
+    return "wayPoints" not in line and "d" in line
+
+
+def _d_points(line):
+    """A line's SVG path as (row, column) points in cell units. Anything but
+    `M` and `L` commands, each with one x y pair, is refused: such a path is
+    unread, and a rule's line must never be dropped silently as tile art."""
+    path = line["d"]
+    points = [
+        (float(y) / CELL_PIXELS, float(x) / CELL_PIXELS)
+        for _, x, y in PATH_POINT.findall(path)
+    ]
+    if not points or PATH_POINT.sub("", path).strip():
+        raise ValueError(
+            f"a line path the importer does not read (only M and L, one x y "
+            f"pair each): {_preview(line)}"
+        )
+    return points
+
+
 def _way_points(item):
     """The waypoints of a line or arrow, refusing one with none."""
-    points = item["wayPoints"]
+    points = _d_points(item) if _is_path(item) else item["wayPoints"]
     if not points:
         raise ValueError(f"a line or arrow with no waypoints: {_preview(item)}")
     return points
@@ -184,6 +231,8 @@ def _line_readings(text):
                     f"a whispers sentence with no 'at least <number>': {_preview(sentence)}"
                 )
             value = int(at_least.group(1))
+        if rule == "lockout":
+            value = _lockout_gap(text)
         if rule == "thermo" and "slow" in sentence:
             rule = "slow_thermo"
         named = [c for c in ("orange", "pink", "grey", "gray") if c in sentence]
@@ -217,6 +266,45 @@ def _path(line):
     return cells
 
 
+def _at_centre(point):
+    return all(abs(v - 0.5 - round(v - 0.5)) < 1e-6 for v in point)
+
+
+def _is_diamond(overlay):
+    """A square turned a quarter on a cell centre: a lockout line's end."""
+    return (
+        not overlay.get("rounded")
+        and not str(overlay.get("text", ""))
+        and overlay.get("width") == overlay.get("height")
+        and round(overlay.get("angle", 0)) % 90 == 45
+        and _at_centre(overlay["center"])
+    )
+
+
+def _lockout_gap(text):
+    """The smallest gap between a lockout line's ends: the "at least <number>"
+    of the sentence that names the endpoints."""
+    for sentence in _sentences(text):
+        gap = re.search(r"at least (\d+)", sentence) if "endpoint" in sentence else None
+        if gap:
+            return int(gap.group(1))
+    raise ValueError(
+        "a lockout sentence, and no sentence naming the endpoints with "
+        f"'at least <number>': {_preview(text)}"
+    )
+
+
+def _lockout_lines(cells, diamonds, line):
+    """The lockout lines a stroke is: its cells cut at every diamond, which
+    must be at both ends."""
+    ends = [i for i, cell in enumerate(cells) if cell in diamonds]
+    if len(ends) < 2 or ends[0] != 0 or ends[-1] != len(cells) - 1:
+        raise ValueError(
+            f"a lockout line that does not start and end on a diamond: {_preview(line)}"
+        )
+    return [cells[a : b + 1] for a, b in itertools.pairwise(ends)]
+
+
 def _bulb_ends(underlays):
     """The cells that carry a round underlay, the bulbs a thermo may start at."""
     return {
@@ -229,18 +317,29 @@ def _bulb_ends(underlays):
 
 def _decoration(line):
     """True for a line drawn over the grid along cell corners: the frame, the
-    boxes round outside cells. No rule runs there, since a rule's line runs
-    through cell centres."""
+    boxes round outside cells, a tessellation's tile outlines. No rule runs
+    there, since a rule's line runs through cell centres."""
+    if _is_path(line):
+        # Tile art touches no cell centre; a path that touches some and not all
+        # is a rule's line gone wrong, left for `_path` to refuse.
+        return not any(_at_centre(p) for p in _d_points(line))
     return line.get("target") == "overlay" and all(
         abs(v - round(v)) < 1e-6 for point in _way_points(line) for v in point
     )
 
 
 def _line_clues(puzzle, text):
+    """(clues, the diamond overlays they read)."""
     lines = [x for x in puzzle.get("lines") or [] if not _decoration(x)]
     underlays = puzzle.get("underlays") or []
+    diamonds = {
+        _cell_of(o["center"]): i
+        for i, o in enumerate(puzzle.get("overlays") or [])
+        if _is_diamond(o)
+    }
     readings, colourless = _line_readings(text)
     bulbs, used, clues, seen = _bulb_ends(underlays), set(), [], set()
+    used_diamonds = set()
     for line in lines:
         colour = _hue_name(line.get("color", ""))
         if colour in readings:
@@ -266,18 +365,23 @@ def _line_clues(puzzle, text):
                 used.add(cells[0])
             else:
                 raise ValueError(f"a thermo line with no bulb: {_preview(line)}")
-        key = (rule, tuple(cells))
-        if key in seen or key[1][::-1] in {k[1] for k in seen if k[0] == rule}:
-            continue
-        seen.add(key)
-        clues.append(
-            {
-                "prefix": rule,
-                "rule": rule,
-                "cells": cells,
-                "values": [] if value is None else [value],
-            }
-        )
+        pieces = [cells]
+        if rule == "lockout":
+            pieces = _lockout_lines(cells, diamonds, line)
+            used_diamonds |= {diamonds[c] for c in cells if c in diamonds}
+        for cells in pieces:
+            key = (rule, tuple(cells))
+            if key in seen or key[1][::-1] in {k[1] for k in seen if k[0] == rule}:
+                continue
+            seen.add(key)
+            clues.append(
+                {
+                    "prefix": rule,
+                    "rule": rule,
+                    "cells": cells,
+                    "values": [] if value is None else [value],
+                }
+            )
     for underlay in underlays:
         centre = _cell_of(underlay["center"])
         if centre not in used or not underlay.get("rounded"):
@@ -285,7 +389,7 @@ def _line_clues(puzzle, text):
                 "the importer does not read underlays other than a thermo's "
                 f"bulb: {_preview(underlay)}"
             )
-    return clues
+    return clues, used_diamonds
 
 
 def _says(text, *patterns):
@@ -296,7 +400,10 @@ def _says(text, *patterns):
 
 
 def _board(puzzle, size):
-    """(top, left, n): the square the regions cover, in sheet coordinates."""
+    """(top, left, n): the square the regions cover, in sheet coordinates; the
+    whole sheet when there are none."""
+    if not puzzle["regions"]:
+        return 0, 0, size
     cells = [tuple(c) for region in puzzle["regions"] for c in region]
     rows, columns = [c[0] for c in cells], [c[1] for c in cells]
     top, left = min(rows), min(columns)
@@ -311,26 +418,41 @@ def _board(puzzle, size):
     return top, left, n
 
 
-def _solution(text, size, top, left, n):
-    """(solution, {sheet cell: digit} beside the grid), or (None, {}). The
-    sheet's digits cover the grid; a digit elsewhere is an outside cell's."""
+def _solution(text, size, board, holes_ok):
+    """(solution, {sheet cell: digit} beside the grid, holes), or (None, {}, set()).
+    The sheet's digits cover the grid; a digit elsewhere is an outside cell's. A
+    grid cell holding "." is a hole where `holes_ok` (a board of no regions),
+    its solution entry None; any other non-digit, or a "." beside regions, is
+    refused."""
+    top, left, n = board
     if text is None:
-        return None, {}
-    grid = [
-        [text[(top + r) * size + left + c] for c in range(n)]
-        if len(text) == size**2
-        else []
-        for r in range(n)
-    ]
-    if len(text) != size**2 or not all(d.isdigit() for row in grid for d in row):
-        raise ValueError(f"the stored solution is not {size**2} digits: {text!r}")
+        return None, {}, set()
+    if len(text) != size**2:
+        raise ValueError(f"the stored solution is not {size**2} characters: {text!r}")
+    grid = [[text[(top + r) * size + left + c] for c in range(n)] for r in range(n)]
+    odd = [d for row in grid for d in row if not d.isdigit() and d != "."]
+    if odd or (not holes_ok and any("." in row for row in grid)):
+        raise ValueError(
+            "the stored solution has a grid cell with no digit"
+            + ("" if odd else " beside regions, which mark every cell")
+            + f": {text!r}"
+        )
+    holes = {
+        (top + r, left + c)
+        for r, row in enumerate(grid)
+        for c, d in enumerate(row)
+        if d == "."
+    }
+    if len(holes) == n * n:
+        raise ValueError(f"the stored solution has no digit in the grid: {text!r}")
     inside = {(top + r, left + c) for r in range(n) for c in range(n)}
     beside = {
         divmod(k, size): int(d)
         for k, d in enumerate(text)
         if d.isdigit() and divmod(k, size) not in inside
     }
-    return [[int(d) for d in row] for row in grid], beside
+    rows = [[int(d) if d.isdigit() else None for d in row] for row in grid]
+    return rows, beside, holes
 
 
 def _dot_clues(puzzle, size, text):
@@ -478,7 +600,8 @@ def _refuse_overlays(puzzle, used):
         if i not in used and _colour(overlay) is None:
             raise ValueError(
                 "the importer does not read overlays other than black and white "
-                f"dots, arrow bulbs and little killer numbers: {_preview(overlay)}"
+                "dots, arrow bulbs, little killer numbers and the diamonds on a "
+                f"lockout line: {_preview(overlay)}"
             )
 
 
@@ -515,7 +638,7 @@ def _cage_clues(puzzle, text, board):
     return clues
 
 
-def _knight_clues(text, board):
+def _knight_clues(text, board, holes):
     sentences = [x for x in _sentences(text) if "knight" in x]
     if not sentences:
         return []
@@ -533,7 +656,9 @@ def _knight_clues(text, board):
         }
         for r, c in itertools.product(range(n), repeat=2)
         for dr, dc in KNIGHT_MOVES
-        if 0 <= r + dr < n and 0 <= c + dc < n
+        if 0 <= r + dr < n
+        and 0 <= c + dc < n
+        and {(top + r, left + c), (top + r + dr, left + c + dc)}.isdisjoint(holes)
     ]
 
 
@@ -574,6 +699,110 @@ def _outside_clues(beside, text, board):
                 "values": [],
             }
         )
+    return clues
+
+
+def _square_tiles(puzzle, playable):
+    """The cells of `playable` drawn as a tessellation's small square: the four
+    corners of a square centred on the cell are all points of the thin lines
+    that SudokuPad stores as paths."""
+    points = {
+        (round(r * CELL_PIXELS), round(c * CELL_PIXELS))
+        for line in puzzle.get("lines") or []
+        if _is_path(line)
+        for r, c in _d_points(line)
+    }
+    return {
+        (r, c)
+        for r, c in playable
+        for half in TILE_HALF_SIDES
+        if all(
+            (
+                round((r + 0.5) * CELL_PIXELS) + dr * half,
+                round((c + 0.5) * CELL_PIXELS) + dc * half,
+            )
+            in points
+            for dr, dc in itertools.product((-1, 1), repeat=2)
+        )
+    }
+
+
+def _tessellation_clues(puzzle, text, playable):
+    """One clue for each pair of `playable` cells that share an edge, where a
+    sentence says that cells sharing an edge may not repeat: side by side,
+    and corner to corner for two octagons (the cells that are not squares)."""
+    sentences = [x for x in _sentences(text) if re.search(r"shar(e|ing) an edge", x)]
+    if not sentences or not _says(text, "tessellation"):
+        return []
+    if not any(re.search(r"\b(not|never)\b|n't|differ", x) for x in sentences):
+        raise ValueError(
+            f"an edge sentence that does not forbid a repeat: {_preview(sentences[0])}"
+        )
+    parities = {(r + c) % 2 for r, c in _square_tiles(puzzle, playable)}
+    if len(parities) != 1:
+        raise ValueError(
+            "a tessellation, and "
+            + (
+                "no tile outline in the puzzle's lines draws a small square"
+                if not parities
+                else "small squares on cells of both parities"
+            )
+            + f", so squares cannot be told from octagons: {_preview(sentences[0])}"
+        )
+    (square,) = parities
+    pairs = []
+    for r, c in sorted(playable):
+        moves = [(0, 1), (1, 0)]
+        if (r + c) % 2 != square:
+            moves += [(1, 1), (1, -1)]
+        pairs += [
+            ((r, c), (r + dr, c + dc))
+            for dr, dc in moves
+            if (r + dr, c + dc) in playable
+        ]
+    return [
+        {
+            "prefix": "tessellation",
+            "rule": "tessellation",
+            "cells": list(p),
+            "values": [],
+        }
+        for p in pairs
+    ]
+
+
+def _consecutive_clues(text, playable, board):
+    """A consecutive-set clue for each row, each column or both, as the
+    sentence names them, over the `playable` cells of every line with two. A
+    consecutive-set sentence about a line rule's path is that rule's."""
+    top, left, n = board
+    lines = {
+        "row": [[(r, c) for c in range(left, left + n)] for r in range(top, top + n)],
+        "column": [
+            [(r, c) for r in range(top, top + n)] for c in range(left, left + n)
+        ],
+    }
+    clues = []
+    for sentence in (x for x in _sentences(text) if "consecutive set" in x):
+        named = [kind for kind in lines if re.search(rf"\b{kind}s?\b", sentence)]
+        if not named and any(pattern.search(sentence) for _, pattern in LINE_RULES):
+            continue
+        if not named:
+            raise ValueError(
+                f"a consecutive set sentence naming no row or column: {_preview(sentence)}"
+            )
+        for kind in named:
+            for line in lines[kind]:
+                cells = [cell for cell in line if cell in playable]
+                if len(cells) > 1:
+                    clues.append(
+                        {
+                            "prefix": "consecutive-set",
+                            "rule": "consecutive_set",
+                            "cells": cells,
+                            "values": [],
+                        }
+                    )
     return clues
 
 
@@ -618,15 +847,31 @@ def _rules_file(puzzle):
     top, left, n = board
     metadata = puzzle.get("metadata") or {}
     text = metadata.get("rules", "")
-    solution, beside = _solution(metadata.get("solution"), size, top, left, n)
+    if not puzzle["regions"] and metadata.get("solution") is None:
+        raise ValueError(
+            "the puzzle has no regions and no stored solution, so which cells "
+            "of the sheet are part of the board cannot be told"
+        )
+    solution, beside, holes = _solution(
+        metadata.get("solution"), size, board, not puzzle["regions"]
+    )
+    playable = {
+        (r, c)
+        for r in range(top, top + n)
+        for c in range(left, left + n)
+        if (r, c) not in holes
+    }
     arrows, used = _arrow_clues(puzzle, text, board)
-    _refuse_overlays(puzzle, used)
+    lines, diamonds = _line_clues(puzzle, text)
+    _refuse_overlays(puzzle, used | diamonds)
     raw = (
         _dot_clues(puzzle, size, text)
-        + _line_clues(puzzle, text)
+        + lines
         + arrows
         + _cage_clues(puzzle, text, board)
-        + _knight_clues(text, board)
+        + _knight_clues(text, board, holes)
+        + _tessellation_clues(puzzle, text, playable)
+        + _consecutive_clues(text, playable, board)
         + _outside_clues(beside, text, board)
     )
     clues = _finish(raw, top, left)
@@ -656,6 +901,8 @@ def _rules_file(puzzle):
         "title": metadata.get("title", ""),
         "rules_text": text,
     }
+    if holes:
+        rules["holes"] = [[r - top, c - left] for r, c in sorted(holes)]
     if solution is not None and outside:
         rules["solution_outside"] = [
             {"cell": list(cell), "digit": stored[cell]}

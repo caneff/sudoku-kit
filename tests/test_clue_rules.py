@@ -621,3 +621,63 @@ def test_an_anti_knight_clue_with_one_cell_or_a_value_is_refused():
         poster(_knight(R1C1, (1, 2), "knight-9") | {"cells": [[0, 0]]})
     with pytest.raises(ValueError, match="knight-9"):
         poster(_knight(R1C1, (1, 2), "knight-9") | {"values": [3]})
+
+
+# tessellation: one clue per pair of cells sharing an edge, the two cells differ
+
+
+def _edge(a, b, clue_id="tess-1"):
+    return _line("tessellation", [a, b], clue_id=clue_id)
+
+
+def test_two_cells_sharing_an_edge_may_not_share_a_digit():
+    assert _solve([_edge(R1C1, R1C2)], {R1C1: 4, R1C2: 4}) is None
+    assert _solve([_edge(R1C1, R1C2)], {R1C1: 4, R1C2: 5}) is not None
+
+
+def test_a_tessellation_pair_may_be_diagonal():
+    assert _solve([_edge(R1C1, (1, 1))], {R1C1: 6, (1, 1): 6}) is None
+
+
+def test_a_tessellation_pair_posts_on_its_two_cells_only():
+    assert poster(_edge(R1C1, R1C2)).cells == (R1C1, R1C2)
+    assert _solve([_edge(R1C1, R1C2)], {R1C1: 4, (5, 5): 4}) is not None
+
+
+def test_a_tessellation_clue_that_is_not_a_pair_with_no_value_is_refused():
+    for clue in (
+        _line("tessellation", [R1C1, R1C2, R3C3], clue_id="tess-9"),
+        _line("tessellation", [R1C1], clue_id="tess-9"),
+        _line("tessellation", [R1C1, R1C2], [3], "tess-9"),
+    ):
+        with pytest.raises(ValueError, match="tess-9"):
+            poster(clue)
+
+
+# consecutive set: the cells hold distinct digits that, sorted, run on by one
+
+
+def test_a_consecutive_set_takes_its_digits_in_any_order():
+    cells = [(0, c) for c in range(5)]
+    grid = _solve([_line("consecutive_set", cells)], {(0, 0): 6, (0, 1): 4})
+    assert grid is not None
+    held = sorted(grid[c] for c in cells)
+    assert held == list(range(held[0], held[0] + 5))
+
+
+def test_a_consecutive_set_with_a_gap_has_no_completion():
+    cells = [(0, c) for c in range(3)]
+    pinned = {(0, 0): 2, (0, 1): 3, (0, 2): 5}
+    assert _solve([_line("consecutive_set", cells)], pinned) is None
+
+
+def test_a_consecutive_set_with_a_repeat_has_no_completion():
+    cells = [(0, c) for c in range(3)]
+    assert _solve([_line("consecutive_set", cells)], {(0, 0): 4, (0, 1): 4}) is None
+
+
+def test_a_consecutive_set_clue_with_a_value_or_one_cell_is_refused():
+    with pytest.raises(ValueError, match="set-9"):
+        poster(_line("consecutive_set", [R1C1], clue_id="set-9"))
+    with pytest.raises(ValueError, match="set-9"):
+        poster(_line("consecutive_set", ROW[:3], [2], "set-9"))

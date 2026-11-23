@@ -14,8 +14,9 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from link_helpers import DIAMOND
 
-from sudoku_kit import guide_html, step_search
+from sudoku_kit import guide_html, step_search, sudokupad_import
 from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
@@ -345,3 +346,37 @@ def test_the_render_is_written_even_when_a_check_fails(tmp_path):
     assert main([str(source), str(out)]) == 1
     assert (out / "render.html").exists()
     assert not (out / "guide.html").exists()
+
+
+DIAMOND_BOARD = FIXTURES / "lockout-tessellation-000PT1.json"
+
+
+def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
+    """The diamond of Logic Masters 000PT1: a stuck point at the start draws
+    the 41 cells of the diamond and a thick edge wherever a cell meets a hole
+    or the sheet's edge."""
+    rules = sudokupad_import.rules_file(json.loads(DIAMOND_BOARD.read_text()))
+    record = step_search.new_record()
+    record["stuck"] = step_search.State(rules).snapshot() | {"timeouts": 0}
+    page = Page(guide_html.guide_page(rules, record))
+
+    stuck = page.find("svg", "grid")[-1][3]
+    drawn = {e[1]["data-cell"] for e in page.find("rect", "cell") if e[3] == stuck}
+    assert drawn == {_name(c) for c in DIAMOND}
+    drawn_edges = {
+        tuple(int(float(e[1][k]) // guide_html.CELL) for k in ("x1", "y1", "x2", "y2"))
+        for e in page.find("line", "edge")
+        if e[3] == stuck
+    }
+    # Where a cell meets a hole: the cell's own side, as (x1, y1, x2, y2) in
+    # cell units. The diamond's perimeter is 36 edges, as a 9x9 square's is, so
+    # the count alone cannot tell the two outlines apart.
+    sides = {(0, 1): (1, 0, 1, 1), (0, -1): (0, 0, 0, 1)}
+    sides |= {(1, 0): (0, 1, 1, 1), (-1, 0): (0, 0, 1, 0)}
+    expected = {
+        (c + a, r + b, c + x, r + y)
+        for r, c in DIAMOND
+        for (dr, dc), (a, b, x, y) in sides.items()
+        if (r + dr, c + dc) not in DIAMOND
+    }
+    assert drawn_edges == expected

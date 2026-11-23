@@ -1,0 +1,409 @@
+{
+ "id": "sxsm_ChinStrap_9ab080870885101076bfd97f5ca7e761",
+ "metadata": {
+  "source": "Sudoku Maker v2025.07.05-57cd531",
+  "title": "Lockout Lines Tessellation ",
+  "author": "ChinStrap",
+  "rules": "TESSELLATION\n- Fill each cell with a digit from 1-9.\n- Cells sharing an edge can't have the same digit.\n- Each horizontal row and vertical column contains a non-repeating consecutive set of digits (like 23456) in any order.\n\nLOCKOUT LINES\n- Digits on a lockout line cannot be between or equal to the digits on the diamond endpoints.\n- Digits on the endpoints must differ by at least 4.",
+  "solution": "....1.......879.....36245...9578634.671438259.8495763...25634.....345.......9...."
+ },
+ "cages": [],
+ "cells": [
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {
+    "value": 7
+   },
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ]
+ ],
+ "regions": [],
+ "lines": [
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M51 218L51 243L77 269L115 269L141 243L141 205L115 179L77 179L51 205L51 218"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M51 243L13 243L-13 269L-13 307L13 333L51 333L77 307L77 269"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M115 179L115 141L141 115L179 115L205 141L243 141L269 115L269 77L243 51L205 51L179 77L179 115"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M141 205L179 205L179 243L205 269L205 307L179 333L179 371L205 397L243 397L243 435L269 461L269 499L243 525L243 563L269 589L307 589L333 563L333 525L371 525L397 499L397 461L435 461L461 435L461 397L499 397L525 371L525 333L563 333L589 307L589 269L563 243L525 243L499 269L499 307L525 333"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M179 205L205 179L243 179L243 141"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M179 243L141 243"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M205 269L243 269L243 307L269 333L269 371L243 397"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M205 307L243 307"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M179 333L141 333L115 307L115 269"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M179 371L141 371L115 397L115 435L141 461L179 461L179 499L205 525L243 525"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M205 397L205 435L179 461"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M243 435L205 435"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 461L307 461L307 499L333 525"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 499L307 499"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M397 461L371 435L371 397L397 371L435 371L461 397"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M525 243L525 205L499 179L461 179L435 205L397 205L371 179L333 179L307 205L269 205L243 179"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M499 269L461 269L461 307L435 333L397 333L397 371"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M499 307L461 307"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M205 141L205 179"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M243 51L243 13L269 -13L307 -13L333 13L333 51L307 77L307 115L333 141L371 141L397 115L435 115L461 141L461 179"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 77L307 77"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 115L307 115"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 205L269 243L307 243L307 205"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M333 179L333 141"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M371 179L371 141"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M397 205L397 243L371 269L371 307L397 333"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M435 205L435 243L461 269"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M115 307L77 307"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M141 333L141 371"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M243 269L269 243"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 333L307 333L333 307L333 269L371 269"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M269 371L307 371L307 333"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M115 397L77 397L51 371L51 333"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M307 461L333 435L333 397L307 371"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M371 435L333 435"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M371 397L333 397"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M371 307L333 307"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M333 269L307 243"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M435 371L435 333"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M435 243L397 243"
+  },
+  {
+   "color": "#000000",
+   "thickness": 0.64,
+   "d": "M397 115L397 77L371 51L333 51"
+  },
+  {
+   "color": "#000000",
+   "thickness": 2.56,
+   "d": "M179 499L205 525L243 525L243 563L269 589L307 589L333 563L333 525L371 525L397 499L397 461L435 461L461 435L461 397L499 397L525 371L525 333L563 333L589 307L589 269L563 243L525 243L525 205L499 179L461 179L461 141L435 115L397 115L397 77L371 51L333 51L333 13L307 -13L269 -13L243 13L243 51L205 51L179 77L179 115L141 115L115 141L115 179L77 179L51 205L51 243L13 243L-13 269L-13 307L13 333L51 333L51 371L77 397L115 397L115 435L141 461L179 461L179 499"
+  },
+  {
+   "color": "#FFFFFF",
+   "thickness": 15.36,
+   "d": "M160 160L288 32L352 96L96 352L160 416L288 288"
+  },
+  {
+   "color": "#c7d9ffff",
+   "thickness": 12.8,
+   "d": "M160 160L288 32L352 96L96 352L160 416L288 288"
+  },
+  {
+   "color": "#FFFFFF",
+   "thickness": 15.36,
+   "d": "M352 480L544 288"
+  },
+  {
+   "color": "#c7d9ffff",
+   "thickness": 12.8,
+   "d": "M352 480L544 288"
+  }
+ ],
+ "overlays": [
+  {
+   "center": [
+    3.5,
+    3.5
+   ],
+   "width": 0.775,
+   "height": 0.775,
+   "thickness": 7.04,
+   "angle": 45,
+   "backgroundColor": "#e2ebfdff",
+   "borderColor": "#abbce1ff"
+  },
+  {
+   "center": [
+    2.5,
+    2.5
+   ],
+   "width": 0.775,
+   "height": 0.775,
+   "thickness": 7.04,
+   "angle": 45,
+   "backgroundColor": "#e2ebfdff",
+   "borderColor": "#abbce1ff"
+  },
+  {
+   "center": [
+    4.5,
+    4.5
+   ],
+   "width": 0.775,
+   "height": 0.775,
+   "thickness": 7.04,
+   "angle": 45,
+   "backgroundColor": "#e2ebfdff",
+   "borderColor": "#abbce1ff"
+  },
+  {
+   "center": [
+    7.5,
+    5.5
+   ],
+   "width": 0.775,
+   "height": 0.775,
+   "thickness": 7.04,
+   "angle": 45,
+   "backgroundColor": "#e2ebfdff",
+   "borderColor": "#abbce1ff"
+  },
+  {
+   "center": [
+    4.5,
+    8.5
+   ],
+   "width": 0.775,
+   "height": 0.775,
+   "thickness": 7.04,
+   "angle": 45,
+   "backgroundColor": "#e2ebfdff",
+   "borderColor": "#abbce1ff"
+  }
+ ]
+}
