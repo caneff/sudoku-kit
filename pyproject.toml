@@ -8,6 +8,7 @@ dependencies = ["lzstring>=1.0.4", "ortools>=9.15"]
 
 [project.scripts]
 solve-guide = "sudoku_kit.solve_guide:main"
+solve-deductions = "sudoku_kit.deduction_lines:main"
 
 [dependency-groups]
 dev = ["pytest", "ruff", "shellcheck-py"]

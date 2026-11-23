@@ -58,6 +58,9 @@ and grid-hunts. Neither imports the step prover.
   puts the original beside the render. Exit codes are in its docstring: 0
   done, 1 a check failed, 2 unreadable input or a refused guide file, 3
   stuck, 4 a hint not proved, 5 a time limit.
+- `sudoku_kit.deduction_lines`: `uv run solve-deductions <output directory>`
+  prints a `solve-guide` run's step record as one line per deduction (its
+  steps, claims and constraints in words), for the `/solve-guide` skill to read.
 - `sudoku_kit.step_search`: the step search and the step record.
 - `sudoku_kit.guide_html`: the solve guide page and the plain render.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
