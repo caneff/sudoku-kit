@@ -1,49 +1,48 @@
-"""The solve guide as an HTML page: the key ideas of a step record, each on
-its own SVG grid, and the fill between them, redrawn from the rules file
-(specs #106 and #127).
+"""The solve guide as an HTML page: a guide file, which the `/solve-guide`
+skill writes, drawn against its step record and the rules file (specs #106
+and #127).
 
 `deductions(rules, record)` groups the record's steps into deductions. A step
 joins an earlier deduction naming the same set of constraints, adjacent or
 not, unless a step between them changed a cell that deduction uses (a cell of
 its named constraints or of its claims). A step whose claim is a chain or an
 `either` is a deduction of its own. A deduction sits at its last step's
-position. Grouping and the key ideas are computed from the record alone, so
-two runs over the same record give the same guide.
+position. Grouping is computed from the record alone, so two runs over the
+same record group its steps the same way.
 
-A deduction is a key idea when it is the break-in (the first deduction that
-names a clue), names two or more constraints, is the first to name a clue of
-its rule type, or is hard (more than 3 named constraints, which the second
-rule already takes). Key ideas are numbered 1..N. Each stretch of deductions
-between them is fill: one sentence counting its placements and eliminations
-and naming its houses and clues, with a collapsed list of its deductions. A
-stuck record ends the guide with the grid and candidates at the stuck point.
+`guide_page(rules, record, guide)` is the whole guide. The guide file, version
+1, is described in `docs/guide-file.md`: an ordered list of entries, each a
+key idea or a fill stretch over a run of steps, together covering every step
+of the record exactly once, in order. `check_guide` refuses one that does
+not, or that flags more than one break-in, naming the problem. The page opens
+with the title, the original image once when given, the rules file's
+`rules_text` and the plain grid of the starting position.
 
-Each deduction, key idea or fill, shows one reason sentence built from its
-named constraints by `reasons.reason`. A key idea is one row: its grid on the
-left at half the page grid's width, and its heading, reason and prose on the
-right, so about 2 to 3 print per page. Its grid draws the candidates before it
-only in the cells it uses or changes, with the digits it removes struck out;
-every other cell shows its placed digit or stays blank. Cells of the
-constraints it names are marked `used` and the cells it changes `changed`. A chain claim is drawn as arrows along the chain, and an
-`either` claim circles each pattern's cells. A step may also carry, written
-there by the skill, and shown only on a key idea:
+The library numbers key ideas 1..N in file order and shows the break-in label
+on the flagged one; every other word is the skill's. A key idea is one row:
+its grid on the left at half the page grid's width, and its numbered heading
+and paragraphs on the right, so about 2 to 3 print per page. Its grid draws
+the candidates before its first step only in the cells its steps use or
+change, with the digits they remove struck out; every other cell shows its
+placed digit or stays blank. Cells of the constraints its steps name are
+marked `used` and the cells they change `changed`. A chain claim is drawn as
+arrows along the chain, and an `either` claim circles each pattern's cells.
 
-- `text`: a sentence shown under its grid.
-- `annotations`: a list of `{"type": "arrow", "from": cell, "to": cell}`,
-  `{"type": "circle", "cell": cell}` and `{"type": "label", "cell": cell,
-  "text": ...}`, each cell a [row, column] pair.
+A fill stretch is the skill's one sentence over a collapsed list with one
+line per step, written here: the claim, then each named constraint in words
+(`constraint_words`), never a clue id. A stuck record ends the guide with the
+grid and candidates at the stuck point.
 
 `render(rules)` is the plain grid, givens and clues only; `plain_page` puts it
-beside the original image for the import comparison, and `guide_page` is the
-whole guide. The guide opens with the title, the original image once when
-given, the rules file's `rules_text` and the plain grid of the starting
-position.
+beside the original image for the import comparison.
 """
 
 import html
 import itertools
+import json
+from pathlib import Path
 
-from sudoku_kit import reasons, rules_file, step_search
+from sudoku_kit import rules_file, step_search
 
 CELL = 48
 LINE_COLOURS = {
@@ -71,9 +70,8 @@ img.original { max-width: 24rem; }
 .solved { font-size: 26px; fill: #236; }
 .cand { font-size: 14px; fill: #555; }
 .cand.struck { fill: #c22; text-decoration: line-through; }
-.breakin, .hard { font-weight: bold; color: #b00; }
+.breakin { font-weight: bold; color: #b00; }
 .rules { white-space: pre-line; }
-.label { font-size: 12px; fill: #b00; font-weight: bold; }
 .arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
 """
 
@@ -110,30 +108,15 @@ def deductions(rules, record):
     )
 
 
-def key_ideas(rules, groups):
-    """The indices into `groups` of its key ideas, and the break-in's index
-    or None."""
-    houses = rules_file.house_names(rules)
-    rule_of = {clue["id"]: clue["rule"] for clue in rules["clues"]}
-    keys, seen, first = [], set(), None
-    for i, group in enumerate(groups):
-        clues = [rule_of[n] for n in group["named"] if n not in houses]
-        new_rule = any(rule not in seen for rule in clues)
-        seen.update(clues)
-        if clues and first is None:
-            first = i
-        if i == first or len(group["named"]) >= 2 or new_rule:
-            keys.append(i)
-    return keys, first
-
-
 def _states(rules, record):
-    """The candidates before each step, by step number from 1."""
+    """The candidates before each step, by step number from 1, and after the
+    last step under the number past it."""
     state = step_search.State(rules)
     before = {}
     for i, step in enumerate(record["steps"], 1):
         before[i] = dict(state.candidates)
         state.apply(step_search.claim_from_json(step["claim"]))
+    before[len(record["steps"]) + 1] = dict(state.candidates)
     return before
 
 
@@ -244,20 +227,12 @@ def _annotation(grid, note, prefix):
             f'<circle class="circle" cx="{x:.1f}" cy="{y:.1f}" r="{CELL / 2 - 3}" '
             f'data-cell="{rules_file.cell_name(note["cell"])}"/>'
         )
-    if kind == "label":
-        x, y = grid.centre(note["cell"])
-        return _text(
-            x,
-            y + CELL / 2 - 4,
-            "label",
-            note["text"],
-            cell=rules_file.cell_name(note["cell"]),
-        )
-    raise ValueError(f"annotation {note!r} has no known type (arrow, circle, label)")
+    raise ValueError(f"mark {note!r} has no known type (arrow, circle)")
 
 
 def _claim_marks(claim):
-    """(changed cells, default annotations) the claim gives."""
+    """(changed cells, marks: arrows along a chain, circles round an `either`)
+    the claim gives."""
     if "cell" in claim:
         return {tuple(claim["cell"])}, []
     if "chain" in claim:
@@ -272,9 +247,9 @@ def _claim_marks(claim):
 
 def render(rules, candidates=None, idea=None, prefix="g"):
     """One grid as an SVG string. `candidates` ({cell: digits}) draws each
-    cell's digits; without it only givens show. `idea`, a key idea (a
-    deduction with its `key` number, `annotations` and `removed`, {cell:
-    digits}), marks its cells and strikes out what it removes."""
+    cell's digits; without it only givens show. `idea`, a key idea (its `key`
+    number, the `named` constraints and `claims` of its steps, and `removed`,
+    {cell: digits}), marks its cells and strikes out what it removes."""
     grid = Grid(rules)
     registry = rules_file.registry(rules)
     used, changed, removed, notes = set(), set(), {}, []
@@ -286,7 +261,6 @@ def render(rules, candidates=None, idea=None, prefix="g"):
             changed |= cells
             notes += marks
         removed = idea["removed"]
-        notes += idea["annotations"]
     out = [
         f'<svg class="grid" xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {grid.columns * CELL} {grid.rows * CELL}"'
@@ -376,96 +350,193 @@ def _describe(claim):
     return "at least one of several patterns holds"
 
 
-def _claims(group):
-    return ", ".join(_describe(claim) for claim in group["claims"])
-
-
-def _steps_attr(group):
-    return " ".join(map(str, group["steps"]))
+def _list(words):
+    return ", ".join(words[:-1]) + " and " + words[-1] if len(words) > 1 else words[0]
 
 
 def _plural(count, word):
     return f"{count} {word}" + ("" if count == 1 else "s")
 
 
-def _fill(rules, groups, before):
-    """One stretch of fill: a sentence, then its deductions collapsed."""
-    houses = rules_file.house_names(rules)
-    rule_of = {clue["id"]: clue["rule"] for clue in rules["clues"]}
-    placed = removed = 0
-    for group in groups:
-        for number, claim in zip(group["steps"], group["claims"], strict=True):
-            if "cell" not in claim:
-                continue
-            held = before[number][tuple(claim["cell"])]
-            if len(claim["digits"]) == 1:
-                placed += 1
-            else:
-                removed += len(held) - len(claim["digits"])
-    names = dict.fromkeys(n for g in groups for n in g["named"])
-    sources = [n for n in names if n in houses]
-    clues = [rule_of[n] for n in names if n not in houses]
-    for rule in dict.fromkeys(clues):
-        kind = rule.replace("_", " ")
-        sources.append(_plural(clues.count(rule), f"{kind} clue"))
-    made = [_plural(placed, "digit") + " placed"] if placed else []
-    if removed:
-        made.append(_plural(removed, "candidate") + " removed")
-    if not made:
-        made = ["no candidate changed"]
-    using = (
-        ", ".join(sources[:-1]) + " and " + sources[-1]
-        if len(sources) > 1
-        else sources[0]
-    )
+CLUE_WORDS = {
+    "difference": lambda v: "white dot" if v == 1 else f"white dot {v}",
+    "ratio": lambda v: "black dot" if v == 2 else f"black dot {v}",
+    "thermo": lambda v: "thermometer",
+    "slow_thermo": lambda v: "slow thermometer",
+    "renban": lambda v: "renban line",
+    "whisper": lambda v: "whisper line",
+    "lockout": lambda v: "lockout line",
+    "arrow": lambda v: "arrow",
+    "killer_cage": lambda v: f"killer cage {v}",
+    "little_killer": lambda v: f"little killer {v}",
+    "skyscraper": lambda v: "skyscraper",
+    "numbered_rooms": lambda v: "numbered room",
+    "anti_knight": lambda v: "knight's move",
+    "tessellation": lambda v: "tessellation edge",
+    "consecutive_set": lambda v: "consecutive set",
+}
+OUTSIDE_RULES = ("skyscraper", "numbered_rooms")
+
+
+def constraint_words(rules, name):
+    """A named constraint as a solver reads it: a house by its name, a clue by
+    its kind and its cells (first to last, or the outside cell of a clue read
+    from outside), never by its id."""
+    if name in rules_file.house_names(rules):
+        return name
+    clue = next(c for c in rules["clues"] if c["id"] == name)
+    cells = [rules_file.cell_name(c) for c in clue["cells"]]
+    if clue["rule"] in OUTSIDE_RULES or len(cells) == 1:
+        where = cells[0]
+    else:
+        where = f"{cells[0]}-{cells[-1]}"
+    value = clue["values"][0] if clue["values"] else None
+    return f"{CLUE_WORDS[clue['rule']](value)} {where}"
+
+
+def _step_line(rules, step):
+    named = [constraint_words(rules, name) for name in step["named"]]
+    return f"{_describe(step['claim'])}, from {_list(named)}."
+
+
+GUIDE_VERSION = 1
+ENTRY_FIELDS = {
+    "key": ({"heading", "paragraphs"}, {"break_in"}),
+    "fill": ({"sentence"}, set()),
+}
+
+
+def load_guide(path):
+    """The guide file at `path`, parsed; `check_guide` judges its contents."""
+    try:
+        return json.loads(Path(path).read_text())
+    except OSError as e:
+        raise ValueError(f"cannot read guide file {path}: {e.strerror}") from e
+    except ValueError as e:
+        raise ValueError(f"guide file {path} is not JSON: {e}") from e
+
+
+def _check_entry(k, entry, total):
+    if not isinstance(entry, dict):
+        raise ValueError(f"entry {k} is not a JSON object: {str(entry)[:60]!r}")
+    kind = entry.get("type")
+    if kind not in ENTRY_FIELDS:
+        raise ValueError(f"entry {k} has type {kind!r}; an entry is 'key' or 'fill'")
+    required, optional = ENTRY_FIELDS[kind]
+    required = required | {"first", "last"}
+    unknown = set(entry) - required - optional - {"type"}
+    if unknown:
+        raise ValueError(f"entry {k} ({kind}) has unknown fields {sorted(unknown)}")
+    missing = required - set(entry)
+    if missing:
+        raise ValueError(f"entry {k} ({kind}) has no {sorted(missing)}")
+    for field in ("first", "last"):
+        value = entry[field]
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"entry {k}'s {field} {value!r} is not a step number")
+    first, last = entry["first"], entry["last"]
+    if first < 1:
+        raise ValueError(f"entry {k} starts at step {first}; steps count from 1")
+    if first > last:
+        raise ValueError(f"entry {k} has its first {first} after its last {last}")
+    if last > total:
+        raise ValueError(
+            f"entry {k} reaches step {last}, past the record's {_plural(total, 'step')}"
+        )
+    for field in ("heading", "sentence"):
+        if field in entry and not isinstance(entry[field], str):
+            raise ValueError(f"entry {k}'s {field} is not a string")
+    paragraphs = entry.get("paragraphs", [])
+    if not isinstance(paragraphs, list) or not all(
+        isinstance(p, str) for p in paragraphs
+    ):
+        raise ValueError(f"entry {k}'s paragraphs is not a list of strings")
+    if not isinstance(entry.get("break_in", False), bool):
+        raise ValueError(f"entry {k}'s break_in is not true or false")
+
+
+def check_guide(record, guide):
+    """Refuse, naming the problem, a guide file that is malformed, that skips,
+    repeats or reorders a step of `record`, or that flags more than one
+    break-in."""
+    if not isinstance(guide, dict):
+        raise ValueError(f"the guide file is not a JSON object: {str(guide)[:60]!r}")
+    version = guide.get("version")
+    if version != GUIDE_VERSION:
+        raise ValueError(
+            f"the guide file has version {version!r}; "
+            f"only version {GUIDE_VERSION} is read"
+        )
+    entries = guide.get("entries")
+    if not isinstance(entries, list):
+        raise ValueError("the guide file has no entries list")
+    total = len(record["steps"])
+    for k, entry in enumerate(entries, 1):
+        _check_entry(k, entry, total)
+    flagged = [str(k) for k, e in enumerate(entries, 1) if e.get("break_in")]
+    if len(flagged) > 1:
+        raise ValueError(
+            f"entries {_list(flagged)} each flag the break-in; a guide has one at most"
+        )
+    covered = {}
+    for k, entry in enumerate(entries, 1):
+        for step in range(entry["first"], entry["last"] + 1):
+            if step in covered:
+                raise ValueError(
+                    f"entry {k} repeats step {step}, already in entry {covered[step]}"
+                )
+            covered[step] = k
+    missing = [step for step in range(1, total + 1) if step not in covered]
+    if missing:
+        more = f" and {len(missing) - 1} more" if len(missing) > 1 else ""
+        raise ValueError(f"the guide file skips step {missing[0]}{more}")
+    for k, (a, b) in enumerate(itertools.pairwise(entries), 2):
+        if b["first"] < a["first"]:
+            raise ValueError(
+                f"entry {k} is out of order: steps {b['first']}-{b['last']} come "
+                f"after steps {a['first']}-{a['last']} of entry {k - 1}"
+            )
+
+
+def _fill(rules, entry, record):
+    """One stretch of fill: the skill's sentence, then a line per step."""
+    numbers = range(entry["first"], entry["last"] + 1)
     items = "".join(
-        f'<li class="deduction" data-steps="{_steps_attr(g)}">'
-        f"{html.escape(_claims(g))}. "
-        f'<span class="reason">{html.escape(reasons.reason(rules, g["named"]))}</span></li>'
-        for g in groups
+        f'<li class="step" data-step="{i}">'
+        f"{html.escape(_step_line(rules, record['steps'][i - 1]))}</li>"
+        for i in numbers
     )
     return (
-        f'<div class="fill"><p class="fill">Fill: {" and ".join(made)}, from '
-        f"{html.escape(using)}.</p><details><summary>The "
-        f"{_plural(len(groups), 'deduction')}</summary><ul>{items}</ul></details></div>"
+        f'<div class="fill" data-steps="{entry["first"]}-{entry["last"]}">'
+        f'<p class="fill">{html.escape(entry["sentence"])}</p><details><summary>The '
+        f"{_plural(len(numbers), 'step')}</summary><ul>{items}</ul></details></div>"
     )
 
 
-def _key_section(rules, number, group, record, before, is_break_in):
-    """One key idea as one row: its grid, then its heading, labels, reason
-    and any text the skill wrote."""
-    steps = [record["steps"][i - 1] for i in group["steps"]]
-    held = dict(before[group["steps"][-1]])
-    removed = {}
-    for i, claim in zip(group["steps"], group["claims"], strict=True):
-        if "cell" not in claim:
-            continue
-        cell = tuple(claim["cell"])
-        if cell not in removed:
-            held[cell] = before[i][cell]
-        removed[cell] = held[cell] - set(claim["digits"])
-    idea = dict(
-        group,
-        key=number,
-        removed=removed,
-        annotations=[note for s in steps for note in s.get("annotations", [])],
-    )
-    named = group["named"]
+def _key_section(rules, number, entry, record, before):
+    """One key idea as one row: its grid, then its numbered heading, the
+    break-in label when flagged, and its paragraphs."""
+    first, last = entry["first"], entry["last"]
+    numbers = range(first, last + 1)
+    steps = [record["steps"][i - 1] for i in numbers]
+    claims = [step["claim"] for step in steps]
+    held, after = before[first], before[last + 1]
+    changed = {tuple(c["cell"]) for c in claims if "cell" in c}
+    idea = {
+        "key": number,
+        "named": list(dict.fromkeys(n for step in steps for n in step["named"])),
+        "claims": claims,
+        "removed": {cell: held[cell] - after[cell] for cell in changed},
+    }
     parts = [
-        f'<section class="key" data-key="{number}" data-steps="{_steps_attr(group)}">',
+        f'<section class="key" data-key="{number}" '
+        f'data-steps="{" ".join(map(str, numbers))}">',
         render(rules, held, idea, prefix=f"k{number}"),
-        f'<div class="text"><h2>Key idea {number}: {html.escape(_claims(group))}</h2>',
+        f'<div class="text"><h2>Key idea {number}: {html.escape(entry["heading"])}</h2>',
     ]
-    if is_break_in:
-        parts.append(
-            '<p class="breakin">Break-in: the first deduction that needs a clue.</p>'
-        )
-    if len(named) > step_search.HARD:
-        parts.append(
-            f'<p class="hard">Hard step: it uses {len(named)} constraints together.</p>'
-        )
-    parts.append(f'<p class="reason">{html.escape(reasons.reason(rules, named))}</p>')
-    parts.extend(f"<p>{html.escape(s['text'])}</p>" for s in steps if s.get("text"))
+    if entry.get("break_in"):
+        parts.append('<p class="breakin">Break-in</p>')
+    parts.extend(f"<p>{html.escape(p)}</p>" for p in entry["paragraphs"])
     parts.append("</div></section>")
     return "".join(parts)
 
@@ -512,8 +583,10 @@ def plain_page(rules, image=None):
     return _page("Rules file render", body + f'<div class="sidebyside">{pair}</div>')
 
 
-def guide_page(rules, record, image=None):
-    """The solve guide for `record`, the image once at the top when given."""
+def guide_page(rules, record, guide, image=None):
+    """The solve guide `guide`, a guide file as `load_guide` reads it, draws
+    for `record`, the image once at the top when given."""
+    check_guide(record, guide)
     before = _states(rules, record)
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:
@@ -521,20 +594,13 @@ def guide_page(rules, record, image=None):
     if rules.get("rules_text"):
         body.append(f'<p class="rules">{html.escape(rules["rules_text"])}</p>')
     body.append(render(rules, prefix="start"))
-    groups = deductions(rules, record)
-    keys, first = key_ideas(rules, groups)
-    stretch = []
-    for i, group in enumerate(groups):
-        if i not in keys:
-            stretch.append(group)
+    keys = 0
+    for entry in guide["entries"]:
+        if entry["type"] == "fill":
+            body.append(_fill(rules, entry, record))
             continue
-        if stretch:
-            body.append(_fill(rules, stretch, before))
-            stretch = []
-        number = keys.index(i) + 1
-        body.append(_key_section(rules, number, group, record, before, i == first))
-    if stretch:
-        body.append(_fill(rules, stretch, before))
+        keys += 1
+        body.append(_key_section(rules, keys, entry, record, before))
     if record.get("stuck"):
         body.append(_stuck(rules, record["stuck"]))
     return _page("Solve guide", "".join(body))

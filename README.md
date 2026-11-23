@@ -52,10 +52,12 @@ and grid-hunts. Neither imports the step prover.
   <output directory>`: imports a SudokuPad link or a `.json` of its puzzle JSON,
   or reads a rules `.json`, writes `rules.json`, `checks.json` and
   `render.html`, then runs the step search (`steps.json`, resumed when
-  present) and writes `guide.html`. `--hint`/`--named` add a checked step and
-  `--image` puts the original beside the render. Exit codes are in its
-  docstring: 0 done, 1 a check failed, 2 unreadable input (nothing written),
-  3 stuck, 4 a hint not proved, 5 a time limit.
+  present) and writes `guide.html` from the guide file `--guide` names
+  (`docs/guide-file.md`, written by the `/solve-guide` skill); without it,
+  no guide is written. `--hint`/`--named` add a checked step and `--image`
+  puts the original beside the render. Exit codes are in its docstring: 0
+  done, 1 a check failed, 2 unreadable input or a refused guide file, 3
+  stuck, 4 a hint not proved, 5 a time limit.
 - `sudoku_kit.step_search`: the step search and the step record.
 - `sudoku_kit.guide_html`: the solve guide page and the plain render.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,

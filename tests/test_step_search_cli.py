@@ -344,7 +344,10 @@ def test_an_image_path_is_written_relative_to_the_output_directory(tmp_path):
     image.parent.mkdir()
     image.write_bytes(b"")
     out = tmp_path / "out"
-    main([str(DIAGONAL_DOTS), str(out), "--max-steps", "0", "--image", str(image)])
+    guide = tmp_path / "guide.json"
+    guide.write_text(json.dumps({"version": 1, "entries": []}))
+    extra = ["--max-steps", "0", "--image", str(image), "--guide", str(guide)]
+    main([str(DIAGONAL_DOTS), str(out), *extra])
     for page in ("render.html", "guide.html"):
         assert 'src="../pictures/original.png"' in (out / page).read_text()
 

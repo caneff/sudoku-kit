@@ -1,25 +1,26 @@
-"""The solve guide's HTML through the command line, on Diagonal Dots (Logic
-Masters 000HUJ, `tests/solve_guide/`).
+"""The solve guide's HTML: `guide_page(rules, record, guide)` and the command
+line that writes it.
 
-Most tests resume from the step record of the session's one full search
-(`diagonal_dots_run` in `conftest.py`; the record is never committed), so they
-read the guide without paying for the search; one more runs the search fresh.
-The guide is read back as parsed markup, and the expected highlights are
-rebuilt here from the rules file and the record, not from the renderer.
-
-Grouping, key ideas and fill are pinned on `TOY`, a made-up 4x4 board, with
-records written by hand, so no test pins a step of a published puzzle.
+Key ideas, fill and every refusal of a guide file are pinned on `TOY`, a
+made-up 4x4 board, with records and guide files written by hand, so no test
+pins a step of a published puzzle. Diagonal Dots (Logic Masters 000HUJ,
+`tests/solve_guide/`) is read only where no guide file is needed: the plain
+render, and a stuck point drawn on a guide whose one fill entry is built here
+from the session's record (`diagonal_dots_run` in `conftest.py`; neither is
+ever committed). The page is read back as parsed markup, and the expected
+highlights are rebuilt here from the rules file and the record, not from the
+renderer.
 """
 
 import json
-import shutil
+import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
 from link_helpers import DIAMOND
 
-from sudoku_kit import guide_html, step_search, sudokupad_import
+from sudoku_kit import clue_rules, guide_html, rules_file, step_search, sudokupad_import
 from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
@@ -80,105 +81,8 @@ class Page(HTMLParser):
         }
 
 
-def _guide(out, *extra, seed=None):
-    """Run the guide into `out`, resuming from the step record `seed` if given."""
-    out.mkdir(parents=True, exist_ok=True)
-    if seed:
-        shutil.copy(seed, out / "steps.json")
-    code = main([str(PUZZLE), str(out), *extra])
-    return code, Page((out / "guide.html").read_text())
-
-
-@pytest.fixture(scope="module")
-def guide(tmp_path_factory, diagonal_dots_steps):
-    out = tmp_path_factory.mktemp("guide")
-    code, page = _guide(out, seed=diagonal_dots_steps)
-    assert code == 0
-    return out, page
-
-
-def _own_copy(record):
-    """A deep copy, so a test that edits the session-wide record leaves it be."""
-    return json.loads(json.dumps(record))
-
-
 def _name(cell):
     return f"r{cell[0] + 1}c{cell[1] + 1}"
-
-
-def _house(rules, name):
-    n = rules["size"]
-    kind, k = name.split()
-    k = int(k) - 1
-    if kind == "row":
-        return {_name((k, c)) for c in range(n)}
-    if kind == "column":
-        return {_name((r, k)) for r in range(n)}
-    return {_name(c) for c in rules["regions"][k]}
-
-
-def _is_house(name):
-    return name.split()[0] in ("row", "column", "region")
-
-
-def _used(rules, names):
-    clues = {c["id"]: c for c in rules["clues"]}
-    used = set()
-    for name in names:
-        used |= (
-            _house(rules, name)
-            if _is_house(name)
-            else {_name(c) for c in clues[name]["cells"]}
-        )
-    return used
-
-
-def test_a_key_ideas_grid_lights_its_cells_draws_only_their_candidates_and_strikes(
-    guide, diagonal_dots_record
-):
-    out, page = guide
-    rules = json.loads((out / "rules.json").read_text())
-    steps = diagonal_dots_record["steps"]
-    state, before = step_search.State(rules), []
-    for step in steps:
-        before.append(dict(state.candidates))
-        state.apply(step_search.claim_from_json(step["claim"]))
-    for e in page.find("section", "key"):
-        group = [int(n) for n in e[1]["data-steps"].split()]
-        svg = page.grids()[int(e[1]["data-key"])]
-        claims = [steps[n - 1]["claim"] for n in group]
-        removed = {}
-        for n, claim in zip(group, claims, strict=True):
-            cell = tuple(claim["cell"])
-            start = removed.get(cell, (before[n - 1][cell], None))[0]
-            removed[cell] = (start, start - set(claim["digits"]))
-        struck = {
-            (t[1]["data-cell"], int(t[1]["data-digit"]))
-            for t in page.find("text", "struck")
-            if t[3] == svg
-        }
-
-        drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == svg}
-        acting = _used(rules, steps[group[0] - 1]["named"])
-        acting |= {_name(c["cell"]) for c in claims}
-
-        assert drawn and drawn <= acting
-        assert page.cells(svg, "changed") == {_name(c["cell"]) for c in claims}
-        assert page.cells(svg, "used") >= _used(rules, steps[group[0] - 1]["named"])
-        assert struck == {
-            (_name(c), d) for c, (_, gone) in removed.items() for d in gone
-        }
-
-
-def test_a_second_fresh_run_shows_the_same_key_ideas_as_the_sessions_run(
-    tmp_path, guide
-):
-    """One more fresh search of the whole solve, about 45 seconds."""
-    _, shared = guide
-    code, page = _guide(tmp_path)
-    assert code == 0
-    assert _keys(page) == _keys(shared)
-    assert _fill(page) == _fill(shared)
 
 
 TOY = {
@@ -208,23 +112,51 @@ TOY = {
 }
 
 
-def _step(named, cell, digits, **extra):
+def _step(named, cell, digits):
     """A made-up step on the 4x4 `TOY`: the cell keeps `digits`."""
     return {
         "claim": {"cell": list(cell), "digits": digits},
         "named": named,
         "hard": len(named) > 3,
         "by": "search",
+    }
+
+
+def _record(*steps):
+    return {"steps": list(steps), "timeouts": [], "stuck": None}
+
+
+def _key(first, last, heading="An idea", paragraphs=("Why it holds.",), **extra):
+    return {
+        "type": "key",
+        "first": first,
+        "last": last,
+        "heading": heading,
+        "paragraphs": list(paragraphs),
         **extra,
     }
 
 
-def _toy(*steps):
-    return Page(
-        guide_html.guide_page(
-            TOY, {"steps": list(steps), "timeouts": [], "stuck": None}
-        )
-    )
+def _fill(first, last, sentence="The grid fills on."):
+    return {"type": "fill", "first": first, "last": last, "sentence": sentence}
+
+
+def _guide(*entries):
+    return {"version": 1, "entries": list(entries)}
+
+
+def _toy(steps, *entries, rules=TOY, image=None):
+    return Page(guide_html.guide_page(rules, _record(*steps), _guide(*entries), image))
+
+
+SIX = [
+    _step(["row 1"], (0, 2), [1, 2, 3]),
+    _step(["white-a"], (0, 0), [1, 2, 3]),
+    _step(["row 2", "column 3"], (1, 2), [1, 2]),
+    _step(["black-a"], (3, 0), [1, 2, 4]),
+    _step(["white-b"], (2, 2), [1, 2, 3]),
+    _step(["white-b", "row 3", "column 3", "region 4"], (2, 3), [2, 3]),
+]
 
 
 def _keys(page):
@@ -234,96 +166,146 @@ def _keys(page):
     ]
 
 
-def _fill(page):
-    """The step numbers of each fill deduction, in page order."""
-    return [e[1]["data-steps"] for e in page.find("li", "deduction")]
+def _grouped(*steps):
+    """The step numbers of each deduction, in guide order."""
+    return [g["steps"] for g in guide_html.deductions(TOY, _record(*steps))]
 
 
 def test_steps_on_the_same_constraints_merge_across_a_step_elsewhere():
-    page = _toy(
+    grouped = _grouped(
         _step(["white-a"], (0, 0), [1, 2, 3]),
         _step(["row 4"], (3, 3), [1, 2, 3]),
         _step(["white-a"], (0, 1), [1, 2, 3]),
     )
 
-    assert _keys(page) == [(1, "1 3")]
-    assert _fill(page) == ["2"]
+    assert grouped == [[2], [1, 3]]
 
 
 def test_a_step_changing_a_cell_the_group_uses_keeps_them_apart():
-    page = _toy(
+    grouped = _grouped(
         _step(["white-a"], (0, 0), [1, 2, 3]),
         _step(["row 1"], (0, 1), [1, 2, 3]),
         _step(["white-a"], (0, 0), [1, 2]),
     )
 
-    assert _keys(page) == [(1, "1")]
-    assert _fill(page) == ["2", "3"]
+    assert grouped == [[1], [2], [3]]
 
 
-def test_key_ideas_are_the_break_in_two_constraints_and_each_rule_types_first_use():
+def test_key_ideas_are_numbered_1_to_n_in_file_order_with_their_words():
     page = _toy(
-        _step(["row 1"], (0, 2), [1, 2, 3]),
-        _step(["white-a"], (0, 0), [1, 2, 3]),
-        _step(["white-b"], (2, 2), [1, 2, 3]),
-        _step(["black-a"], (3, 0), [1, 2, 4]),
-        _step(["row 2", "column 3"], (1, 2), [1, 2]),
-        _step(["white-b", "row 3", "column 3", "region 4"], (2, 3), [2, 3]),
+        SIX,
+        _fill(1, 1),
+        _key(2, 3, "The dot and the pair", ["First this.", "Then that."]),
+        _fill(4, 4),
+        _key(5, 6, "Round the cage"),
     )
 
-    assert _keys(page) == [(1, "2"), (2, "4"), (3, "5"), (4, "6")]
-    assert _fill(page) == ["1", "3"]
+    assert _keys(page) == [(1, "2 3"), (2, "5 6")]
+    assert [e[2] for e in page.find("h2")] == [
+        "Key idea 1: The dot and the pair",
+        "Key idea 2: Round the cage",
+    ]
+    first = page.find("section", "key")[0]
+    at = page.elements.index
+    inside = page.elements[at(first) : at(page.find("section", "key")[1])]
+    paragraphs = [e[2] for e in inside if e[0] == "p" and not e[1].get("class")]
+    assert paragraphs == ["First this.", "Then that."]
+
+
+def test_each_key_idea_is_one_row_with_its_grid_left_of_its_text():
+    page = _toy(SIX[:3], _key(1, 1), _key(2, 2), _key(3, 3))
+
+    sections = page.find("section", "key")
+    at = page.elements.index
+    assert len(sections) == 3
+    for k, section in enumerate(sections):
+        end = at(sections[k + 1]) if k + 1 < len(sections) else len(page.elements)
+        inside = page.elements[at(section) : end]
+        tags = [e[0] for e in inside if e[0] in ("svg", "div", "h2")]
+        assert tags[:3] == ["svg", "div", "h2"]
+        assert "text" in inside[[e[0] for e in inside].index("div")][1]["class"]
+        assert len([e for e in inside if e[0] == "svg"]) == 1
+
+
+def test_the_break_in_label_shows_on_the_flagged_idea_only():
+    page = _toy(SIX, _key(1, 2), _key(3, 4, break_in=True), _key(5, 6))
+
     breakin = page.find("p", "breakin")
+    sections = page.find("section", "key")
+    at = page.elements.index
     assert len(breakin) == 1
-    assert page.elements.index(breakin[0]) < page.elements.index(
-        page.find("section", "key")[1]
-    )
-    hard = page.find("p", "hard")
-    assert len(hard) == 1 and "4 constraints" in hard[0][2]
-    assert page.elements.index(hard[0]) > page.elements.index(
-        page.find("section", "key")[3]
-    )
+    assert at(sections[1]) < at(breakin[0]) < at(sections[2])
 
 
-def test_a_guide_with_no_clue_has_no_break_in():
-    page = _toy(
-        _step(["row 1"], (0, 2), [1, 2, 3]),
-        _step(["row 2", "column 3"], (1, 2), [1, 2]),
-    )
+def test_a_guide_with_no_flag_has_no_break_in_label():
+    page = _toy(SIX, _key(1, 6))
 
-    assert _keys(page) == [(1, "2")]
     assert not page.find("p", "breakin")
 
 
-def test_each_stretch_of_fill_is_one_sentence_and_a_collapsed_list():
+def test_each_fill_stretch_is_its_sentence_and_a_collapsed_line_per_step():
     page = _toy(
-        _step(["row 1"], (0, 0), [2]),
-        _step(["row 1"], (0, 1), [1, 3]),
-        _step(["column 3"], (2, 2), [1, 2, 3]),
-        _step(["white-a"], (0, 1), [3]),
-        _step(["white-b"], (2, 2), [1, 3]),
-        _step(["white-b"], (2, 3), [1, 3]),
+        SIX,
+        _fill(1, 3, "Singles in the top rows."),
+        _key(4, 4),
+        _fill(5, 6, "The cage finishes the corner."),
     )
 
     fills = page.find("div", "fill")
-    sentences = page.find("p", "fill")
-    assert len(fills) == len(sentences) == 2
-    assert sentences[0][2] == (
-        "Fill: 1 digit placed and 3 candidates removed, from row 1 and column 3."
+    assert [e[2] for e in page.find("p", "fill")] == [
+        "Singles in the top rows.",
+        "The cage finishes the corner.",
+    ]
+    assert len(fills) == len(page.find("details")) == 2
+    assert [e[1]["data-step"] for e in page.find("li", "step")] == [
+        "1",
+        "2",
+        "3",
+        "5",
+        "6",
+    ]
+    assert [e[2] for e in page.find("li", "step")] == [
+        "r1c3 keeps 1 2 3, from row 1.",
+        "r1c1 keeps 1 2 3, from white dot r1c1-r1c2.",
+        "r2c3 keeps 1 2, from row 2 and column 3.",
+        "r3c3 keeps 1 2 3, from white dot r3c3-r3c4.",
+        "r3c4 keeps 2 3, from white dot r3c3-r3c4, row 3, column 3 and region 4.",
+    ]
+
+
+def test_a_placement_reads_as_the_digit_it_places():
+    page = _toy([_step(["black-a"], (3, 0), [4])], _fill(1, 1))
+
+    assert [e[2] for e in page.find("li", "step")] == [
+        "r4c1 = 4, from black dot r4c1-r4c2."
+    ]
+
+
+PAIRS = {"difference", "ratio", "anti_knight", "tessellation"}
+
+
+@pytest.mark.parametrize("rule", sorted(clue_rules.RULES))
+def test_every_rule_types_constraint_is_named_by_its_cells_and_never_its_id(rule):
+    cells = [[0, 0], [0, 1]] if rule in PAIRS else [[0, 0], [0, 1], [0, 2]]
+    rules = dict(
+        TOY,
+        clues=[{"id": "zz-secret-id", "rule": rule, "cells": cells, "values": [1]}],
     )
-    assert sentences[1][2] == "Fill: 3 candidates removed, from 1 difference clue."
-    assert _fill(page) == ["1 2", "3", "5 6"]
-    assert len(page.find("details")) == 2
-    text = "".join(e[2] for e in page.elements if e[0] in ("p", "li", "summary"))
-    assert ";" not in text
-    assert "Step" not in text
+
+    words = guide_html.constraint_words(rules, "zz-secret-id")
+
+    assert rules_file.cell_name(cells[0]) in words
+    assert "zz-secret-id" not in words
 
 
-def test_a_key_idea_strikes_out_what_all_its_steps_remove():
+def test_a_key_ideas_grid_strikes_out_what_all_its_steps_remove():
     page = _toy(
-        _step(["white-a"], (0, 0), [1, 2, 3]),
-        _step(["white-a"], (0, 1), [1, 2, 3]),
-        _step(["white-a"], (0, 0), [2, 3]),
+        [
+            _step(["white-a"], (0, 0), [1, 2, 3]),
+            _step(["white-a"], (0, 1), [1, 2, 3]),
+            _step(["white-a"], (0, 0), [2, 3]),
+        ],
+        _key(1, 3),
     )
 
     struck = {
@@ -335,47 +317,160 @@ def test_a_key_idea_strikes_out_what_all_its_steps_remove():
     assert page.cells(page.grids()[1], "used") == {"r1c1", "r1c2"}
 
 
-def test_the_skills_text_and_marks_show_on_a_key_idea_and_not_in_fill():
-    marks = [
-        {"type": "arrow", "from": [0, 0], "to": [0, 1]},
-        {"type": "label", "cell": [1, 1], "text": "no 4 here"},
-    ]
+def test_a_key_ideas_grid_starts_from_the_candidates_before_its_first_step():
     page = _toy(
-        _step(["row 1"], (0, 2), [1, 2, 3], text="Only a fill step."),
-        _step(
-            ["white-a"], (0, 0), [1, 2, 3], text="The dot pins it.", annotations=marks
-        ),
+        [
+            _step(["row 1"], (0, 0), [1, 2, 3]),
+            _step(["white-a"], (0, 0), [2, 3]),
+        ],
+        _fill(1, 1),
+        _key(2, 2),
     )
 
     grid = page.grids()[1]
-    assert [
-        (e[1]["data-from"], e[1]["data-to"]) for e in page.find("line", "arrow")
-    ] == [("r1c1", "r1c2")]
-    assert [(e[1]["data-cell"], e[2]) for e in page.find("text", "label")] == [
-        ("r2c2", "no 4 here")
-    ]
-    assert {e[3] for e in page.find("line", "arrow")} == {grid}
-    paragraphs = [e[2] for e in page.find("p")]
-    assert "The dot pins it." in paragraphs
-    assert "Only a fill step." not in "".join(e[2] for e in page.elements)
+    drawn = {
+        (e[1]["data-cell"], int(e[1]["data-digit"]))
+        for e in page.find("text", "cand")
+        if e[3] == grid and e[1]["data-cell"] == "r1c1"
+    }
+    struck = {
+        (e[1]["data-cell"], int(e[1]["data-digit"]))
+        for e in page.find("text", "struck")
+        if e[3] == grid
+    }
+    assert drawn == {("r1c1", 1), ("r1c1", 2), ("r1c1", 3)}
+    assert struck == {("r1c1", 1)}
+
+
+def test_a_key_idea_draws_candidates_only_in_the_cells_it_uses_or_changes():
+    page = _toy(
+        [
+            _step(["row 1"], (0, 3), [4]),
+            _step(["row 1"], (0, 1), [1, 2, 3]),
+            _step(["row 2"], (1, 3), [1, 2, 3]),
+            _step(["white-a"], (0, 0), [1, 2, 3]),
+        ],
+        _fill(1, 3),
+        _key(4, 4),
+    )
+
+    grid = page.grids()[1]
+    drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == grid}
+    assert drawn == {"r1c1", "r1c2"}
+    assert [e[2] for e in page.find("text", "solved") if e[3] == grid] == ["4"]
+
+
+@pytest.mark.parametrize(
+    ("entries", "cause"),
+    [
+        ([_fill(1, 2), _key(4, 6)], r"skips step 3"),
+        ([_key(1, 3), _fill(3, 6)], r"repeats step 3"),
+        ([_fill(1, 2), _fill(5, 6), _key(3, 4)], r"out of order.*steps 3-4"),
+        ([_key(1, 5)], r"skips step 6"),
+        ([_key(1, 7)], r"step 7.*6 steps"),
+        (
+            [_key(1, 2, break_in=True), _key(3, 6, break_in=True)],
+            r"entries 1 and 2.*break-in",
+        ),
+        ([_key(3, 2), _fill(1, 6)], r"entry 1.*first 3.*after.*last 2"),
+    ],
+    ids=["skip", "repeat", "reorder", "short", "past-end", "two-break-ins", "backward"],
+)
+def test_a_guide_file_that_does_not_fit_the_record_is_refused_naming_why(
+    entries, cause
+):
+    with pytest.raises(ValueError, match=cause):
+        guide_html.guide_page(TOY, _record(*SIX), _guide(*entries))
+
+
+@pytest.mark.parametrize(
+    ("guide", "cause"),
+    [
+        ([], r"not a JSON object"),
+        ({"entries": []}, r"version.*1"),
+        ({"version": 2, "entries": []}, r"version 2.*1"),
+        ({"version": 1}, r"entries"),
+        (_guide({"type": "note", "first": 1, "last": 6}), r"entry 1.*type 'note'"),
+        (_guide(_fill(1, 6) | {"heading": "x"}), r"entry 1.*heading"),
+        (_guide(_key(1, 6) | {"paragraphs": "one"}), r"entry 1.*paragraphs"),
+        (_guide({"type": "fill", "first": 1, "last": 6}), r"entry 1.*sentence"),
+        (_guide(_fill("1", 6)), r"entry 1.*first"),
+    ],
+    ids=[
+        "not-object",
+        "no-version",
+        "wrong-version",
+        "no-entries",
+        "bad-type",
+        "unknown-field",
+        "bad-paragraphs",
+        "missing-sentence",
+        "bad-first",
+    ],
+)
+def test_a_malformed_guide_file_is_refused_naming_the_field(guide, cause):
+    with pytest.raises(ValueError, match=cause):
+        guide_html.guide_page(TOY, _record(*SIX), guide)
+
+
+def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
+    rules = dict(
+        TOY,
+        title="Toy dots",
+        rules_text="Normal sudoku rules apply.\nWhite dots join consecutive digits.",
+        givens=[{"cell": [3, 3], "digit": 2}],
+    )
+    page = _toy(
+        [_step(["white-a"], (0, 0), [1, 2, 3])],
+        _key(1, 1),
+        rules=rules,
+        image="original.png",
+    )
+
+    heading, text, start = page.find("h1"), page.find("p", "rules"), page.find("svg")
+    assert [e[2] for e in heading] == ["Toy dots"]
+    assert [e[2] for e in text] == [rules["rules_text"]]
+    assert [e[1]["src"] for e in page.find("img")] == ["original.png"]
+    first_key = page.elements.index(page.find("section", "key")[0])
+    assert (
+        page.elements.index(heading[0])
+        < page.elements.index(page.find("img")[0])
+        < page.elements.index(text[0])
+        < page.elements.index(start[0])
+        < first_key
+    )
+    svg = start[0][3]
+    assert "data-key" not in start[0][1]
+    assert [e[2] for e in page.find("text", "given") if e[3] == svg] == ["2"]
+    assert not [e for e in page.find("text", "cand") if e[3] == svg]
+
+
+def test_without_an_image_the_page_shows_none():
+    page = _toy([_step(["white-a"], (0, 0), [1, 2, 3])], _key(1, 1))
+
+    assert not page.find("img")
+
+
+@pytest.fixture(scope="module")
+def dots_rules(diagonal_dots_run):
+    return json.loads((diagonal_dots_run[0] / "rules.json").read_text())
 
 
 def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(
-    guide, diagonal_dots_record
+    dots_rules, diagonal_dots_record
 ):
-    out, _ = guide
-    rules = json.loads((out / "rules.json").read_text())
-    record = _own_copy(diagonal_dots_record)
+    rules = dots_rules
+    record = json.loads(json.dumps(diagonal_dots_record))
     record["steps"] = record["steps"][:41]
     state = step_search.State(rules)
     for step in record["steps"]:
         state.apply(step_search.claim_from_json(step["claim"]))
     record["stuck"] = state.snapshot()
 
-    page = Page(guide_html.guide_page(rules, record))
+    page = Page(guide_html.guide_page(rules, record, _guide(_fill(1, 41))))
 
     stuck = page.find("svg", "grid")[-1][3]
-    assert not [e for e in page.grids().values() if e == stuck]
+    assert not page.grids()
     drawn = {
         (e[1]["data-cell"], int(e[1]["data-digit"]))
         for e in page.find("text", "cand")
@@ -391,6 +486,21 @@ def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(
         for c, d in sorted(held.items())
         if len(d) == 1 and c not in {tuple(g["cell"]) for g in rules["givens"]}
     ]
+
+
+def test_no_step_line_of_a_diagonal_dots_guide_shows_a_bare_clue_id(
+    dots_rules, diagonal_dots_record
+):
+    steps = diagonal_dots_record["steps"]
+    guide = _guide(_fill(1, len(steps)))
+
+    page = Page(guide_html.guide_page(dots_rules, diagonal_dots_record, guide))
+
+    lines = [e[2] for e in page.find("li", "step")]
+    ids = [c["id"] for c in dots_rules["clues"]]
+    assert len(lines) == len(steps)
+    assert all(re.fullmatch(r"r\dc\d (= \d|keeps[\d ]+), from .+\.", s) for s in lines)
+    assert not [s for s in lines for clue_id in ids if clue_id in s]
 
 
 def test_outside_clue_cells_start_empty_on_every_grid(tmp_path):
@@ -410,28 +520,13 @@ def test_outside_clue_cells_start_empty_on_every_grid(tmp_path):
     assert len(page.find("rect", "cell")) == 16 + len(rules["solution_outside"])
 
     record = {"steps": [], "timeouts": [], "stuck": None}
-    guide = Page(guide_html.guide_page(rules, record))
+    guide = Page(guide_html.guide_page(rules, record, _guide()))
     assert not guide.find("text", "clue")
 
 
-def test_the_original_image_appears_once_at_the_top_when_given(
-    tmp_path, diagonal_dots_steps
-):
-    seed = diagonal_dots_steps
-    _, page = _guide(tmp_path / "with", "--image", "original.png", seed=seed)
-    _, bare = _guide(tmp_path / "without", seed=seed)
-
-    images = page.find("img")
-    assert [e[1]["src"] for e in images] == ["original.png"]
-    assert page.elements.index(images[0]) < page.elements.index(page.find("svg")[0])
-    assert not bare.find("img")
-
-
-def test_the_command_line_writes_a_plain_render_beside_the_original(
-    tmp_path, diagonal_dots_steps
-):
+def test_the_command_line_writes_a_plain_render_beside_the_original(tmp_path):
     out = tmp_path / "out"
-    _guide(out, "--image", "original.png", seed=diagonal_dots_steps)
+    main([str(PUZZLE), str(out), "--max-steps", "0", "--image", "original.png"])
     page = Page((out / "render.html").read_text())
 
     assert [e[1]["src"] for e in page.find("img")] == ["original.png"]
@@ -446,9 +541,8 @@ def test_the_command_line_writes_a_plain_render_beside_the_original(
     assert not page.find("rect", "used")
 
 
-def test_the_render_is_written_even_when_a_check_fails(tmp_path, diagonal_dots_run):
-    rules = json.loads((diagonal_dots_run[0] / "rules.json").read_text())
-    rules["clues"], rules["givens"] = [], []
+def test_the_render_is_written_even_when_a_check_fails(tmp_path, dots_rules):
+    rules = dict(dots_rules, clues=[], givens=[])
     source = tmp_path / "bare.json"
     source.write_text(json.dumps(rules))
     out = tmp_path / "second"
@@ -468,7 +562,7 @@ def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
     rules = sudokupad_import.rules_file(json.loads(DIAMOND_BOARD.read_text()))
     record = step_search.new_record()
     record["stuck"] = step_search.State(rules).snapshot() | {"timeouts": 0}
-    page = Page(guide_html.guide_page(rules, record))
+    page = Page(guide_html.guide_page(rules, record, _guide()))
 
     stuck = page.find("svg", "grid")[-1][3]
     drawn = {e[1]["data-cell"] for e in page.find("rect", "cell") if e[3] == stuck}
@@ -492,59 +586,50 @@ def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
     assert drawn_edges == expected
 
 
-def test_a_key_idea_draws_candidates_only_in_the_cells_it_uses_or_changes():
-    page = _toy(
-        _step(["row 1"], (0, 3), [4]),
-        _step(["row 1"], (0, 1), [1, 2, 3]),
-        _step(["row 2"], (1, 3), [1, 2, 3]),
-        _step(["white-a"], (0, 0), [1, 2, 3]),
-    )
-
-    grid = page.grids()[1]
-    drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == grid}
-    assert drawn == {"r1c1", "r1c2"}
-    assert [e[2] for e in page.find("text", "solved") if e[3] == grid] == ["4"]
+def _guide_file(tmp_path, guide):
+    path = tmp_path / "guide.json"
+    path.write_text(json.dumps(guide))
+    return path
 
 
-def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
-    rules = dict(
-        TOY,
-        title="Toy dots",
-        rules_text="Normal sudoku rules apply.\nWhite dots join consecutive digits.",
-        givens=[{"cell": [3, 3], "digit": 2}],
-    )
-    record = {"steps": [_step(["white-a"], (0, 0), [1, 2, 3])], "stuck": None}
-    page = Page(guide_html.guide_page(rules, record, image="original.png"))
+def test_the_command_line_renders_the_guide_file_it_is_given(
+    tmp_path, diagonal_dots_steps, diagonal_dots_record
+):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "steps.json").write_bytes(diagonal_dots_steps.read_bytes())
+    steps = len(diagonal_dots_record["steps"])
+    path = _guide_file(tmp_path, _guide(_fill(1, steps, "Every step, as fill.")))
 
-    heading, text, start = page.find("h1"), page.find("p", "rules"), page.find("svg")
-    assert [e[2] for e in heading] == ["Toy dots"]
-    assert [e[2] for e in text] == [rules["rules_text"]]
-    first_key = page.elements.index(page.find("section", "key")[0])
-    assert (
-        page.elements.index(heading[0])
-        < page.elements.index(page.find("img")[0])
-        < page.elements.index(text[0])
-        < page.elements.index(start[0])
-        < first_key
-    )
-    svg = start[0][3]
-    assert "data-key" not in start[0][1]
-    assert [e[2] for e in page.find("text", "given") if e[3] == svg] == ["2"]
-    assert not [e for e in page.find("text", "cand") if e[3] == svg]
+    code = main([str(PUZZLE), str(out), "--guide", str(path)])
+
+    page = Page((out / "guide.html").read_text())
+    assert code == 0
+    assert [e[2] for e in page.find("p", "fill")] == ["Every step, as fill."]
+    assert len(page.find("li", "step")) == steps
 
 
-def test_each_key_idea_is_one_row_with_its_grid_left_of_its_text():
-    page = _toy(
-        _step(["white-a"], (0, 0), [1, 2, 3], text="The dot pins it."),
-        _step(["row 2", "column 3"], (1, 2), [1, 2]),
-    )
+def test_a_guide_file_that_is_not_json_is_refused_before_anything_is_written(
+    tmp_path, capsys
+):
+    path = tmp_path / "guide.json"
+    path.write_text("{not json")
+    out = tmp_path / "out"
 
-    sections = page.find("section", "key")
-    at = page.elements.index
-    for k, section in enumerate(sections):
-        end = at(sections[k + 1]) if k + 1 < len(sections) else len(page.elements)
-        inside = page.elements[at(section) : end]
-        tags = [e[0] for e in inside if e[0] in ("svg", "div", "h2")]
-        assert tags[:3] == ["svg", "div", "h2"]
-        assert "text" in inside[[e[0] for e in inside].index("div")][1]["class"]
-    assert "The dot pins it." in [e[2] for e in page.find("p")]
+    assert main([str(PUZZLE), str(out), "--guide", str(path)]) == 2
+    assert "guide.json" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_guide_file_that_skips_a_step_is_refused_and_no_guide_is_written(
+    tmp_path, capsys
+):
+    path = _guide_file(tmp_path, _guide(_fill(2, 2)))
+    out = tmp_path / "out"
+
+    code = main([str(PUZZLE), str(out), "--max-steps", "2", "--guide", str(path)])
+
+    assert code == 2
+    assert "skips step 1" in capsys.readouterr().err
+    assert not (out / "guide.html").exists()
+    assert (out / "steps.json").exists()
