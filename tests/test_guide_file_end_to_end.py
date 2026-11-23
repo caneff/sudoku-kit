@@ -1,4 +1,4 @@
-"""Spec #127's acceptance, end to end at the command line: a puzzle, its step
+"""The guide file end to end at the command line: a puzzle, its step
 record from the search, a guide file built from that record, and the guide
 page the command draws from it.
 
