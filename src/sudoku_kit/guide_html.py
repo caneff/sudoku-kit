@@ -40,6 +40,7 @@ beside the original image for the import comparison.
 import html
 import itertools
 import json
+import re
 from pathlib import Path
 
 from sudoku_kit import rules_file, step_search
@@ -66,6 +67,8 @@ img.original { max-width: 24rem; }
 .cell { fill: #fff; stroke: #bbb; }
 .cell.used { fill: #cfe3ff; }
 .cell.changed { fill: #ffe08a; }
+.cell.highlight { fill: #c9f0c9; }
+.label { font-size: 12px; font-weight: bold; fill: #063; }
 .given { font-weight: bold; font-size: 26px; }
 .solved { font-size: 26px; fill: #236; }
 .cand { font-size: 14px; fill: #555; }
@@ -148,12 +151,14 @@ class Grid:
         return self.x(cell[1]) + CELL / 2, self.y(cell[0]) + CELL / 2
 
 
-def _cell_class(cell, used, changed):
+def _cell_class(cell, used, changed, lit=()):
     classes = ["cell"]
     if cell in used:
         classes.append("used")
     if cell in changed:
         classes.append("changed")
+    if cell in lit:
+        classes.append("highlight")
     return " ".join(classes)
 
 
@@ -227,6 +232,17 @@ def _annotation(grid, note, prefix):
             f'<circle class="circle" cx="{x:.1f}" cy="{y:.1f}" r="{CELL / 2 - 3}" '
             f'data-cell="{rules_file.cell_name(note["cell"])}"/>'
         )
+    if kind == "label":
+        x, y = grid.centre(note["cell"])
+        return _text(
+            x,
+            y + CELL / 2 - 4,
+            "label",
+            note["text"],
+            cell=rules_file.cell_name(note["cell"]),
+        )
+    if kind == "highlight":
+        return ""
     raise ValueError(f"mark {note!r} has no known type (arrow, circle)")
 
 
@@ -252,7 +268,7 @@ def render(rules, candidates=None, idea=None, prefix="g"):
     {cell: digits}), marks its cells and strikes out what it removes."""
     grid = Grid(rules)
     registry = rules_file.registry(rules)
-    used, changed, removed, notes = set(), set(), {}, []
+    used, changed, removed, notes, lit = set(), set(), {}, [], set()
     if idea is not None:
         for name in idea["named"]:
             used.update(registry[name].cells)
@@ -261,6 +277,8 @@ def render(rules, candidates=None, idea=None, prefix="g"):
             changed |= cells
             notes += marks
         removed = idea["removed"]
+        notes += idea.get("marks", [])
+        lit = {m["cell"] for m in notes if m["type"] == "highlight"}
     out = [
         f'<svg class="grid" xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {grid.columns * CELL} {grid.rows * CELL}"'
@@ -270,7 +288,7 @@ def render(rules, candidates=None, idea=None, prefix="g"):
         'refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c22"/></marker></defs>',
     ]
     out.extend(
-        f'<rect class="{_cell_class(cell, used, changed)}" '
+        f'<rect class="{_cell_class(cell, used, changed, lit)}" '
         f'x="{grid.x(cell[1])}" y="{grid.y(cell[0])}" width="{CELL}" '
         f'height="{CELL}" data-cell="{rules_file.cell_name(cell)}"/>'
         for cell in rules_file.cells(rules)
@@ -401,7 +419,7 @@ def _step_line(rules, step):
 
 GUIDE_VERSION = 1
 ENTRY_FIELDS = {
-    "key": ({"heading", "paragraphs"}, {"break_in"}),
+    "key": ({"heading", "paragraphs"}, {"break_in", "explains", "marks"}),
     "fill": ({"sentence"}, set()),
 }
 
@@ -416,7 +434,70 @@ def load_guide(path):
         raise ValueError(f"guide file {path} is not JSON: {e}") from e
 
 
-def _check_entry(k, entry, total):
+MARK_CELLS = {
+    "arrow": ("from", "to"),
+    "circle": ("cell",),
+    "label": ("cell",),
+    "highlight": ("cell",),
+}
+CELL_NAME = re.compile(r"r([1-9][0-9]*)c([1-9][0-9]*)")
+
+
+def _mark_cell(k, m, mark, field, board):
+    name = mark.get(field)
+    found = CELL_NAME.fullmatch(name) if isinstance(name, str) else None
+    if not found:
+        raise ValueError(f"entry {k}'s mark {m} has {field} {name!r}, not a cell name")
+    cell = (int(found[1]) - 1, int(found[2]) - 1)
+    if cell not in board:
+        raise ValueError(f"entry {k}'s mark {m} names {name}, outside the grid")
+    return cell
+
+
+def _check_marks(k, marks, board):
+    if not isinstance(marks, list):
+        raise ValueError(f"entry {k}'s marks is not a list")
+    for m, mark in enumerate(marks, 1):
+        if not isinstance(mark, dict):
+            raise ValueError(f"entry {k}'s mark {m} is not a JSON object")
+        kind = mark.get("type")
+        if kind not in MARK_CELLS:
+            raise ValueError(
+                f"entry {k}'s mark {m} has type {kind!r}; a mark is "
+                "'arrow', 'circle', 'label' or 'highlight'"
+            )
+        wanted = {"type", *MARK_CELLS[kind]} | ({"text"} if kind == "label" else set())
+        if set(mark) - wanted:
+            raise ValueError(
+                f"entry {k}'s mark {m} ({kind}) has unknown fields "
+                f"{sorted(set(mark) - wanted)}"
+            )
+        for field in MARK_CELLS[kind]:
+            _mark_cell(k, m, mark, field, board)
+        if kind == "label" and not isinstance(mark.get("text"), str):
+            raise ValueError(f"entry {k}'s mark {m} (label) has no text string")
+
+
+def _check_explains(k, entry):
+    steps = entry["explains"]
+    if not isinstance(steps, list) or not all(
+        isinstance(s, int) and not isinstance(s, bool) for s in steps
+    ):
+        raise ValueError(f"entry {k}'s explains is not a list of step numbers")
+    if not steps:
+        raise ValueError(f"entry {k}'s explains is empty; omit it to explain the run")
+    for step in steps:
+        if not entry["first"] <= step <= entry["last"]:
+            raise ValueError(
+                f"entry {k} explains step {step}, outside its run, "
+                f"steps {entry['first']}-{entry['last']}"
+            )
+    for step in set(steps):
+        if steps.count(step) > 1:
+            raise ValueError(f"entry {k}'s explains repeats step {step}")
+
+
+def _check_entry(k, entry, total, board):
     if not isinstance(entry, dict):
         raise ValueError(f"entry {k} is not a JSON object: {str(entry)[:60]!r}")
     kind = entry.get("type")
@@ -453,11 +534,16 @@ def _check_entry(k, entry, total):
         raise ValueError(f"entry {k}'s paragraphs is not a list of strings")
     if not isinstance(entry.get("break_in", False), bool):
         raise ValueError(f"entry {k}'s break_in is not true or false")
+    if "explains" in entry:
+        _check_explains(k, entry)
+    if "marks" in entry:
+        _check_marks(k, entry["marks"], board)
 
 
-def check_guide(record, guide):
+def check_guide(rules, record, guide):
     """Refuse, naming the problem, a guide file that is malformed, that skips,
-    repeats or reorders a step of `record`, or that flags more than one
+    repeats or reorders a step of `record`, that explains a step outside its
+    run, that marks a cell outside `rules`' grid, or that flags more than one
     break-in."""
     if not isinstance(guide, dict):
         raise ValueError(f"the guide file is not a JSON object: {str(guide)[:60]!r}")
@@ -470,9 +556,9 @@ def check_guide(record, guide):
     entries = guide.get("entries")
     if not isinstance(entries, list):
         raise ValueError("the guide file has no entries list")
-    total = len(record["steps"])
+    total, board = len(record["steps"]), set(rules_file.cells(rules))
     for k, entry in enumerate(entries, 1):
-        _check_entry(k, entry, total)
+        _check_entry(k, entry, total, board)
     flagged = [str(k) for k, e in enumerate(entries, 1) if e.get("break_in")]
     if len(flagged) > 1:
         raise ValueError(
@@ -513,20 +599,59 @@ def _fill(rules, entry, record):
     )
 
 
+def _also(rules, numbers, record):
+    """The steps of an idea's run it does not explain, collapsed."""
+    items = "".join(
+        f'<li class="step" data-step="{i}">'
+        f"{html.escape(_step_line(rules, record['steps'][i - 1]))}</li>"
+        for i in numbers
+    )
+    return (
+        '<details class="also"><summary>Also in this stretch</summary>'
+        f"<ul>{items}</ul></details>"
+    )
+
+
+def _mark(mark):
+    """A guide file's mark with its cell names read as cells."""
+    cell = lambda name: (
+        int(name[1 : name.index("c")]) - 1,
+        int(name.split("c")[1]) - 1,
+    )
+    out = {k: v for k, v in mark.items() if k not in ("from", "to", "cell")}
+    for field in ("from", "to", "cell"):
+        if field in mark:
+            out[field] = cell(mark[field])
+    return out
+
+
 def _key_section(rules, number, entry, record, before):
     """One key idea as one row: its grid, then its numbered heading, the
     break-in label when flagged, and its paragraphs."""
     first, last = entry["first"], entry["last"]
     numbers = range(first, last + 1)
-    steps = [record["steps"][i - 1] for i in numbers]
+    explained = entry.get("explains") or list(numbers)
+    also = [i for i in numbers if i not in explained]
+    steps = [record["steps"][i - 1] for i in explained]
     claims = [step["claim"] for step in steps]
-    held, after = before[first], before[last + 1]
-    changed = {tuple(c["cell"]) for c in claims if "cell" in c}
+    held = dict(before[first])
+    for i in also:
+        for cell in before[i]:
+            held[cell] = held[cell] & before[i + 1][cell]
+    removed = {}
+    for i in explained:
+        cell_claim = record["steps"][i - 1]["claim"]
+        if "cell" in cell_claim:
+            cell = tuple(cell_claim["cell"])
+            removed[cell] = removed.get(cell, set()) | (
+                before[i][cell] - before[i + 1][cell]
+            )
     idea = {
         "key": number,
         "named": list(dict.fromkeys(n for step in steps for n in step["named"])),
         "claims": claims,
-        "removed": {cell: held[cell] - after[cell] for cell in changed},
+        "removed": removed,
+        "marks": [_mark(mark) for mark in entry.get("marks", [])],
     }
     parts = [
         f'<section class="key" data-key="{number}" '
@@ -537,6 +662,8 @@ def _key_section(rules, number, entry, record, before):
     if entry.get("break_in"):
         parts.append('<p class="breakin">Break-in</p>')
     parts.extend(f"<p>{html.escape(p)}</p>" for p in entry["paragraphs"])
+    if also:
+        parts.append(_also(rules, also, record))
     parts.append("</div></section>")
     return "".join(parts)
 
@@ -586,7 +713,7 @@ def plain_page(rules, image=None):
 def guide_page(rules, record, guide, image=None):
     """The solve guide `guide`, a guide file as `load_guide` reads it, draws
     for `record`, the image once at the top when given."""
-    check_guide(record, guide)
+    check_guide(rules, record, guide)
     before = _states(rules, record)
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:

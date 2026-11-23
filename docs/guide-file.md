@@ -32,6 +32,17 @@ A **key idea** entry:
 - `paragraphs`: a list of strings, each one paragraph of explanation.
 - `break_in` (optional): `true` on the break-in. At most one entry has it;
   the library shows the break-in label on that entry.
+- `explains` (optional): a non-empty list of the step numbers in the run that
+  the idea explains. The grid strikes out and marks only those steps. The
+  run's other steps are applied to the candidates without being drawn and
+  listed under the idea in a collapsed "Also in this stretch", one line per
+  step as a fill's list writes them. Omitted, the idea explains its whole run.
+- `marks` (optional): extra marks drawn on the idea's grid, each an object
+  with a `type` and cells named as `r<row>c<column>`:
+  `{"type": "arrow", "from": "r1c1", "to": "r2c2"}`,
+  `{"type": "circle", "cell": "r1c1"}`,
+  `{"type": "label", "cell": "r1c1", "text": "pair"}` and
+  `{"type": "highlight", "cell": "r1c1"}`.
 
 A **fill** entry:
 
@@ -66,7 +77,10 @@ guide file:
 - has an entry of another type, a field the type does not take, a missing
   field, or a field of the wrong kind;
 - skips, repeats or reorders a step, or reaches past the record's last step;
-- flags more than one break-in.
+- flags more than one break-in;
+- explains a step outside its own run, or repeats one, or gives an empty list;
+- has a mark of another type, a field the type does not take, or a cell
+  outside the grid.
 
 Without `--guide` the command still checks the rules file and runs the
 search, but it writes no guide and says so.
