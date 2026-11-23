@@ -9,7 +9,10 @@ nothing here restates them.
    person reading a failed link or solve. A custom exception class slips past
    an `except ValueError`, and a message without the bad value
    (`"invalid link"` instead of the link's first 60 characters, or the file
-   that was empty) leaves that person nothing to fix.
+   that was empty) leaves that person nothing to fix. A missing tool or
+   recording the environment owes (node, SudokuPad's recorded app) is a
+   `RuntimeError` naming what is missing: no input is at fault, and a
+   `ValueError` there would read as a bad link (Chris, 2026-11-23, #120).
 
 2. **An encoder decodes its own output and compares it with the input document
    before returning it.** Compare against the document itself, never a copy
