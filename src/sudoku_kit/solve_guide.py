@@ -20,19 +20,24 @@ searched.
 Writes `render.html` as soon as the checks have run: the plain render
 (givens and clues, no step) beside the original image when `--image` names
 one, for the import comparison. After the search, whether it solved, stopped
-or got stuck, it writes `guide.html` (`guide_html`): the key ideas, each on
-its own SVG grid, the fill between them as one sentence each, the image once
-at the top. An `--image` path that exists is written into the HTML relative to the
-output directory; a URL, or a path not found, is written as given.
+or got stuck, it writes `guide.html` (`guide_html`) from the guide file
+`--guide` names (`docs/guide-file.md`): the key ideas, each on its own SVG
+grid, the fill between them as the guide file words it, the image once at the
+top. The `/solve-guide` skill writes the guide file, so without `--guide` the
+command still checks and searches but writes no guide, and says so. An
+`--image` path that exists is written into the HTML relative to the output
+directory; a URL, or a path not found, is written as given.
 
 Exit codes:
 
 - 0: the search reached the solution or stopped at `--max-steps`.
 - 1: a check failed: the puzzle is not unique, or the stored solution breaks
   a clue.
-- 2: the input, the step record already there, or a hint cannot be read,
-  imported or used, including SudokuPad's loader failing (no node, or no
-  recording of its app). Nothing is written.
+- 2: the input, the step record already there, a hint or the guide file
+  cannot be read, imported or used, including SudokuPad's loader failing (no
+  node, or no recording of its app). Nothing is written. A guide file that
+  reads but does not fit the step record is refused after the search: every
+  file but `guide.html` is written.
 - 3: the search is stuck: no claim proved and no proof timed out.
 - 4: a hint was not proved.
 - 5: a time limit stopped it before a verdict: the uniqueness check timed out
@@ -112,11 +117,15 @@ def main(argv=None):
     parser.add_argument(
         "--image", help="the original puzzle image, shown at the top of the guide"
     )
+    parser.add_argument(
+        "--guide", help="the guide file to draw, as the /solve-guide skill writes it"
+    )
     args = parser.parse_args(argv)
     path = args.output / "steps.json"
     try:
         rules = _read(args.input)
         hint = _hint(args)
+        guide = None if args.guide is None else guide_html.load_guide(args.guide)
         record = step_search.load_record(path)
         search = step_search.Search(rules, record, path, args.proof_limit)
         if hint is not None:
@@ -165,8 +174,21 @@ def main(argv=None):
             f"{record['stuck']['timeouts']} proofs hit --proof-limit "
             f"{args.proof_limit}s: no verdict on whether a step exists"
         )
-    (args.output / "guide.html").write_text(guide_html.guide_page(rules, record, image))
-    return {"stuck": 3, "timeout": 5}.get(outcome, 0)
+    code = {"stuck": 3, "timeout": 5}.get(outcome, 0)
+    if guide is None:
+        print(
+            "solve-guide: no guide.html written: give --guide <file>, the guide "
+            "file the /solve-guide skill writes (docs/guide-file.md)",
+            file=sys.stderr,
+        )
+        return code
+    try:
+        page = guide_html.guide_page(rules, record, guide, image)
+    except ValueError as e:
+        print(f"solve-guide: guide file {args.guide}: {e}", file=sys.stderr)
+        return 2
+    (args.output / "guide.html").write_text(page)
+    return code
 
 
 def _hint(args):

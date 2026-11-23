@@ -67,26 +67,35 @@ _Avoid_: Smallest set, minimum set, core
 **Solve guide**:
 A short document for a stuck solver showing the key ideas of one puzzle, the
 break-in first, each drawn on its own grid, with the fill between them summed
-up in one sentence per stretch.
+up in one sentence per stretch. The `/solve-guide` skill writes its words as a
+guide file; the library checks that file against the step record and draws
+the page.
 _Avoid_: Walkthrough, solution, write-up
 
+**Guide file**:
+The JSON file the `/solve-guide` skill writes and the library draws: an
+ordered list of key ideas and fill stretches, each a run of steps with its
+words, together covering every step of the step record once, in order. Its
+format is `docs/guide-file.md`.
+_Avoid_: Guide JSON, script, outline
+
 **Deduction**:
-A group of steps that name the same constraints, shown in the guide as one
-idea. Steps that are not adjacent join one deduction when no step between
+A group of steps that name the same constraints, which the skill reads as
+one candidate idea. Steps that are not adjacent join one deduction when no step between
 them changed a cell it uses; it sits at its last step's position. Grouping is
 computed from the step record, which keeps one entry per step.
 _Avoid_: Move
 
 **Key idea**:
-A deduction the guide draws on its own numbered grid: the break-in (the first
-deduction that needs a clue), one naming two or more constraints, the first
-to use its clue's rule type, or a hard one. Numbered 1..N with no gaps.
+A run of consecutive steps the skill chooses as one move a solver would name,
+with its heading and paragraphs, drawn on its own numbered grid. The library
+numbers key ideas 1..N with no gaps; the skill may flag one as the break-in.
 _Avoid_: Key step, main step
 
 **Fill**:
-The deductions between two key ideas, shown as one sentence counting the
-digits placed and candidates removed and naming their houses and clues, with
-the deductions themselves in a collapsed list. Fill carries no numbers.
+A run of steps between key ideas, shown as one sentence the skill writes,
+with one plain line per step in a collapsed list: the claim, then its named
+constraints in words, never a clue id. Fill carries no numbers.
 _Avoid_: Singles, routine steps
 
 **Rules file**:

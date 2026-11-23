@@ -7,9 +7,8 @@ Diagonal Dots (Logic Masters 000HUJ, its decoded puzzle JSON in
 - every step in the step record proves again from scratch with `prove`, from
   only the constraints it names, on candidates rebuilt here from the givens;
 - the path ends at the stored solution, with no stuck point;
-- the guide HTML numbers its key ideas 1..N, each merged deduction's steps
-  name the same constraints, and each key idea's grid marks the cells it
-  changes.
+- with no guide file given, it writes no guide and names the `/solve-guide`
+  skill, which writes the guide file (spec #127).
 
 Blind to: the consumers. grid-hunts and sudokumaker-custom-constraints both
 track main and each lock a commit in `uv.lock`, so none of this runs against
@@ -22,7 +21,6 @@ committed JSON by the `needs_app` tests.
 """
 
 import json
-import re
 
 import pytest
 
@@ -32,15 +30,18 @@ from sudoku_kit.step_prover import Place, prove
 
 @pytest.fixture(scope="module")
 def guide(diagonal_dots_run):
-    out, code = diagonal_dots_run
+    out, code, stderr = diagonal_dots_run
     read = lambda name: json.loads((out / name).read_text())
-    return {
+    found = {
         "code": code,
+        "stderr": stderr,
         "rules": read("rules.json"),
         "checks": read("checks.json"),
         "record": read("steps.json"),
-        "html": (out / "guide.html").read_text(),
     }
+    if (out / "guide.html").exists():
+        found["html"] = (out / "guide.html").read_text()
+    return found
 
 
 def _candidates_before_each_step(rules, steps):
@@ -80,35 +81,9 @@ def test_the_path_ends_at_the_stored_solution(guide):
         assert digits == [rules["solution"][r][c]], (r, c)
 
 
-def test_key_ideas_run_1_to_n_and_each_merge_shares_its_constraints(guide):
-    """Spec #127: the guide shows deductions. Every step lands in exactly one
-    (a key idea's section or a fill list's item); each one's steps name the
-    same constraints, and no step between them changed a cell they use."""
-    rules, steps, page = guide["rules"], guide["record"]["steps"], guide["html"]
-    registry = rules_file.registry(rules)
-    keys = re.findall(
-        r'<section class="key" data-key="(\d+)" data-steps="([\d ]+)">(.*?)</section>',
-        page,
-        re.S,
-    )
-    fill = re.findall(r'<li class="deduction" data-steps="([\d ]+)">', page)
-    groups = [[int(n) for n in g.split()] for g in [k[1] for k in keys] + fill]
-
-    assert [int(k[0]) for k in keys] == list(range(1, len(keys) + 1))
-    assert keys and any(len(g) > 1 for g in groups)
-    assert sorted(n for g in groups for n in g) == list(range(1, len(steps) + 1))
-    for group in groups:
-        named = steps[group[0] - 1]["named"]
-        assert {frozenset(steps[n - 1]["named"]) for n in group} == {frozenset(named)}
-        used = {cell for name in named for cell in registry[name].cells}
-        for n in set(range(group[0], group[-1])) - set(group):
-            assert tuple(steps[n - 1]["claim"]["cell"]) not in used, (group, n)
-    for number, group, section in keys:
-        for n in group.split():
-            cell = rules_file.cell_name(steps[int(n) - 1]["claim"]["cell"])
-            assert re.search(
-                rf'<svg class="grid"[^>]*data-key="{number}".*'
-                rf'<rect class="[^"]*changed[^"]*"[^>]*data-cell="{cell}"',
-                section,
-                re.S,
-            )
+def test_without_a_guide_file_it_writes_no_guide_and_names_the_skill(guide):
+    """Spec #127: the guide is drawn only from the guide file the `/solve-guide`
+    skill writes; with none given, the command says so and draws nothing."""
+    assert "html" not in guide
+    assert "--guide" in guide["stderr"]
+    assert "/solve-guide" in guide["stderr"]
