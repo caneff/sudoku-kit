@@ -4,9 +4,11 @@ Masters 000HUJ, `tests/solve_guide/`).
 Most tests resume from the step record of the session's one full search
 (`diagonal_dots_run` in `conftest.py`; the record is never committed), so they
 read the guide without paying for the search; one more runs the search fresh.
-The guide is read back as parsed markup, and the expected shown steps and
-highlights are rebuilt here from the rules file and the record, not from the
-renderer.
+The guide is read back as parsed markup, and the expected highlights are
+rebuilt here from the rules file and the record, not from the renderer.
+
+Grouping, key ideas and fill are pinned on `TOY`, a made-up 4x4 board, with
+records written by hand, so no test pins a step of a published puzzle.
 """
 
 import json
