@@ -3,10 +3,10 @@ Masters 000HUJ, `tests/solve_guide/`).
 
 Most tests resume from the step record of the session's one full search
 (`diagonal_dots_run` in `conftest.py`; the record is never committed), so they
-read the guide without paying for the search; one runs the search fresh once
-more. The guide is read back as parsed
-markup, and the expected shown steps and highlights are rebuilt here from the
-rules file and the record, not from the renderer.
+read the guide without paying for the search; one more runs the search fresh.
+The guide is read back as parsed markup, and the expected shown steps and
+highlights are rebuilt here from the rules file and the record, not from the
+renderer.
 """
 
 import json
@@ -88,11 +88,16 @@ def _guide(out, *extra, seed=None):
 
 
 @pytest.fixture(scope="module")
-def guide(tmp_path_factory, diagonal_dots_run):
+def guide(tmp_path_factory, diagonal_dots_steps):
     out = tmp_path_factory.mktemp("guide")
-    code, page = _guide(out, seed=diagonal_dots_run[0] / "steps.json")
+    code, page = _guide(out, seed=diagonal_dots_steps)
     assert code == 0
     return out, page
+
+
+def _own_copy(record):
+    """A deep copy, so a test that edits the session-wide record leaves it be."""
+    return json.loads(json.dumps(record))
 
 
 def _name(cell):
@@ -218,7 +223,7 @@ def test_a_step_naming_more_than_three_constraints_is_marked_hard(
 ):
     out, _ = guide
     rules = json.loads((out / "rules.json").read_text())
-    record = json.loads(json.dumps(diagonal_dots_record))
+    record = _own_copy(diagonal_dots_record)
     record["steps"][12]["named"] = [
         "row 5",
         "column 1",
@@ -237,7 +242,7 @@ def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(
 ):
     out, _ = guide
     rules = json.loads((out / "rules.json").read_text())
-    record = json.loads(json.dumps(diagonal_dots_record))
+    record = _own_copy(diagonal_dots_record)
     record["steps"] = record["steps"][:41]
     state = step_search.State(rules)
     for step in record["steps"]:
@@ -289,7 +294,7 @@ def test_outside_clue_cells_start_empty_on_every_grid(tmp_path):
 def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(
     tmp_path, diagonal_dots_record
 ):
-    record = json.loads(json.dumps(diagonal_dots_record))
+    record = _own_copy(diagonal_dots_record)
     record["steps"][40]["annotations"] = [
         {"type": "arrow", "from": [4, 1], "to": [5, 2]},
         {"type": "label", "cell": [3, 3], "text": "no 5 here"},
@@ -317,9 +322,9 @@ def test_an_arrow_and_a_label_added_to_a_steps_data_are_drawn_on_its_grid(
 
 
 def test_the_original_image_appears_once_at_the_top_when_given(
-    tmp_path, diagonal_dots_run
+    tmp_path, diagonal_dots_steps
 ):
-    seed = diagonal_dots_run[0] / "steps.json"
+    seed = diagonal_dots_steps
     _, page = _guide(tmp_path / "with", "--image", "original.png", seed=seed)
     _, bare = _guide(tmp_path / "without", seed=seed)
 
@@ -330,10 +335,10 @@ def test_the_original_image_appears_once_at_the_top_when_given(
 
 
 def test_the_command_line_writes_a_plain_render_beside_the_original(
-    tmp_path, diagonal_dots_run
+    tmp_path, diagonal_dots_steps
 ):
     out = tmp_path / "out"
-    _guide(out, "--image", "original.png", seed=diagonal_dots_run[0] / "steps.json")
+    _guide(out, "--image", "original.png", seed=diagonal_dots_steps)
     page = Page((out / "render.html").read_text())
 
     assert [e[1]["src"] for e in page.find("img")] == ["original.png"]
@@ -348,10 +353,8 @@ def test_the_command_line_writes_a_plain_render_beside_the_original(
     assert not page.find("rect", "used")
 
 
-def test_the_render_is_written_even_when_a_check_fails(tmp_path):
-    first = tmp_path / "first"
-    _guide(first)
-    rules = json.loads((first / "rules.json").read_text())
+def test_the_render_is_written_even_when_a_check_fails(tmp_path, diagonal_dots_run):
+    rules = json.loads((diagonal_dots_run[0] / "rules.json").read_text())
     rules["clues"], rules["givens"] = [], []
     source = tmp_path / "bare.json"
     source.write_text(json.dumps(rules))

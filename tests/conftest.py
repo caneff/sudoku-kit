@@ -18,7 +18,14 @@ def diagonal_dots_run(tmp_path_factory):
     and the command's exit code. The search is deterministic."""
     out = tmp_path_factory.mktemp("diagonal-dots")
     code = main([str(DIAGONAL_DOTS), str(out)])
+    assert code == 0, f"the session's Diagonal Dots search exited {code}, not 0"
     return out, code
+
+
+@pytest.fixture(scope="session")
+def diagonal_dots_steps(diagonal_dots_run):
+    """Path of the session run's step record, to seed a guide run from."""
+    return diagonal_dots_run[0] / "steps.json"
 
 
 @pytest.fixture(scope="session")
