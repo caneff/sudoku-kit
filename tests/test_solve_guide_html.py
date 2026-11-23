@@ -504,3 +504,30 @@ def test_a_key_idea_draws_candidates_only_in_the_cells_it_uses_or_changes():
     drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == grid}
     assert drawn == {"r1c1", "r1c2"}
     assert [e[2] for e in page.find("text", "solved") if e[3] == grid] == ["4"]
+
+
+def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
+    rules = dict(
+        TOY,
+        title="Toy dots",
+        rules_text="Normal sudoku rules apply.\nWhite dots join consecutive digits.",
+        givens=[{"cell": [3, 3], "digit": 2}],
+    )
+    record = {"steps": [_step(["white-a"], (0, 0), [1, 2, 3])], "stuck": None}
+    page = Page(guide_html.guide_page(rules, record, image="original.png"))
+
+    heading, text, start = page.find("h1"), page.find("p", "rules"), page.find("svg")
+    assert [e[2] for e in heading] == ["Toy dots"]
+    assert [e[2] for e in text] == [rules["rules_text"]]
+    first_key = page.elements.index(page.find("section", "key")[0])
+    assert (
+        page.elements.index(heading[0])
+        < page.elements.index(page.find("img")[0])
+        < page.elements.index(text[0])
+        < page.elements.index(start[0])
+        < first_key
+    )
+    svg = start[0][3]
+    assert "data-key" not in start[0][1]
+    assert [e[2] for e in page.find("text", "given") if e[3] == svg] == ["2"]
+    assert not [e for e in page.find("text", "cand") if e[3] == svg]

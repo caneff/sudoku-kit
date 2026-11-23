@@ -62,6 +62,7 @@ img.original { max-width: 24rem; }
 .cand { font-size: 11px; fill: #555; }
 .cand.struck { fill: #c22; text-decoration: line-through; }
 .breakin, .hard { font-weight: bold; color: #b00; }
+.rules { white-space: pre-line; }
 .label { font-size: 12px; fill: #b00; font-weight: bold; }
 .arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
 """
@@ -510,6 +511,9 @@ def guide_page(rules, record, image=None):
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:
         body.append(_image(image))
+    if rules.get("rules_text"):
+        body.append(f'<p class="rules">{html.escape(rules["rules_text"])}</p>')
+    body.append(render(rules, prefix="start"))
     groups = deductions(rules, record)
     keys, first = key_ideas(rules, groups)
     stretch = []
