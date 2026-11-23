@@ -18,6 +18,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from guide_helpers import TOY, cell_name, make_record, make_step
 from link_helpers import DIAMOND
 
 from sudoku_kit import clue_rules, guide_html, rules_file, step_search, sudokupad_import
@@ -81,51 +82,6 @@ class Page(HTMLParser):
         }
 
 
-def _name(cell):
-    return f"r{cell[0] + 1}c{cell[1] + 1}"
-
-
-TOY = {
-    "size": 4,
-    "regions": [
-        [[0, 0], [0, 1], [1, 0], [1, 1]],
-        [[0, 2], [0, 3], [1, 2], [1, 3]],
-        [[2, 0], [2, 1], [3, 0], [3, 1]],
-        [[2, 2], [2, 3], [3, 2], [3, 3]],
-    ],
-    "givens": [],
-    "clues": [
-        {
-            "id": "white-a",
-            "rule": "difference",
-            "cells": [[0, 0], [0, 1]],
-            "values": [1],
-        },
-        {
-            "id": "white-b",
-            "rule": "difference",
-            "cells": [[2, 2], [2, 3]],
-            "values": [1],
-        },
-        {"id": "black-a", "rule": "ratio", "cells": [[3, 0], [3, 1]], "values": [2]},
-    ],
-}
-
-
-def _step(named, cell, digits):
-    """A made-up step on the 4x4 `TOY`: the cell keeps `digits`."""
-    return {
-        "claim": {"cell": list(cell), "digits": digits},
-        "named": named,
-        "hard": len(named) > 3,
-        "by": "search",
-    }
-
-
-def _record(*steps):
-    return {"steps": list(steps), "timeouts": [], "stuck": None}
-
-
 def _key(first, last, heading="An idea", paragraphs=("Why it holds.",), **extra):
     return {
         "type": "key",
@@ -146,16 +102,18 @@ def _guide(*entries):
 
 
 def _toy(steps, *entries, rules=TOY, image=None):
-    return Page(guide_html.guide_page(rules, _record(*steps), _guide(*entries), image))
+    return Page(
+        guide_html.guide_page(rules, make_record(*steps), _guide(*entries), image)
+    )
 
 
 SIX = [
-    _step(["row 1"], (0, 2), [1, 2, 3]),
-    _step(["white-a"], (0, 0), [1, 2, 3]),
-    _step(["row 2", "column 3"], (1, 2), [1, 2]),
-    _step(["black-a"], (3, 0), [1, 2, 4]),
-    _step(["white-b"], (2, 2), [1, 2, 3]),
-    _step(["white-b", "row 3", "column 3", "region 4"], (2, 3), [2, 3]),
+    make_step(["row 1"], (0, 2), [1, 2, 3]),
+    make_step(["white-a"], (0, 0), [1, 2, 3]),
+    make_step(["row 2", "column 3"], (1, 2), [1, 2]),
+    make_step(["black-a"], (3, 0), [1, 2, 4]),
+    make_step(["white-b"], (2, 2), [1, 2, 3]),
+    make_step(["white-b", "row 3", "column 3", "region 4"], (2, 3), [2, 3]),
 ]
 
 
@@ -168,14 +126,14 @@ def _keys(page):
 
 def _grouped(*steps):
     """The step numbers of each deduction, in guide order."""
-    return [g["steps"] for g in guide_html.deductions(TOY, _record(*steps))]
+    return [g["steps"] for g in guide_html.deductions(TOY, make_record(*steps))]
 
 
 def test_steps_on_the_same_constraints_merge_across_a_step_elsewhere():
     grouped = _grouped(
-        _step(["white-a"], (0, 0), [1, 2, 3]),
-        _step(["row 4"], (3, 3), [1, 2, 3]),
-        _step(["white-a"], (0, 1), [1, 2, 3]),
+        make_step(["white-a"], (0, 0), [1, 2, 3]),
+        make_step(["row 4"], (3, 3), [1, 2, 3]),
+        make_step(["white-a"], (0, 1), [1, 2, 3]),
     )
 
     assert grouped == [[2], [1, 3]]
@@ -183,9 +141,9 @@ def test_steps_on_the_same_constraints_merge_across_a_step_elsewhere():
 
 def test_a_step_changing_a_cell_the_group_uses_keeps_them_apart():
     grouped = _grouped(
-        _step(["white-a"], (0, 0), [1, 2, 3]),
-        _step(["row 1"], (0, 1), [1, 2, 3]),
-        _step(["white-a"], (0, 0), [1, 2]),
+        make_step(["white-a"], (0, 0), [1, 2, 3]),
+        make_step(["row 1"], (0, 1), [1, 2, 3]),
+        make_step(["white-a"], (0, 0), [1, 2]),
     )
 
     assert grouped == [[1], [2], [3]]
@@ -274,7 +232,7 @@ def test_each_fill_stretch_is_its_sentence_and_a_collapsed_line_per_step():
 
 
 def test_a_placement_reads_as_the_digit_it_places():
-    page = _toy([_step(["black-a"], (3, 0), [4])], _fill(1, 1))
+    page = _toy([make_step(["black-a"], (3, 0), [4])], _fill(1, 1))
 
     assert [e[2] for e in page.find("li", "step")] == [
         "r4c1 = 4, from black dot r4c1-r4c2."
@@ -301,9 +259,9 @@ def test_every_rule_types_constraint_is_named_by_its_cells_and_never_its_id(rule
 def test_a_key_ideas_grid_strikes_out_what_all_its_steps_remove():
     page = _toy(
         [
-            _step(["white-a"], (0, 0), [1, 2, 3]),
-            _step(["white-a"], (0, 1), [1, 2, 3]),
-            _step(["white-a"], (0, 0), [2, 3]),
+            make_step(["white-a"], (0, 0), [1, 2, 3]),
+            make_step(["white-a"], (0, 1), [1, 2, 3]),
+            make_step(["white-a"], (0, 0), [2, 3]),
         ],
         _key(1, 3),
     )
@@ -320,8 +278,8 @@ def test_a_key_ideas_grid_strikes_out_what_all_its_steps_remove():
 def test_a_key_ideas_grid_starts_from_the_candidates_before_its_first_step():
     page = _toy(
         [
-            _step(["row 1"], (0, 0), [1, 2, 3]),
-            _step(["white-a"], (0, 0), [2, 3]),
+            make_step(["row 1"], (0, 0), [1, 2, 3]),
+            make_step(["white-a"], (0, 0), [2, 3]),
         ],
         _fill(1, 1),
         _key(2, 2),
@@ -345,10 +303,10 @@ def test_a_key_ideas_grid_starts_from_the_candidates_before_its_first_step():
 def test_a_key_idea_draws_candidates_only_in_the_cells_it_uses_or_changes():
     page = _toy(
         [
-            _step(["row 1"], (0, 3), [4]),
-            _step(["row 1"], (0, 1), [1, 2, 3]),
-            _step(["row 2"], (1, 3), [1, 2, 3]),
-            _step(["white-a"], (0, 0), [1, 2, 3]),
+            make_step(["row 1"], (0, 3), [4]),
+            make_step(["row 1"], (0, 1), [1, 2, 3]),
+            make_step(["row 2"], (1, 3), [1, 2, 3]),
+            make_step(["white-a"], (0, 0), [1, 2, 3]),
         ],
         _fill(1, 3),
         _key(4, 4),
@@ -380,7 +338,7 @@ def test_a_guide_file_that_does_not_fit_the_record_is_refused_naming_why(
     entries, cause
 ):
     with pytest.raises(ValueError, match=cause):
-        guide_html.guide_page(TOY, _record(*SIX), _guide(*entries))
+        guide_html.guide_page(TOY, make_record(*SIX), _guide(*entries))
 
 
 @pytest.mark.parametrize(
@@ -389,6 +347,8 @@ def test_a_guide_file_that_does_not_fit_the_record_is_refused_naming_why(
         ([], r"not a JSON object"),
         ({"entries": []}, r"version.*1"),
         ({"version": 2, "entries": []}, r"version 2.*1"),
+        ({"version": True, "entries": []}, r"version True.*1"),
+        ({"version": 1.0, "entries": []}, r"version 1\.0.*1"),
         ({"version": 1}, r"entries"),
         (_guide({"type": "note", "first": 1, "last": 6}), r"entry 1.*type 'note'"),
         (_guide(_fill(1, 6) | {"heading": "x"}), r"entry 1.*heading"),
@@ -400,6 +360,8 @@ def test_a_guide_file_that_does_not_fit_the_record_is_refused_naming_why(
         "not-object",
         "no-version",
         "wrong-version",
+        "bool-version",
+        "float-version",
         "no-entries",
         "bad-type",
         "unknown-field",
@@ -410,7 +372,7 @@ def test_a_guide_file_that_does_not_fit_the_record_is_refused_naming_why(
 )
 def test_a_malformed_guide_file_is_refused_naming_the_field(guide, cause):
     with pytest.raises(ValueError, match=cause):
-        guide_html.guide_page(TOY, _record(*SIX), guide)
+        guide_html.guide_page(TOY, make_record(*SIX), guide)
 
 
 def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
@@ -421,7 +383,7 @@ def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
         givens=[{"cell": [3, 3], "digit": 2}],
     )
     page = _toy(
-        [_step(["white-a"], (0, 0), [1, 2, 3])],
+        [make_step(["white-a"], (0, 0), [1, 2, 3])],
         _key(1, 1),
         rules=rules,
         image="original.png",
@@ -446,7 +408,7 @@ def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
 
 
 def test_without_an_image_the_page_shows_none():
-    page = _toy([_step(["white-a"], (0, 0), [1, 2, 3])], _key(1, 1))
+    page = _toy([make_step(["white-a"], (0, 0), [1, 2, 3])], _key(1, 1))
 
     assert not page.find("img")
 
@@ -480,7 +442,9 @@ def test_a_stuck_guide_draws_the_grid_and_candidates_at_the_stuck_point(
     # A cell still holding every digit is drawn blank.
     unsolved = {c: d for c, d in held.items() if 1 < len(d) < rules["size"]}
     assert unsolved
-    assert drawn == {(_name(c), d) for c, digits in unsolved.items() for d in digits}
+    assert drawn == {
+        (cell_name(c), d) for c, digits in unsolved.items() for d in digits
+    }
     assert [e[2] for e in page.find("text", "solved") if e[3] == stuck] == [
         str(next(iter(d)))
         for c, d in sorted(held.items())
@@ -566,7 +530,7 @@ def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
 
     stuck = page.find("svg", "grid")[-1][3]
     drawn = {e[1]["data-cell"] for e in page.find("rect", "cell") if e[3] == stuck}
-    assert drawn == {_name(c) for c in DIAMOND}
+    assert drawn == {cell_name(c) for c in DIAMOND}
     drawn_edges = {
         tuple(int(float(e[1][k]) // guide_html.CELL) for k in ("x1", "y1", "x2", "y2"))
         for e in page.find("line", "edge")
@@ -621,6 +585,15 @@ def test_a_guide_file_that_is_not_json_is_refused_before_anything_is_written(
     assert not out.exists()
 
 
+def test_a_guide_file_of_the_wrong_shape_is_refused_before_the_search(tmp_path, capsys):
+    path = _guide_file(tmp_path, {"version": 2, "entries": []})
+    out = tmp_path / "out"
+
+    assert main([str(PUZZLE), str(out), "--guide", str(path)]) == 2
+    assert "version 2" in capsys.readouterr().err
+    assert not out.exists()
+
+
 def test_a_guide_file_that_skips_a_step_is_refused_and_no_guide_is_written(
     tmp_path, capsys
 ):
@@ -644,9 +617,9 @@ def _struck(page, grid):
 
 
 SUBSET_STEPS = [
-    _step(["white-a"], (0, 0), [1, 2, 3]),
-    _step(["white-b"], (2, 2), [1, 2, 3]),
-    _step(["white-a"], (0, 1), [1, 2, 3]),
+    make_step(["white-a"], (0, 0), [1, 2, 3]),
+    make_step(["white-b"], (2, 2), [1, 2, 3]),
+    make_step(["white-a"], (0, 1), [1, 2, 3]),
 ]
 
 
@@ -662,8 +635,8 @@ def test_an_idea_that_explains_a_subset_strikes_and_marks_only_those_steps():
 def test_the_steps_an_idea_does_not_explain_are_applied_but_not_drawn():
     page = _toy(
         [
-            _step(["row 1"], (0, 0), [1, 2, 3]),
-            _step(["white-a"], (0, 0), [2, 3]),
+            make_step(["row 1"], (0, 0), [1, 2, 3]),
+            make_step(["white-a"], (0, 0), [2, 3]),
         ],
         _key(1, 2, explains=[2]),
     )
@@ -681,8 +654,8 @@ def test_the_steps_an_idea_does_not_explain_are_applied_but_not_drawn():
 def test_a_later_unexplained_step_leaves_the_explained_steps_start_alone():
     page = _toy(
         [
-            _step(["white-a"], (0, 0), [1, 2, 3]),
-            _step(["white-b"], (2, 2), [1, 2, 3]),
+            make_step(["white-a"], (0, 0), [1, 2, 3]),
+            make_step(["white-b"], (2, 2), [1, 2, 3]),
         ],
         _key(
             1,
@@ -769,7 +742,11 @@ def test_extra_marks_draw_on_the_ideas_grid():
         ),
         (
             _key(1, 3, marks=[{"type": "circle", "cell": "x"}]),
-            r"entry 1.*mark 1.*cell 'x'",
+            r"entry 1.*mark 1 cell.*'x'",
+        ),
+        (
+            _key(1, 3, marks=[{"type": "circle", "cell": "r1c1", "colour": "red"}]),
+            r"entry 1.*mark 1.*unknown fields.*colour",
         ),
     ],
     ids=[
@@ -783,11 +760,12 @@ def test_extra_marks_draw_on_the_ideas_grid():
         "unknown-type",
         "label-no-text",
         "not-a-cell-name",
+        "unknown-mark-field",
     ],
 )
 def test_a_bad_explained_step_or_mark_is_refused_naming_its_cause(entry, cause):
     with pytest.raises(ValueError, match=cause):
-        guide_html.guide_page(TOY, _record(*SUBSET_STEPS), _guide(entry))
+        guide_html.guide_page(TOY, make_record(*SUBSET_STEPS), _guide(entry))
 
 
 def _suppose(assume=("r1c1", 4), forces=(("r1c2", 3), ("r2c2", 2)), breaks=("r2c1",)):
@@ -855,6 +833,24 @@ def test_a_supposition_grid_starts_from_the_ideas_starting_candidates():
     assert drawn == {1, 2, 3, 4}
 
 
+def test_a_forced_digit_in_a_cell_solved_at_the_ideas_start_keeps_its_colour():
+    steps = [make_step(["row 1"], (0, 1), [3]), SUBSET_STEPS[0]]
+    page = _toy(
+        steps,
+        _fill(1, 1),
+        _key(2, 2, supposition=_suppose(forces=(("r1c2", 3),), breaks=("r1c1",))),
+    )
+
+    second = next(e for e in page.find("svg", "grid") if e[1].get("data-supposition"))[
+        3
+    ]
+    forced = _by_grid(page, "forced", second)
+    assert [(e[0], e[1]["data-cell"], e[1]["data-order"], e[2]) for e in forced] == [
+        ("text", "r1c2", "1", "3")
+    ]
+    assert "solved" in forced[0][1]["class"].split()
+
+
 def test_an_idea_without_a_supposition_draws_one_grid():
     page = _toy(SUBSET_STEPS[:1], _key(1, 1))
 
@@ -865,7 +861,7 @@ def test_an_assumed_digit_the_steps_do_not_eliminate_is_refused_naming_it():
     with pytest.raises(ValueError, match=r"entry 1.*r1c1.*1.*eliminate"):
         guide_html.guide_page(
             TOY,
-            _record(*SUBSET_STEPS[:1]),
+            make_record(*SUBSET_STEPS[:1]),
             _guide(_key(1, 1, supposition=_suppose(assume=("r1c1", 1)))),
         )
 
@@ -874,19 +870,19 @@ def test_an_assumed_digit_only_an_unexplained_step_eliminates_is_refused():
     with pytest.raises(ValueError, match=r"entry 1.*r1c1.*4.*eliminate"):
         guide_html.guide_page(
             TOY,
-            _record(*SUBSET_STEPS),
+            make_record(*SUBSET_STEPS),
             _guide(_key(1, 3, explains=[2], supposition=_suppose())),
         )
 
 
 def test_a_drawn_digit_that_is_not_a_candidate_is_refused_naming_it():
-    steps = [_step(["row 1"], (0, 2), [1, 2, 3]), SUBSET_STEPS[0]]
+    steps = [make_step(["row 1"], (0, 2), [1, 2, 3]), SUBSET_STEPS[0]]
     guide = _guide(
         _fill(1, 1),
         _key(2, 2, supposition=_suppose(forces=(("r1c3", 4),))),
     )
     with pytest.raises(ValueError, match=r"entry 2.*r1c3.*4.*not a candidate"):
-        guide_html.guide_page(TOY, _record(*steps), guide)
+        guide_html.guide_page(TOY, make_record(*steps), guide)
 
 
 @pytest.mark.parametrize(
@@ -919,6 +915,6 @@ def test_a_malformed_supposition_is_refused_naming_its_cause(supposition, cause)
     with pytest.raises(ValueError, match=cause):
         guide_html.guide_page(
             TOY,
-            _record(*SUBSET_STEPS[:1]),
+            make_record(*SUBSET_STEPS[:1]),
             _guide(_key(1, 1, supposition=supposition)),
         )

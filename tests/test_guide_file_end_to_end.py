@@ -17,6 +17,8 @@ the skill's Diagonal Dots render for both.
 import json
 import re
 
+from guide_helpers import cell_name
+
 from sudoku_kit import step_search
 from sudoku_kit.solve_guide import main
 
@@ -57,10 +59,6 @@ BOARD = {
 CLUE_IDS = {clue["id"] for clue in BOARD["clues"]}
 
 
-def _name(cell):
-    return f"r{cell[0] + 1}c{cell[1] + 1}"
-
-
 def _guide_for(record):
     """A guide file for `record` as the skill would write one: fill up to the
     first step naming a clue, a break-in idea there that explains only that
@@ -72,7 +70,7 @@ def _guide_for(record):
     for step in steps[: k - 1]:
         state.apply(step_search.claim_from_json(step["claim"]))
     assumed = min(state.candidates[tuple(claim["cell"])] - set(claim["digits"]))
-    cell = _name(claim["cell"])
+    cell = cell_name(claim["cell"])
     return {
         "version": 1,
         "entries": [
@@ -144,6 +142,10 @@ def test_the_command_draws_a_guide_file_built_from_its_own_step_record(
     skipping = _guide_for(record)
     skipping["entries"][-1]["first"] += 1
     guide.write_text(json.dumps(skipping))
-    (out / "guide.html").unlink()
     assert _run(tmp_path, "--guide", str(guide)) == 2
+    assert not (out / "guide.html").exists()
+
+    guide.write_text(json.dumps(_guide_for(record)))
+    assert _run(tmp_path, "--guide", str(guide)) == 0
+    assert _run(tmp_path) == 0
     assert not (out / "guide.html").exists()

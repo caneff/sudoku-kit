@@ -99,10 +99,7 @@ def load_record(path):
     path = Path(path)
     if not path.exists():
         return new_record()
-    try:
-        record = json.loads(path.read_text())
-    except ValueError as e:
-        raise ValueError(f"{path} is not JSON: {e}") from e
+    record = rules_file.read_json(path)
     if not isinstance(record, dict) or not isinstance(record.get("steps"), list):
         raise ValueError(f"{path} is not a step record: no steps list")
     return record

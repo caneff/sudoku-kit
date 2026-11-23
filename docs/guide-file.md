@@ -3,9 +3,10 @@
 The guide file holds every word of a solve guide. The `/solve-guide` skill
 writes it after reading the step record. `solve-guide --guide <file>` checks
 it against the step record and draws it as `guide.html`
-(`sudoku_kit.guide_html`). The library draws the grids from the step record,
-so a grid never shows an elimination the search did not prove. The words can
-still be wrong, but they never change what a grid shows.
+(`sudoku_kit.guide_file` checks it, `sudoku_kit.guide_html` draws it). The
+library draws the grids from the step record, so a grid never shows an
+elimination the search did not prove. The words can still be wrong, but they
+never change what a grid shows.
 
 A guide file for a published puzzle is a solution path. Keep it outside
 this repo and never publish it (`AGENTS.md`). The example below is for an
@@ -34,7 +35,8 @@ A **key idea** entry:
   the library shows the break-in label on that entry.
 - `explains` (optional): a non-empty list of the step numbers in the run that
   the idea explains. The grid strikes out and marks only those steps. The
-  run's other steps are applied to the candidates without being drawn and
+  run's other steps are taken off the idea's starting candidates without
+  being drawn, whether they come before or after the explained ones, and
   listed under the idea in a collapsed "Also in this stretch", one line per
   step as a fill's list writes them. Omitted, the idea explains its whole run.
 - `marks` (optional): extra marks drawn on the idea's grid, each an object
@@ -49,10 +51,9 @@ A **key idea** entry:
   list of `{"cell", "digit"}` in the order the assumption forces them (it may
   be empty). `breaks` is a non-empty list of the cells where the assumption
   clashes. The library draws a second grid beside the idea's own, from the
-  candidates before the idea's first step: the assumed and forced digits in
-  their own colour, the forced ones numbered in order, and the clash cells
-  circled. Every digit drawn must be a candidate in its cell at the idea's
-  start.
+  idea's starting candidates: the assumed and forced digits in their own
+  colour, the forced ones numbered in order, and the clash cells circled.
+  Every digit drawn must be among the idea's starting candidates in its cell.
 
 A **fill** entry:
 
@@ -70,10 +71,11 @@ loudly rather than going missing from the page.
 ## What the library draws
 
 - A key idea is one row: its grid on the left and its text on the right. The
-  grid shows the candidates before the run's first step, strikes out what the
-  run's steps remove, and marks the cells those steps use or change. It draws
-  candidates only in marked cells. Every other cell shows its placed digit or
-  stays blank.
+  grid shows the idea's starting candidates: those before the run's first
+  step, less what the run's unexplained steps remove (none when it has no
+  `explains`). It strikes out what the explained steps remove and marks the
+  cells those steps use or change. It draws candidates only in marked cells.
+  Every other cell shows its placed digit or stays blank.
 - A fill stretch is its sentence over the collapsed list of step lines.
 - The page opens with the title, the original image when given, the rules
   text and the starting grid. A stuck record ends with the stuck-point grid.
@@ -81,9 +83,13 @@ loudly rather than going missing from the page.
 ## Refusals
 
 The command writes no `guide.html` and exits 2, naming the problem, when the
-guide file:
+guide file fails one of the checks below. A file that is wrong whatever the
+step record holds (all but the coverage and supposition-digit checks) is
+refused before the search; the others after it. Either way a `guide.html`
+an earlier run left is removed. The guide file:
 
-- is not JSON, or is not an object with `version` 1 and an `entries` list;
+- is not JSON, or is not an object with `version` 1 (the integer) and an
+  `entries` list;
 - has an entry of another type, a field the type does not take, a missing
   field, or a field of the wrong kind;
 - skips, repeats or reorders a step, or reaches past the record's last step;
@@ -95,11 +101,12 @@ guide file:
   `breaks`, names a cell outside the grid or a digit outside 1 to the board
   size, or has an empty `breaks`;
 - has a supposition whose assumed digit the idea's explained steps do not
-  eliminate, or that draws a digit which is not a candidate in its cell at
-  the idea's start. The message names the cell and digit.
+  eliminate, or that draws a digit which is not among the idea's starting
+  candidates in its cell. The message names the cell and digit.
 
 Without `--guide` the command still checks the rules file and runs the
-search, but it writes no guide and says so.
+search, but it writes no guide, removes a `guide.html` an earlier run left,
+and says so.
 
 ## Example
 

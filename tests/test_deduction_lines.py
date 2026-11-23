@@ -7,9 +7,8 @@ import json
 import re
 
 import pytest
-from test_solve_guide_html import TOY, _record, _step
+from guide_helpers import TOY, make_record, make_step
 
-from sudoku_kit import guide_html
 from sudoku_kit.deduction_lines import main
 
 LINE = re.compile(r"D(\d+) \(steps? ([\d, ]+)\): (.+), from (.+)\.")
@@ -30,32 +29,31 @@ def _numbers(text):
     return [int(n) for n in text.split(",")]
 
 
-def test_an_invented_board_lists_every_step_once_grouped_as_the_guide_groups(
+def test_an_invented_board_lists_every_step_once_merging_across_a_step_elsewhere(
     tmp_path, capsys
 ):
-    record = _record(
-        _step(["white-a"], (0, 0), [1, 2, 3]),
-        _step(["row 4"], (3, 3), [1, 2, 3]),
-        _step(["white-a"], (0, 1), [1, 2, 3]),
-        _step(["row 1"], (0, 0), [1, 2]),
+    record = make_record(
+        make_step(["white-a"], (0, 0), [1, 2, 3]),
+        make_step(["row 4"], (3, 3), [1, 2, 3]),
+        make_step(["white-a"], (0, 1), [1, 2, 3]),
+        make_step(["row 1"], (0, 0), [1, 2]),
     )
     _write(tmp_path, TOY, record)
 
     code, lines, _ = _run(tmp_path, capsys)
 
-    groups = [g["steps"] for g in guide_html.deductions(TOY, record)]
-    parsed = [LINE.fullmatch(line) for line in lines]
     assert code == 0
-    assert all(parsed)
-    assert [_numbers(m[2]) for m in parsed] == groups
-    assert sorted(n for g in groups for n in g) == [1, 2, 3, 4]
-    assert [int(m[1]) for m in parsed] == list(range(1, len(groups) + 1))
+    assert lines == [
+        "D1 (step 2): r4c4 keeps 1 2 3, from row 4.",
+        "D2 (steps 1, 3): r1c1 keeps 1 2 3; r1c2 keeps 1 2 3, from white dot r1c1-r1c2.",
+        "D3 (step 4): r1c1 keeps 1 2, from row 1.",
+    ]
 
 
 def test_a_deduction_line_gives_its_claims_and_names_its_constraints_in_words(
     tmp_path, capsys
 ):
-    _write(tmp_path, TOY, _record(_step(["white-a", "row 1"], (0, 0), [3])))
+    _write(tmp_path, TOY, make_record(make_step(["white-a", "row 1"], (0, 0), [3])))
 
     _, lines, _ = _run(tmp_path, capsys)
 
@@ -66,9 +64,9 @@ def test_a_deduction_of_several_steps_joins_its_claims(tmp_path, capsys):
     _write(
         tmp_path,
         TOY,
-        _record(
-            _step(["white-a"], (0, 0), [1, 2, 3]),
-            _step(["white-a"], (0, 1), [4]),
+        make_record(
+            make_step(["white-a"], (0, 0), [1, 2, 3]),
+            make_step(["white-a"], (0, 1), [4]),
         ),
     )
 
@@ -77,6 +75,31 @@ def test_a_deduction_of_several_steps_joins_its_claims(tmp_path, capsys):
     assert lines == [
         "D1 (steps 1, 2): r1c1 keeps 1 2 3; r1c2 = 4, from white dot r1c1-r1c2."
     ]
+
+
+GOOD = make_step(["white-a"], (0, 0), [1, 2, 3])
+
+
+@pytest.mark.parametrize(
+    ("rules", "record", "cause"),
+    [
+        (TOY, {"step": []}, r"steps\.json has no steps list"),
+        (TOY, make_record({"claim": GOOD["claim"]}), r"steps\.json step 1.*named"),
+        (TOY, make_record({"named": ["row 1"]}), r"steps\.json step 1.*claim"),
+        (TOY, make_record(GOOD, make_step(["dot-z"], (0, 1), [1])), r"step 2.*dot-z"),
+        ([TOY], make_record(GOOD), r"rules\.json"),
+    ],
+    ids=["no-steps-list", "no-named", "no-claim", "unknown-constraint", "rules-list"],
+)
+def test_a_malformed_record_or_rules_file_is_refused_naming_it(
+    tmp_path, capsys, rules, record, cause
+):
+    _write(tmp_path, rules, record)
+
+    code, lines, err = _run(tmp_path, capsys)
+
+    assert (code, lines) == (2, [])
+    assert re.search(cause, err)
 
 
 def test_a_directory_with_no_step_record_is_refused_naming_the_file(tmp_path, capsys):

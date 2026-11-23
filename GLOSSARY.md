@@ -92,6 +92,14 @@ with its heading and paragraphs, drawn on its own numbered grid. The library
 numbers key ideas 1..N with no gaps; the skill may flag one as the break-in.
 _Avoid_: Key step, main step
 
+**Supposition**:
+A key idea's argument "suppose this cell were X", drawn as a second grid
+beside the idea's own: the assumed digit, the digits it forces in order and
+the cells where it clashes. The assumed digit is one the idea's steps
+eliminate; the guide file names it, and the library refuses one that does not
+fit the step record.
+_Avoid_: Contradiction, bifurcation, what-if
+
 **Fill**:
 A run of steps between key ideas, shown as one sentence the skill writes,
 with one plain line per step in a collapsed list: the claim, then its named

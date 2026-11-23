@@ -168,12 +168,20 @@ def _validate_outside_solution(rules):
             )
 
 
-def load(path):
-    """The rules file at `path`, validated."""
+def read_json(path):
+    """The JSON file at `path`, parsed; a file that cannot be read or is not
+    JSON is a ValueError naming it."""
     try:
-        rules = json.loads(Path(path).read_text())
+        return json.loads(Path(path).read_text())
+    except OSError as e:
+        raise ValueError(f"cannot read {path}: {e.strerror}") from e
     except ValueError as e:
         raise ValueError(f"{path} is not JSON: {e}") from e
+
+
+def load(path):
+    """The rules file at `path`, validated."""
+    rules = read_json(path)
     if not isinstance(rules, dict):
         raise ValueError(f"{path} holds a {type(rules).__name__}, not a rules file")
     try:

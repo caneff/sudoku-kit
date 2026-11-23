@@ -13,8 +13,8 @@ same record group its steps the same way.
 `guide_page(rules, record, guide)` is the whole guide. The guide file, version
 1, is described in `docs/guide-file.md`: an ordered list of entries, each a
 key idea or a fill stretch over a run of steps, together covering every step
-of the record exactly once, in order. `check_guide` refuses one that does
-not, or that flags more than one break-in, naming the problem. The page opens
+of the record exactly once, in order. `guide_file.check` refuses one that does
+not, or that is malformed, naming the problem. The page opens
 with the title, the original image once when given, the rules file's
 `rules_text` and the plain grid of the starting position.
 
@@ -22,8 +22,9 @@ The library numbers key ideas 1..N in file order and shows the break-in label
 on the flagged one; every other word is the skill's. A key idea is one row:
 its grid on the left at half the page grid's width, and its numbered heading
 and paragraphs on the right, so about 2 to 3 print per page. Its grid draws
-the candidates before its first step only in the cells its steps use or
-change, with the digits they remove struck out; every other cell shows its
+its starting candidates (those before its first step, less what the run's
+steps it does not explain remove) only in the cells its explained steps use
+or change, with the digits they remove struck out; every other cell shows its
 placed digit or stays blank. Cells of the constraints its steps name are
 marked `used` and the cells they change `changed`. A chain claim is drawn as
 arrows along the chain, and an `either` claim circles each pattern's cells.
@@ -34,12 +35,13 @@ line per step, written here: the claim, then each named constraint in words
 grid and candidates at the stuck point.
 
 A key idea may carry a `supposition` (spec #127): "suppose this cell were X".
-It draws as a second grid beside the idea's own, from the candidates before the
-idea's first step, drawn in the cells the supposition names: the assumed digit
-and the forced digits each in their own colour, the forced ones numbered in
-order, and the clash cells circled. `check_guide` checks its shape; the page
-refuses one whose assumed digit the idea's explained steps do not eliminate,
-or that draws a digit which is not a candidate in its cell at the idea's start.
+It draws as a second grid beside the idea's own (`render_supposition`), from
+the idea's starting candidates, drawn in the cells the supposition names: the
+assumed digit and the forced digits each in their own colour, the forced ones
+numbered in order, and the clash cells circled. `guide_file` checks its shape;
+the page refuses one whose assumed digit the idea's explained steps do not
+eliminate, or that draws a digit which is not among the idea's starting
+candidates in its cell.
 
 `render(rules)` is the plain grid, givens and clues only; `plain_page` puts it
 beside the original image for the import comparison.
@@ -47,11 +49,9 @@ beside the original image for the import comparison.
 
 import html
 import itertools
-import json
-import re
-from pathlib import Path
 
-from sudoku_kit import rules_file, step_search
+from sudoku_kit import guide_file, rules_file, step_search
+from sudoku_kit.guide_file import join_words, plural
 
 CELL = 48
 LINE_COLOURS = {
@@ -84,7 +84,7 @@ img.original { max-width: 24rem; }
 .breakin { font-weight: bold; color: #b00; }
 .rules { white-space: pre-line; }
 .cand.assumed { fill: #c22; font-weight: bold; }
-.cand.forced { fill: #07a; font-weight: bold; }
+.cand.forced, .solved.forced { fill: #07a; font-weight: bold; }
 .order { font-size: 11px; font-weight: bold; fill: #07a; }
 .arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
 """
@@ -252,9 +252,7 @@ def _annotation(grid, note, prefix):
             note["text"],
             cell=rules_file.cell_name(note["cell"]),
         )
-    if kind == "highlight":
-        return ""
-    raise ValueError(f"mark {note!r} has no known type (arrow, circle)")
+    return ""  # a highlight is drawn as its cell's fill
 
 
 def _claim_marks(claim):
@@ -272,33 +270,11 @@ def _claim_marks(claim):
     return cells, [{"type": "circle", "cell": c} for c in sorted(cells)]
 
 
-def render(rules, candidates=None, idea=None, prefix="g", suppose=None):
-    """One grid as an SVG string. `candidates` ({cell: digits}) draws each
-    cell's digits; without it only givens show. `idea`, a key idea (its `key`
-    number, the `named` constraints and `claims` of its steps, and `removed`,
-    {cell: digits}), marks its cells and strikes out what it removes.
-    `suppose` (`key`: its idea's number, `assume`: (cell, digit), `forces`:
-    [(cell, digit)], `breaks`: [cell]) draws a supposition instead: candidates in its cells only, the
-    assumed and forced digits in their own colour, the clash circled."""
-    grid = Grid(rules)
-    registry = rules_file.registry(rules)
-    used, changed, removed, notes, lit = set(), set(), {}, [], set()
-    if idea is not None:
-        for name in idea["named"]:
-            used.update(registry[name].cells)
-        for claim in idea["claims"]:
-            cells, marks = _claim_marks(claim)
-            changed |= cells
-            notes += marks
-        removed = idea["removed"]
-        notes += idea.get("marks", [])
-        lit = {m["cell"] for m in notes if m["type"] == "highlight"}
+def _frame(grid, prefix, data="", used=(), changed=(), lit=()):
+    """The opening of a grid's SVG: its cells, house edges and clues."""
     out = [
         f'<svg class="grid" xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {grid.columns * CELL} {grid.rows * CELL}"'
-        + (f' data-key="{idea["key"]}"' if idea is not None else "")
-        + (f' data-supposition="{suppose["key"]}"' if suppose is not None else "")
-        + ">",
+        f'viewBox="0 0 {grid.columns * CELL} {grid.rows * CELL}"{data}>',
         f'<defs><marker id="{prefix}-head" markerWidth="8" markerHeight="8" refX="6" '
         'refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c22"/></marker></defs>',
     ]
@@ -306,36 +282,67 @@ def render(rules, candidates=None, idea=None, prefix="g", suppose=None):
         f'<rect class="{_cell_class(cell, used, changed, lit)}" '
         f'x="{grid.x(cell[1])}" y="{grid.y(cell[0])}" width="{CELL}" '
         f'height="{CELL}" data-cell="{rules_file.cell_name(cell)}"/>'
-        for cell in rules_file.cells(rules)
+        for cell in rules_file.cells(grid.rules)
     )
     out.extend(_house_edges(grid))
-    out.extend(_clue(grid, clue) for clue in rules["clues"])
-    marked = used | changed if idea is not None else None
-    roles = None
-    if suppose is not None:
-        marked = _suppose_cells(suppose)
-        roles = {tuple(suppose["assume"]): ("assumed", 0)}
-        roles |= {
-            (cell, digit): ("forced", order)
-            for order, (cell, digit) in enumerate(suppose["forces"], 1)
-        }
+    out.extend(_clue(grid, clue) for clue in grid.rules["clues"])
+    return out
+
+
+def render(rules, candidates=None, idea=None, prefix="g"):
+    """One grid as an SVG string. `candidates` ({cell: digits}) draws each
+    cell's digits; without it only givens show. `idea`, a key idea (its `key`
+    number, the `named` constraints and `claims` of its steps, `removed`,
+    {cell: digits}, and its guide file `marks`), marks its cells, draws
+    candidates only in them and strikes out what it removes."""
+    grid = Grid(rules)
+    removed, marked, notes = {}, None, []
+    if idea is None:
+        out = _frame(grid, prefix)
+    else:
+        registry = rules_file.registry(rules)
+        used, changed = set(), set()
+        for name in idea["named"]:
+            used.update(registry[name].cells)
+        for claim in idea["claims"]:
+            cells, marks = _claim_marks(claim)
+            changed |= cells
+            notes += marks
+        notes += idea["marks"]
+        lit = {m["cell"] for m in notes if m["type"] == "highlight"}
+        out = _frame(grid, prefix, f' data-key="{idea["key"]}"', used, changed, lit)
+        removed, marked = idea["removed"], used | changed
     for cell in rules_file.cells(rules):
         out.extend(
-            _digits(grid, cell, candidates, removed.get(cell, set()), marked, roles)
+            _digits(grid, cell, candidates, removed.get(cell, set()), marked=marked)
         )
-    if suppose is not None:
-        out.extend(_suppose_marks(grid, suppose))
     out.extend(_annotation(grid, note, prefix) for note in notes)
     out.append("</svg>")
     return "".join(out)
 
 
-def _suppose_cells(suppose):
-    return {
+def render_supposition(rules, candidates, suppose, key, prefix):
+    """Key idea `key`'s supposition as its own grid: `candidates` in the cells
+    `suppose` (`assume`: (cell, digit), `forces`: [(cell, digit)], `breaks`:
+    [cell]) names, the assumed and forced digits in their own colour, the
+    forced ones numbered in order, and the clash circled."""
+    grid = Grid(rules)
+    marked = {
         suppose["assume"][0],
         *(c for c, _ in suppose["forces"]),
         *suppose["breaks"],
     }
+    roles = {suppose["assume"]: ("assumed", 0)}
+    roles |= {
+        (cell, digit): ("forced", order)
+        for order, (cell, digit) in enumerate(suppose["forces"], 1)
+    }
+    out = _frame(grid, prefix, f' data-supposition="{key}"')
+    for cell in rules_file.cells(rules):
+        out.extend(_digits(grid, cell, candidates, marked=marked, roles=roles))
+    out.extend(_suppose_marks(grid, suppose))
+    out.append("</svg>")
+    return "".join(out)
 
 
 def _suppose_marks(grid, suppose):
@@ -384,26 +391,29 @@ def _house_edges(grid):
     ]
 
 
-def _digits(grid, cell, candidates, removed, marked=None, roles=None):
+def _digits(grid, cell, candidates, removed=frozenset(), marked=None, roles=None):
     """A cell's given, placed digit or candidates; with `marked`, a cell
-    outside it shows only its placed digit."""
+    outside it shows only its placed digit. `roles`, {(cell, digit): (role,
+    order)}, colours a supposition's digits, a placed one too."""
     x, y = grid.centre(cell)
     given = grid.givens.get(cell)
     if given is not None:
         return [_text(x, y + 9, "given", given)]
     if candidates is None:
         return []
+    roles = roles or {}
     held = candidates[cell]
     if len(held) == 1:
-        return [_text(x, y + 9, "solved", next(iter(held)))]
+        digit = next(iter(held))
+        role, order = roles.get((cell, digit), ("", 0))
+        extra = {"cell": rules_file.cell_name(cell), "digit": digit} if role else {}
+        if order:
+            extra["order"] = order
+        return [_text(x, y + 9, f"solved {role}".strip(), digit, **extra)]
     if marked is not None and cell not in marked:
         return []
     drawn = held | removed
-    if (
-        len(drawn) == grid.n
-        and not removed
-        and not any(c == cell for c, _ in roles or ())
-    ):
+    if len(drawn) == grid.n and not removed and not any(c == cell for c, _ in roles):
         return []
     out = []
     for d in sorted(drawn):
@@ -411,7 +421,7 @@ def _digits(grid, cell, candidates, removed, marked=None, roles=None):
         dy = grid.y(cell[0]) + CELL * (1 + (d - 1) // 3) / 4 + 4
         cls = "cand struck" if d in removed else "cand"
         extra = {}
-        if (cell, d) in (roles or {}):
+        if (cell, d) in roles:
             role, order = roles[cell, d]
             cls += f" {role}"
             if order:
@@ -434,14 +444,6 @@ def describe_claim(claim):
     if "chain" in claim:
         return "chain " + " < ".join(rules_file.cell_name(c) for c in claim["chain"])
     return "at least one of several patterns holds"
-
-
-def join_words(words):
-    return ", ".join(words[:-1]) + " and " + words[-1] if len(words) > 1 else words[0]
-
-
-def _plural(count, word):
-    return f"{count} {word}" + ("" if count == 1 else "s")
 
 
 CLUE_WORDS = {
@@ -485,340 +487,100 @@ def _step_line(rules, step):
     return f"{describe_claim(step['claim'])}, from {join_words(named)}."
 
 
-GUIDE_VERSION = 1
-ENTRY_FIELDS = {
-    "key": (
-        {"heading", "paragraphs"},
-        {"break_in", "explains", "marks", "supposition"},
-    ),
-    "fill": ({"sentence"}, set()),
-}
-
-
-def load_guide(path):
-    """The guide file at `path`, parsed; `check_guide` judges its contents."""
-    try:
-        return json.loads(Path(path).read_text())
-    except OSError as e:
-        raise ValueError(f"cannot read guide file {path}: {e.strerror}") from e
-    except ValueError as e:
-        raise ValueError(f"guide file {path} is not JSON: {e}") from e
-
-
-MARK_CELLS = {
-    "arrow": ("from", "to"),
-    "circle": ("cell",),
-    "label": ("cell",),
-    "highlight": ("cell",),
-}
-CELL_NAME = re.compile(r"r([1-9][0-9]*)c([1-9][0-9]*)")
-
-
-def _mark_cell(k, m, mark, field, board):
-    name = mark.get(field)
-    found = CELL_NAME.fullmatch(name) if isinstance(name, str) else None
-    if not found:
-        raise ValueError(f"entry {k}'s mark {m} has {field} {name!r}, not a cell name")
-    cell = (int(found[1]) - 1, int(found[2]) - 1)
-    if cell not in board:
-        raise ValueError(f"entry {k}'s mark {m} names {name}, outside the grid")
-    return cell
-
-
-def _check_marks(k, marks, board):
-    if not isinstance(marks, list):
-        raise ValueError(f"entry {k}'s marks is not a list")
-    for m, mark in enumerate(marks, 1):
-        if not isinstance(mark, dict):
-            raise ValueError(f"entry {k}'s mark {m} is not a JSON object")
-        kind = mark.get("type")
-        if kind not in MARK_CELLS:
-            raise ValueError(
-                f"entry {k}'s mark {m} has type {kind!r}; a mark is "
-                "'arrow', 'circle', 'label' or 'highlight'"
-            )
-        wanted = {"type", *MARK_CELLS[kind]} | ({"text"} if kind == "label" else set())
-        if set(mark) - wanted:
-            raise ValueError(
-                f"entry {k}'s mark {m} ({kind}) has unknown fields "
-                f"{sorted(set(mark) - wanted)}"
-            )
-        for field in MARK_CELLS[kind]:
-            _mark_cell(k, m, mark, field, board)
-        if kind == "label" and not isinstance(mark.get("text"), str):
-            raise ValueError(f"entry {k}'s mark {m} (label) has no text string")
-
-
-def _supposed_cell(k, name, board):
-    found = CELL_NAME.fullmatch(name) if isinstance(name, str) else None
-    if not found:
-        raise ValueError(f"entry {k}'s supposition has {name!r}, not a cell name")
-    cell = (int(found[1]) - 1, int(found[2]) - 1)
-    if cell not in board:
-        raise ValueError(f"entry {k}'s supposition names {name}, outside the grid")
-    return cell
-
-
-def _supposed_digit(k, item, board, size):
-    if not isinstance(item, dict) or set(item) != {"cell", "digit"}:
-        raise ValueError(
-            f"entry {k}'s supposition has {str(item)[:60]!r}, not a cell and a digit"
-        )
-    cell = _supposed_cell(k, item["cell"], board)
-    digit = item["digit"]
-    if not isinstance(digit, int) or isinstance(digit, bool) or not 1 <= digit <= size:
-        raise ValueError(
-            f"entry {k}'s supposition has digit {digit!r} for {item['cell']}, "
-            f"not 1-{size}"
-        )
-    return cell, digit
-
-
-def _check_supposition(k, sup, board, size):
-    """A supposition's shape, read as {"assume": (cell, digit), "forces":
-    [(cell, digit)], "breaks": [cell]}; whether its digits fit the idea is
-    `_check_supposed_digits`'s."""
-    if not isinstance(sup, dict):
-        raise ValueError(f"entry {k}'s supposition is not a JSON object")
-    unknown = set(sup) - {"assume", "forces", "breaks"}
-    if unknown:
-        raise ValueError(
-            f"entry {k}'s supposition has unknown fields {sorted(unknown)}"
-        )
-    missing = {"assume", "forces", "breaks"} - set(sup)
-    if missing:
-        raise ValueError(f"entry {k}'s supposition has no {sorted(missing)}")
-    if not isinstance(sup["forces"], list) or not isinstance(sup["breaks"], list):
-        raise ValueError(f"entry {k}'s supposition forces and breaks are not lists")
-    if not sup["breaks"]:
-        raise ValueError(
-            f"entry {k}'s supposition breaks is empty; name the cells it clashes at"
-        )
-    return {
-        "assume": _supposed_digit(k, sup["assume"], board, size),
-        "forces": [_supposed_digit(k, f, board, size) for f in sup["forces"]],
-        "breaks": [_supposed_cell(k, b, board) for b in sup["breaks"]],
-    }
-
-
-def _check_explains(k, entry):
-    steps = entry["explains"]
-    if not isinstance(steps, list) or not all(
-        isinstance(s, int) and not isinstance(s, bool) for s in steps
-    ):
-        raise ValueError(f"entry {k}'s explains is not a list of step numbers")
-    if not steps:
-        raise ValueError(f"entry {k}'s explains is empty; omit it to explain the run")
-    for step in steps:
-        if not entry["first"] <= step <= entry["last"]:
-            raise ValueError(
-                f"entry {k} explains step {step}, outside its run, "
-                f"steps {entry['first']}-{entry['last']}"
-            )
-    for step in set(steps):
-        if steps.count(step) > 1:
-            raise ValueError(f"entry {k}'s explains repeats step {step}")
-
-
-def _check_entry(k, entry, total, board, size):
-    if not isinstance(entry, dict):
-        raise ValueError(f"entry {k} is not a JSON object: {str(entry)[:60]!r}")
-    kind = entry.get("type")
-    if kind not in ENTRY_FIELDS:
-        raise ValueError(f"entry {k} has type {kind!r}; an entry is 'key' or 'fill'")
-    required, optional = ENTRY_FIELDS[kind]
-    required = required | {"first", "last"}
-    unknown = set(entry) - required - optional - {"type"}
-    if unknown:
-        raise ValueError(f"entry {k} ({kind}) has unknown fields {sorted(unknown)}")
-    missing = required - set(entry)
-    if missing:
-        raise ValueError(f"entry {k} ({kind}) has no {sorted(missing)}")
-    for field in ("first", "last"):
-        value = entry[field]
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise ValueError(f"entry {k}'s {field} {value!r} is not a step number")
-    first, last = entry["first"], entry["last"]
-    if first < 1:
-        raise ValueError(f"entry {k} starts at step {first}; steps count from 1")
-    if first > last:
-        raise ValueError(f"entry {k} has its first {first} after its last {last}")
-    if last > total:
-        raise ValueError(
-            f"entry {k} reaches step {last}, past the record's {_plural(total, 'step')}"
-        )
-    for field in ("heading", "sentence"):
-        if field in entry and not isinstance(entry[field], str):
-            raise ValueError(f"entry {k}'s {field} is not a string")
-    paragraphs = entry.get("paragraphs", [])
-    if not isinstance(paragraphs, list) or not all(
-        isinstance(p, str) for p in paragraphs
-    ):
-        raise ValueError(f"entry {k}'s paragraphs is not a list of strings")
-    if not isinstance(entry.get("break_in", False), bool):
-        raise ValueError(f"entry {k}'s break_in is not true or false")
-    if "explains" in entry:
-        _check_explains(k, entry)
-    if "marks" in entry:
-        _check_marks(k, entry["marks"], board)
-    if "supposition" in entry:
-        _check_supposition(k, entry["supposition"], board, size)
-
-
-def check_guide(rules, record, guide):
-    """Refuse, naming the problem, a guide file that is malformed, that skips,
-    repeats or reorders a step of `record`, that explains a step outside its
-    run, that marks a cell outside `rules`' grid, or that flags more than one
-    break-in."""
-    if not isinstance(guide, dict):
-        raise ValueError(f"the guide file is not a JSON object: {str(guide)[:60]!r}")
-    version = guide.get("version")
-    if version != GUIDE_VERSION:
-        raise ValueError(
-            f"the guide file has version {version!r}; "
-            f"only version {GUIDE_VERSION} is read"
-        )
-    entries = guide.get("entries")
-    if not isinstance(entries, list):
-        raise ValueError("the guide file has no entries list")
-    total, board = len(record["steps"]), set(rules_file.cells(rules))
-    for k, entry in enumerate(entries, 1):
-        _check_entry(k, entry, total, board, rules["size"])
-    flagged = [str(k) for k, e in enumerate(entries, 1) if e.get("break_in")]
-    if len(flagged) > 1:
-        raise ValueError(
-            f"entries {join_words(flagged)} each flag the break-in; a guide has one at most"
-        )
-    covered = {}
-    for k, entry in enumerate(entries, 1):
-        for step in range(entry["first"], entry["last"] + 1):
-            if step in covered:
-                raise ValueError(
-                    f"entry {k} repeats step {step}, already in entry {covered[step]}"
-                )
-            covered[step] = k
-    missing = [step for step in range(1, total + 1) if step not in covered]
-    if missing:
-        more = f" and {len(missing) - 1} more" if len(missing) > 1 else ""
-        raise ValueError(f"the guide file skips step {missing[0]}{more}")
-    for k, (a, b) in enumerate(itertools.pairwise(entries), 2):
-        if b["first"] < a["first"]:
-            raise ValueError(
-                f"entry {k} is out of order: steps {b['first']}-{b['last']} come "
-                f"after steps {a['first']}-{a['last']} of entry {k - 1}"
-            )
+def _step_items(rules, record, numbers):
+    """A collapsed list's items: one line per step of `numbers`."""
+    return "".join(
+        f'<li class="step" data-step="{i}">'
+        f"{html.escape(_step_line(rules, record['steps'][i - 1]))}</li>"
+        for i in numbers
+    )
 
 
 def _fill(rules, entry, record):
     """One stretch of fill: the skill's sentence, then a line per step."""
     numbers = range(entry["first"], entry["last"] + 1)
-    items = "".join(
-        f'<li class="step" data-step="{i}">'
-        f"{html.escape(_step_line(rules, record['steps'][i - 1]))}</li>"
-        for i in numbers
-    )
     return (
         f'<div class="fill" data-steps="{entry["first"]}-{entry["last"]}">'
         f'<p class="fill">{html.escape(entry["sentence"])}</p><details><summary>The '
-        f"{_plural(len(numbers), 'step')}</summary><ul>{items}</ul></details></div>"
+        f"{plural(len(numbers), 'step')}</summary>"
+        f"<ul>{_step_items(rules, record, numbers)}</ul></details></div>"
     )
 
 
-def _also(rules, numbers, record):
-    """The steps of an idea's run it does not explain, collapsed."""
-    items = "".join(
-        f'<li class="step" data-step="{i}">'
-        f"{html.escape(_step_line(rules, record['steps'][i - 1]))}</li>"
-        for i in numbers
-    )
-    return (
-        '<details class="also"><summary>Also in this stretch</summary>'
-        f"<ul>{items}</ul></details>"
-    )
-
-
-def _mark(mark):
-    """A guide file's mark with its cell names read as cells."""
-    cell = lambda name: (
-        int(name[1 : name.index("c")]) - 1,
-        int(name.split("c")[1]) - 1,
-    )
-    out = {k: v for k, v in mark.items() if k not in ("from", "to", "cell")}
-    for field in ("from", "to", "cell"):
-        if field in mark:
-            out[field] = cell(mark[field])
+def _eliminations(record, before, numbers):
+    """{cell: digits} the steps `numbers` remove. `State.apply` narrows only a
+    cell claim's own cell, and a chain or `either` removes no candidate."""
+    out = {}
+    for i in numbers:
+        claim = record["steps"][i - 1]["claim"]
+        if "cell" in claim:
+            cell = tuple(claim["cell"])
+            out[cell] = out.get(cell, set()) | (before[i][cell] - before[i + 1][cell])
     return out
 
 
-def _suppose_for(k, entry, rules, removed, start):
-    """The entry's supposition as `render` draws it, after the checks that
-    need the idea's candidates: the assumed digit is one the explained steps
-    eliminate and every drawn digit is a candidate at the idea's start."""
-    sup = _check_supposition(
-        k, entry["supposition"], set(rules_file.cells(rules)), rules["size"]
-    )
+def _check_supposed_digits(sup, removed, start, *, entry_number):
+    """Refuse a supposition whose assumed digit the explained steps do not
+    eliminate, or that draws a digit not among the idea's starting
+    candidates in its cell."""
     cell, digit = sup["assume"]
-    name = rules_file.cell_name(cell)
     if digit not in removed.get(cell, set()):
         raise ValueError(
-            f"entry {k}'s supposition assumes {name} = {digit}, which none of "
-            "the steps the idea explains eliminate"
+            f"entry {entry_number}'s supposition assumes {rules_file.cell_name(cell)} "
+            f"= {digit}, which none of the steps the idea explains eliminate"
         )
     for cell, digit in [sup["assume"], *sup["forces"]]:
         if digit not in start[cell]:
             raise ValueError(
-                f"entry {k}'s supposition draws {rules_file.cell_name(cell)} = "
-                f"{digit}, which is not a candidate there at the idea's start"
+                f"entry {entry_number}'s supposition draws "
+                f"{rules_file.cell_name(cell)} = {digit}, which is not a candidate "
+                "there at the idea's start"
             )
-    return sup
 
 
-def _key_section(rules, number, entry, record, before, k):
-    """One key idea as one row: its grid, then its numbered heading, the
-    break-in label when flagged, and its paragraphs."""
+def _key_section(rules, entry, record, before, *, key, entry_number):
+    """Key idea `key`, the guide file's entry `entry_number`, as one row: its
+    grid, then its numbered heading, the break-in label when flagged, and its
+    paragraphs. Its starting candidates are those before its first step less
+    what the run's unexplained steps remove."""
     first, last = entry["first"], entry["last"]
     numbers = range(first, last + 1)
     explained = entry.get("explains") or list(numbers)
     also = [i for i in numbers if i not in explained]
     steps = [record["steps"][i - 1] for i in explained]
-    claims = [step["claim"] for step in steps]
-    held = dict(before[first])
-    for i in also:
-        for cell in before[i]:
-            held[cell] = held[cell] - (before[i][cell] - before[i + 1][cell])
-    removed = {}
-    for i in explained:
-        cell_claim = record["steps"][i - 1]["claim"]
-        if "cell" in cell_claim:
-            cell = tuple(cell_claim["cell"])
-            removed[cell] = removed.get(cell, set()) | (
-                before[i][cell] - before[i + 1][cell]
-            )
+    unexplained = _eliminations(record, before, also)
+    start = {
+        cell: digits - unexplained.get(cell, set())
+        for cell, digits in before[first].items()
+    }
+    removed = _eliminations(record, before, explained)
     idea = {
-        "key": number,
+        "key": key,
         "named": list(dict.fromkeys(n for step in steps for n in step["named"])),
-        "claims": claims,
+        "claims": [step["claim"] for step in steps],
         "removed": removed,
-        "marks": [_mark(mark) for mark in entry.get("marks", [])],
+        "marks": entry.get("marks", []),
     }
     parts = [
-        f'<section class="key" data-key="{number}" '
+        f'<section class="key" data-key="{key}" '
         f'data-steps="{" ".join(map(str, numbers))}">',
-        render(rules, held, idea, prefix=f"k{number}"),
+        render(rules, start, idea, prefix=f"k{key}"),
     ]
     if "supposition" in entry:
-        sup = _suppose_for(k, entry, rules, removed, held)
-        parts.append(
-            render(rules, held, prefix=f"s{number}", suppose={**sup, "key": number})
-        )
-    parts += [
-        f'<div class="text"><h2>Key idea {number}: {html.escape(entry["heading"])}</h2>',
-    ]
+        sup = entry["supposition"]
+        _check_supposed_digits(sup, removed, start, entry_number=entry_number)
+        parts.append(render_supposition(rules, start, sup, key, prefix=f"s{key}"))
+    parts.append(
+        f'<div class="text"><h2>Key idea {key}: {html.escape(entry["heading"])}</h2>'
+    )
     if entry.get("break_in"):
         parts.append('<p class="breakin">Break-in</p>')
     parts.extend(f"<p>{html.escape(p)}</p>" for p in entry["paragraphs"])
     if also:
-        parts.append(_also(rules, also, record))
+        parts.append(
+            '<details class="also"><summary>Also in this stretch</summary>'
+            f"<ul>{_step_items(rules, record, also)}</ul></details>"
+        )
     parts.append("</div></section>")
     return "".join(parts)
 
@@ -866,9 +628,9 @@ def plain_page(rules, image=None):
 
 
 def guide_page(rules, record, guide, image=None):
-    """The solve guide `guide`, a guide file as `load_guide` reads it, draws
-    for `record`, the image once at the top when given."""
-    check_guide(rules, record, guide)
+    """The solve guide `guide`, a guide file as JSON parses it, draws for
+    `record`, the image once at the top when given."""
+    guide = guide_file.check(rules, record, guide)
     before = _states(rules, record)
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:
@@ -882,7 +644,9 @@ def guide_page(rules, record, guide, image=None):
             body.append(_fill(rules, entry, record))
             continue
         keys += 1
-        body.append(_key_section(rules, keys, entry, record, before, k))
+        body.append(
+            _key_section(rules, entry, record, before, key=keys, entry_number=k)
+        )
     if record.get("stuck"):
         body.append(_stuck(rules, record["stuck"]))
     return _page("Solve guide", "".join(body))

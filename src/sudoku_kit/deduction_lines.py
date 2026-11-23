@@ -10,15 +10,17 @@ of the record appears on exactly one line. The claims are `guide_html`'s
 words, joined by `;`, and the constraints are `guide_html.constraint_words`,
 never a clue id.
 
-Exit codes: 0 printed, 2 `rules.json` or `steps.json` missing or unreadable.
+Exit codes: 0 printed, 2 `rules.json` or `steps.json` missing, unreadable or
+malformed: a rules file `rules_file.load` refuses, or a step record whose
+steps lack a claim `step_search` reads or a `named` list of constraints
+`rules.json` holds.
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
-from sudoku_kit import guide_html
+from sudoku_kit import guide_file, guide_html, rules_file, step_search
 
 
 def lines(rules, record):
@@ -27,7 +29,7 @@ def lines(rules, record):
     for k, group in enumerate(guide_html.deductions(rules, record), 1):
         steps = ", ".join(map(str, group["steps"]))
         claims = "; ".join(guide_html.describe_claim(c) for c in group["claims"])
-        named = guide_html.join_words(
+        named = guide_file.join_words(
             [guide_html.constraint_words(rules, n) for n in group["named"]]
         )
         label = "steps" if len(group["steps"]) > 1 else "step"
@@ -35,13 +37,27 @@ def lines(rules, record):
     return out
 
 
-def _load(path):
-    try:
-        return json.loads(path.read_text())
-    except OSError as e:
-        raise ValueError(f"cannot read {path}: {e.strerror}") from e
-    except ValueError as e:
-        raise ValueError(f"{path} is not JSON: {e}") from e
+def _record(path, rules):
+    """The step record at `path`, refused, naming the step, when a step has
+    no claim `step_search` reads or names a constraint `rules` lacks."""
+    record = rules_file.read_json(path)
+    if not isinstance(record, dict) or not isinstance(record.get("steps"), list):
+        raise ValueError(f"{path} has no steps list")
+    names = set(rules_file.registry(rules))
+    for k, step in enumerate(record["steps"], 1):
+        if not isinstance(step, dict):
+            raise ValueError(f"{path} step {k} is not a JSON object")
+        try:
+            step_search.claim_from_json(step.get("claim"))
+        except ValueError as e:
+            raise ValueError(f"{path} step {k}: {e}") from e
+        named = step.get("named")
+        if not isinstance(named, list) or not named:
+            raise ValueError(f"{path} step {k} has no named list of constraints")
+        unknown = [name for name in named if name not in names]
+        if unknown:
+            raise ValueError(f"{path} step {k} names {unknown}, not in rules.json")
+    return record
 
 
 def main(argv=None):
@@ -49,10 +65,8 @@ def main(argv=None):
     parser.add_argument("directory", type=Path, help="a solve-guide output directory")
     args = parser.parse_args(argv)
     try:
-        rules = _load(args.directory / "rules.json")
-        record = _load(args.directory / "steps.json")
-        if not isinstance(record, dict) or not isinstance(record.get("steps"), list):
-            raise ValueError(f"{args.directory / 'steps.json'} has no steps list")
+        rules = rules_file.load(args.directory / "rules.json")
+        record = _record(args.directory / "steps.json", rules)
         text = lines(rules, record)
     except ValueError as e:
         print(f"solve-deductions: {e}", file=sys.stderr)

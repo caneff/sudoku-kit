@@ -62,6 +62,8 @@ and grid-hunts. Neither imports the step prover.
   prints a `solve-guide` run's step record as one line per deduction (its
   steps, claims and constraints in words), for the `/solve-guide` skill to read.
 - `sudoku_kit.step_search`: the step search and the step record.
+- `sudoku_kit.guide_file`: the guide file the `/solve-guide` skill writes
+  (`docs/guide-file.md`): reading it and checking it against the step record.
 - `sudoku_kit.guide_html`: the solve guide page and the plain render.
 - `sudoku_kit.uniqueness`: `check_uniqueness`, which reports `unique`,
   `not_unique`, `infeasible`, `timeout` or `invalid`.
