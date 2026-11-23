@@ -336,7 +336,7 @@ def _digits(grid, cell, candidates, removed, marked=None):
     return out
 
 
-def _describe(claim):
+def describe_claim(claim):
     if "cell" in claim:
         cell = rules_file.cell_name(claim["cell"])
         digits = claim["digits"]
@@ -350,7 +350,7 @@ def _describe(claim):
     return "at least one of several patterns holds"
 
 
-def _list(words):
+def join_words(words):
     return ", ".join(words[:-1]) + " and " + words[-1] if len(words) > 1 else words[0]
 
 
@@ -396,7 +396,7 @@ def constraint_words(rules, name):
 
 def _step_line(rules, step):
     named = [constraint_words(rules, name) for name in step["named"]]
-    return f"{_describe(step['claim'])}, from {_list(named)}."
+    return f"{describe_claim(step['claim'])}, from {join_words(named)}."
 
 
 GUIDE_VERSION = 1
@@ -476,7 +476,7 @@ def check_guide(record, guide):
     flagged = [str(k) for k, e in enumerate(entries, 1) if e.get("break_in")]
     if len(flagged) > 1:
         raise ValueError(
-            f"entries {_list(flagged)} each flag the break-in; a guide has one at most"
+            f"entries {join_words(flagged)} each flag the break-in; a guide has one at most"
         )
     covered = {}
     for k, entry in enumerate(entries, 1):
