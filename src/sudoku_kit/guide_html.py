@@ -18,7 +18,8 @@ between them is fill: one sentence counting its placements and eliminations
 and naming its houses and clues, with a collapsed list of its deductions. A
 stuck record ends the guide with the grid and candidates at the stuck point.
 
-A key idea's grid draws the candidates before it, with the digits it removes
+Each deduction, key idea or fill, shows one reason sentence built from its
+named constraints by `reasons.reason`. A key idea's grid draws the candidates before it, with the digits it removes
 struck out. Cells of the constraints it names are marked `used` and the cells
 it changes `changed`. A chain claim is drawn as arrows along the chain, and an
 `either` claim circles each pattern's cells. A step may also carry, written
@@ -37,7 +38,7 @@ whole guide with the image once at the top.
 import html
 import itertools
 
-from sudoku_kit import rules_file, step_search
+from sudoku_kit import reasons, rules_file, step_search
 
 CELL = 48
 LINE_COLOURS = {
@@ -403,7 +404,8 @@ def _fill(rules, groups, before):
     )
     items = "".join(
         f'<li class="deduction" data-steps="{_steps_attr(g)}">'
-        f"{html.escape(', '.join(g['named']))}: {html.escape(_claims(g))}.</li>"
+        f"{html.escape(_claims(g))}. "
+        f'<span class="reason">{html.escape(reasons.reason(rules, g["named"]))}</span></li>'
         for g in groups
     )
     return (
@@ -445,7 +447,7 @@ def _key_section(rules, number, group, record, before, is_break_in):
             f'<p class="hard">Hard step: it uses {len(named)} constraints together.</p>'
         )
     parts += [
-        f"<p>Uses {html.escape(', '.join(named))}.</p>",
+        f'<p class="reason">{html.escape(reasons.reason(rules, named))}</p>',
         render(rules, held, idea, prefix=f"k{number}"),
     ]
     parts.extend(f"<p>{html.escape(s['text'])}</p>" for s in steps if s.get("text"))
