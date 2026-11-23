@@ -99,9 +99,7 @@ def test_a_failing_shellcheck_fails_the_seam(seam):
     done = seam(fail_on=cmd)
     assert done.returncode == 1
     assert f"FAIL uv {cmd}" in done.stdout
-    assert done.stdout.splitlines()[-1] == (
-        f"2 of 5 suites passed, 1 failed: uv {cmd}"
-    )
+    assert done.stdout.splitlines()[-1] == (f"2 of 5 suites passed, 1 failed: uv {cmd}")
 
 
 def test_shellcheck_covers_every_tracked_shell_file():
