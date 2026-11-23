@@ -292,8 +292,11 @@ def render(rules, candidates=None, idea=None, prefix="g"):
     )
     out.extend(_house_edges(grid))
     out.extend(_clue(grid, clue) for clue in rules["clues"])
+    marked = used | changed if idea is not None else None
     for cell in rules_file.cells(rules):
-        out.extend(_digits(grid, cell, candidates, removed.get(cell, set())))
+        out.extend(
+            _digits(grid, cell, candidates, removed.get(cell, set()), marked)
+        )
     out.extend(_annotation(grid, note, prefix) for note in notes)
     out.append("</svg>")
     return "".join(out)
@@ -324,7 +327,9 @@ def _house_edges(grid):
     ]
 
 
-def _digits(grid, cell, candidates, removed):
+def _digits(grid, cell, candidates, removed, marked=None):
+    """A cell's given, placed digit or candidates; with `marked`, a cell
+    outside it shows only its placed digit."""
     x, y = grid.centre(cell)
     given = grid.givens.get(cell)
     if given is not None:
@@ -334,6 +339,8 @@ def _digits(grid, cell, candidates, removed):
     held = candidates[cell]
     if len(held) == 1:
         return [_text(x, y + 9, "solved", next(iter(held)))]
+    if marked is not None and cell not in marked:
+        return []
     drawn = held | removed
     if len(drawn) == grid.n and not removed:
         return []

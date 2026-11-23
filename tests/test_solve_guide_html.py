@@ -133,7 +133,7 @@ def _used(rules, names):
     return used
 
 
-def test_a_key_ideas_grid_lights_its_cells_and_strikes_what_it_removes(
+def test_a_key_ideas_grid_lights_its_cells_draws_only_their_candidates_and_strikes(
     guide, diagonal_dots_record
 ):
     out, page = guide
@@ -158,6 +158,11 @@ def test_a_key_ideas_grid_lights_its_cells_and_strikes_what_it_removes(
             if t[3] == svg
         }
 
+        drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == svg}
+        acting = _used(rules, steps[group[0] - 1]["named"])
+        acting |= {_name(c["cell"]) for c in claims}
+
+        assert drawn and drawn <= acting
         assert page.cells(svg, "changed") == {_name(c["cell"]) for c in claims}
         assert page.cells(svg, "used") >= _used(rules, steps[group[0] - 1]["named"])
         assert struck == {
@@ -485,3 +490,17 @@ def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
         if (r + dr, c + dc) not in DIAMOND
     }
     assert drawn_edges == expected
+
+
+def test_a_key_idea_draws_candidates_only_in_the_cells_it_uses_or_changes():
+    page = _toy(
+        _step(["row 1"], (0, 3), [4]),
+        _step(["row 1"], (0, 1), [1, 2, 3]),
+        _step(["row 2"], (1, 3), [1, 2, 3]),
+        _step(["white-a"], (0, 0), [1, 2, 3]),
+    )
+
+    grid = page.grids()[1]
+    drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == grid}
+    assert drawn == {"r1c1", "r1c2"}
+    assert [e[2] for e in page.find("text", "solved") if e[3] == grid] == ["4"]
