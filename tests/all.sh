@@ -5,6 +5,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1
 suites=(
   "uv run ruff check"
   "uv run ruff format --check"
+  "uv run shellcheck --severity=error tests/all.sh"
   "uv lock --check"
   "uv run pytest -q"
 )

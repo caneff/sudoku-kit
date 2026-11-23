@@ -113,7 +113,13 @@ def test_shellcheck_covers_every_tracked_shell_file():
         text=True,
         check=True,
     ).stdout.split()
-    covered = next(s for s in SUITES if "shellcheck" in s).split()
+    listed = subprocess.run(
+        ["bash", str(SCRIPT), "--list"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.splitlines()
+    covered = next(s for s in listed if "shellcheck" in s).split()
     assert tracked
     assert set(tracked) <= set(covered)
 

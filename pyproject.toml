@@ -10,7 +10,7 @@ dependencies = ["lzstring>=1.0.4", "ortools>=9.15"]
 solve-guide = "sudoku_kit.solve_guide:main"
 
 [dependency-groups]
-dev = ["pytest", "ruff"]
+dev = ["pytest", "ruff", "shellcheck-py"]
 
 [build-system]
 requires = ["hatchling"]
