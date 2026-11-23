@@ -633,3 +633,141 @@ def test_a_guide_file_that_skips_a_step_is_refused_and_no_guide_is_written(
     assert "skips step 1" in capsys.readouterr().err
     assert not (out / "guide.html").exists()
     assert (out / "steps.json").exists()
+
+
+def _struck(page, grid):
+    return {
+        (e[1]["data-cell"], int(e[1]["data-digit"]))
+        for e in page.find("text", "struck")
+        if e[3] == grid
+    }
+
+
+SUBSET_STEPS = [
+    _step(["white-a"], (0, 0), [1, 2, 3]),
+    _step(["white-b"], (2, 2), [1, 2, 3]),
+    _step(["white-a"], (0, 1), [1, 2, 3]),
+]
+
+
+def test_an_idea_that_explains_a_subset_strikes_and_marks_only_those_steps():
+    page = _toy(SUBSET_STEPS, _key(1, 3, explains=[1, 3]))
+
+    grid = page.grids()[1]
+    assert _struck(page, grid) == {("r1c1", 4), ("r1c2", 4)}
+    assert page.cells(grid, "changed") == {"r1c1", "r1c2"}
+    assert "r3c3" not in {e[1]["data-cell"] for e in page.find("text", "cand")}
+
+
+def test_the_steps_an_idea_does_not_explain_are_applied_but_not_drawn():
+    page = _toy(
+        [
+            _step(["row 1"], (0, 0), [1, 2, 3]),
+            _step(["white-a"], (0, 0), [2, 3]),
+        ],
+        _key(1, 2, explains=[2]),
+    )
+
+    grid = page.grids()[1]
+    drawn = {
+        int(e[1]["data-digit"])
+        for e in page.find("text", "cand")
+        if e[3] == grid and e[1]["data-cell"] == "r1c1"
+    }
+    assert drawn == {1, 2, 3}
+    assert _struck(page, grid) == {("r1c1", 1)}
+
+
+def test_the_unexplained_steps_are_listed_under_also_in_this_stretch():
+    page = _toy(SUBSET_STEPS, _key(1, 3, explains=[1, 3]))
+
+    details = page.find("details", "also")
+    assert len(details) == 1
+    summary = page.find("summary")
+    assert [e[2] for e in summary] == ["Also in this stretch"]
+    assert [(e[1]["data-step"], e[2]) for e in page.find("li", "step")] == [
+        ("2", "r3c3 keeps 1 2 3, from white dot r3c3-r3c4.")
+    ]
+
+
+def test_an_idea_with_no_list_explains_its_whole_run_and_lists_nothing_else():
+    page = _toy(SUBSET_STEPS, _key(1, 3))
+
+    assert not page.find("details")
+    assert _struck(page, page.grids()[1]) == {
+        ("r1c1", 4),
+        ("r1c2", 4),
+        ("r3c3", 4),
+    }
+
+
+def test_extra_marks_draw_on_the_ideas_grid():
+    page = _toy(
+        SUBSET_STEPS[:1],
+        _key(
+            1,
+            1,
+            marks=[
+                {"type": "arrow", "from": "r1c1", "to": "r2c2"},
+                {"type": "circle", "cell": "r4c4"},
+                {"type": "label", "cell": "r3c1", "text": "pair"},
+                {"type": "highlight", "cell": "r2c3"},
+            ],
+        ),
+    )
+
+    grid = page.grids()[1]
+    arrows = [e for e in page.find("line", "arrow") if e[3] == grid]
+    assert [(e[1]["data-from"], e[1]["data-to"]) for e in arrows] == [("r1c1", "r2c2")]
+    circles = [e for e in page.find("circle", "circle") if e[3] == grid]
+    assert [e[1]["data-cell"] for e in circles] == ["r4c4"]
+    labels = [e for e in page.find("text", "label") if e[3] == grid]
+    assert [(e[1]["data-cell"], e[2]) for e in labels] == [("r3c1", "pair")]
+    assert page.cells(grid, "highlight") == {"r2c3"}
+
+
+@pytest.mark.parametrize(
+    ("entry", "cause"),
+    [
+        (_key(1, 3, explains=[4]), r"entry 1.*step 4.*outside.*steps 1-3"),
+        (_key(2, 3, explains=[1]), r"entry 1.*step 1.*outside.*steps 2-3"),
+        (_key(1, 3, explains=[2, 2]), r"entry 1.*repeats step 2"),
+        (_key(1, 3, explains="1"), r"entry 1.*explains.*list"),
+        (_key(1, 3, explains=[]), r"entry 1.*explains.*empty"),
+        (
+            _key(1, 3, marks=[{"type": "circle", "cell": "r5c1"}]),
+            r"entry 1.*mark 1.*r5c1.*outside the grid",
+        ),
+        (
+            _key(1, 3, marks=[{"type": "arrow", "from": "r1c1", "to": "r1c9"}]),
+            r"entry 1.*mark 1.*r1c9.*outside the grid",
+        ),
+        (
+            _key(1, 3, marks=[{"type": "star", "cell": "r1c1"}]),
+            r"entry 1.*mark 1.*type 'star'",
+        ),
+        (
+            _key(1, 3, marks=[{"type": "label", "cell": "r1c1"}]),
+            r"entry 1.*mark 1.*text",
+        ),
+        (
+            _key(1, 3, marks=[{"type": "circle", "cell": "x"}]),
+            r"entry 1.*mark 1.*cell 'x'",
+        ),
+    ],
+    ids=[
+        "past-run",
+        "before-run",
+        "repeated",
+        "not-a-list",
+        "empty",
+        "circle-outside",
+        "arrow-outside",
+        "unknown-type",
+        "label-no-text",
+        "not-a-cell-name",
+    ],
+)
+def test_a_bad_explained_step_or_mark_is_refused_naming_its_cause(entry, cause):
+    with pytest.raises(ValueError, match=cause):
+        guide_html.guide_page(TOY, _record(*SUBSET_STEPS), _guide(entry))
