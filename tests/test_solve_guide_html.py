@@ -531,3 +531,20 @@ def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
     assert "data-key" not in start[0][1]
     assert [e[2] for e in page.find("text", "given") if e[3] == svg] == ["2"]
     assert not [e for e in page.find("text", "cand") if e[3] == svg]
+
+
+def test_each_key_idea_is_one_row_with_its_grid_left_of_its_text():
+    page = _toy(
+        _step(["white-a"], (0, 0), [1, 2, 3], text="The dot pins it."),
+        _step(["row 2", "column 3"], (1, 2), [1, 2]),
+    )
+
+    sections = page.find("section", "key")
+    at = page.elements.index
+    for k, section in enumerate(sections):
+        end = at(sections[k + 1]) if k + 1 < len(sections) else len(page.elements)
+        inside = page.elements[at(section) : end]
+        tags = [e[0] for e in inside if e[0] in ("svg", "div", "h2")]
+        assert tags[:3] == ["svg", "div", "h2"]
+        assert "text" in inside[[e[0] for e in inside].index("div")][1]["class"]
+    assert "The dot pins it." in [e[2] for e in page.find("p")]
