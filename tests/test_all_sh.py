@@ -17,6 +17,7 @@ SCRIPT = Path(__file__).with_name("all.sh")
 SUITES = [
     "uv run ruff check",
     "uv run ruff format --check",
+    "uv run shellcheck --severity=error tests/all.sh",
     "uv lock --check",
     "uv run pytest -q",
 ]
@@ -63,7 +64,7 @@ def test_a_green_run_passes_every_suite_and_counts_them(seam):
     assert done.returncode == 0
     assert done.stdout.splitlines() == [
         *(f"PASS {s}" for s in SUITES),
-        "4 of 4 suites passed",
+        "5 of 5 suites passed",
     ]
 
 
@@ -72,12 +73,12 @@ def test_a_failing_suite_prints_its_output_and_stops_the_run(seam):
     assert done.returncode == 1
     assert "FAIL uv lock --check\nstub output for lock --check" in done.stdout
     assert done.stdout.splitlines()[-1] == (
-        "2 of 4 suites passed, 1 failed: uv lock --check"
+        "3 of 5 suites passed, 1 failed: uv lock --check"
     )
     assert "run pytest -q" not in seam.calls()
 
 
-def test_list_prints_the_four_suites_and_runs_none(seam):
+def test_list_prints_the_five_suites_and_runs_none(seam):
     done = seam("--list")
     assert done.returncode == 0
     assert done.stdout.splitlines() == SUITES
@@ -87,10 +88,34 @@ def test_list_prints_the_four_suites_and_runs_none(seam):
 def test_changed_runs_the_whole_seam_and_says_it_widened(seam):
     done = seam("--changed", "origin/main")
     assert done.returncode == 0
-    assert len(seam.calls()) == 4
+    assert len(seam.calls()) == 5
     assert done.stdout.splitlines()[-1] == (
-        "4 of 4 suites passed (widened: the whole suite runs in seconds)"
+        "5 of 5 suites passed (widened: the whole suite runs in seconds)"
     )
+
+
+def test_a_failing_shellcheck_fails_the_seam(seam):
+    cmd = "run shellcheck --severity=error tests/all.sh"
+    done = seam(fail_on=cmd)
+    assert done.returncode == 1
+    assert f"FAIL uv {cmd}" in done.stdout
+    assert done.stdout.splitlines()[-1] == (
+        f"2 of 5 suites passed, 1 failed: uv {cmd}"
+    )
+
+
+def test_shellcheck_covers_every_tracked_shell_file():
+    root = SCRIPT.parent.parent
+    tracked = subprocess.run(
+        ["git", "ls-files", "*.sh"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    covered = next(s for s in SUITES if "shellcheck" in s).split()
+    assert tracked
+    assert set(tracked) <= set(covered)
 
 
 @pytest.mark.parametrize(
