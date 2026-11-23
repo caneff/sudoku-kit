@@ -785,7 +785,7 @@ def _key_section(rules, number, entry, record, before, k):
     held = dict(before[first])
     for i in also:
         for cell in before[i]:
-            held[cell] = held[cell] & before[i + 1][cell]
+            held[cell] = held[cell] - (before[i][cell] - before[i + 1][cell])
     removed = {}
     for i in explained:
         cell_claim = record["steps"][i - 1]["claim"]

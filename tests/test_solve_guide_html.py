@@ -678,6 +678,23 @@ def test_the_steps_an_idea_does_not_explain_are_applied_but_not_drawn():
     assert _struck(page, grid) == {("r1c1", 1)}
 
 
+def test_a_later_unexplained_step_leaves_the_explained_steps_start_alone():
+    page = _toy(
+        [
+            _step(["white-a"], (0, 0), [1, 2, 3]),
+            _step(["white-b"], (2, 2), [1, 2, 3]),
+        ],
+        _key(
+            1,
+            2,
+            explains=[1],
+            supposition=_suppose(assume=("r1c1", 4), forces=(), breaks=("r1c2",)),
+        ),
+    )
+
+    assert page.find("svg", "grid")[2][1]["data-supposition"] == "1"
+
+
 def test_the_unexplained_steps_are_listed_under_also_in_this_stretch():
     page = _toy(SUBSET_STEPS, _key(1, 3, explains=[1, 3]))
 
