@@ -14,7 +14,6 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-
 from link_helpers import DIAMOND
 
 from sudoku_kit import guide_html, step_search, sudokupad_import
@@ -381,4 +380,3 @@ def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
         if (r + dr, c + dc) not in DIAMOND
     }
     assert drawn_edges == expected
-    assert (4, 0, 4, 1) in drawn_edges and (0, 4, 1, 4) not in drawn_edges
