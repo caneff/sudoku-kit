@@ -1,0 +1,853 @@
+{
+ "id": "sxsm_ChinStrap_9f350d1de97024c9fcb3d236b421aa7c",
+ "metadata": {
+  "source": "Sudoku Maker v2025.02.24-ccf5a86",
+  "author": "ChinStrap",
+  "rules": "Normal 4x4 sudoku rules apply.\n\nSkyscrapers: All outside cells on a clue must contain a digit. That digit counts how many digits are 'seen' looking into the grid in the row/column. Digits are visible when they are larger than all digits before them.\n\nRenbans: Digits on a pink line form a consecutive sequence without repeats when sorted.",
+  "solution": "....2..24313.31241.43123.1243.......",
+  "norowcol": true,
+  "title": "Nextdoor"
+ },
+ "cages": [
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     2
+    ],
+    [
+     1,
+     3
+    ],
+    [
+     1,
+     4
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     2,
+     1
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     2,
+     4
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     3,
+     1
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     3,
+     4
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     4,
+     1
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     4,
+     3
+    ],
+    [
+     4,
+     4
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     3,
+     1
+    ],
+    [
+     4,
+     1
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     1,
+     2
+    ],
+    [
+     2,
+     2
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     4,
+     2
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     1,
+     3
+    ],
+    [
+     2,
+     3
+    ],
+    [
+     3,
+     3
+    ],
+    [
+     4,
+     3
+    ]
+   ]
+  },
+  {
+   "unique": true,
+   "hidden": true,
+   "type": "rowcol",
+   "cells": [
+    [
+     1,
+     4
+    ],
+    [
+     2,
+     4
+    ],
+    [
+     3,
+     4
+    ],
+    [
+     4,
+     4
+    ]
+   ]
+  }
+ ],
+ "cells": [
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ]
+ ],
+ "regions": [
+  [
+   [
+    1,
+    1
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    2,
+    1
+   ],
+   [
+    2,
+    2
+   ]
+  ],
+  [
+   [
+    1,
+    3
+   ],
+   [
+    1,
+    4
+   ],
+   [
+    2,
+    3
+   ],
+   [
+    2,
+    4
+   ]
+  ],
+  [
+   [
+    3,
+    1
+   ],
+   [
+    3,
+    2
+   ],
+   [
+    4,
+    1
+   ],
+   [
+    4,
+    2
+   ]
+  ],
+  [
+   [
+    3,
+    3
+   ],
+   [
+    3,
+    4
+   ],
+   [
+    4,
+    3
+   ],
+   [
+    4,
+    4
+   ]
+  ]
+ ],
+ "lines": [
+  {
+   "wayPoints": [
+    [
+     1.5,
+     2.5
+    ],
+    [
+     1.5,
+     3.5
+    ]
+   ],
+   "color": "#f067f0ff",
+   "thickness": 9.6
+  },
+  {
+   "wayPoints": [
+    [
+     0.5,
+     4.5
+    ],
+    [
+     1.5,
+     4.5
+    ],
+    [
+     1.5,
+     5.5
+    ]
+   ],
+   "color": "#f067f0ff",
+   "thickness": 9.6
+  },
+  {
+   "wayPoints": [
+    [
+     2.5,
+     3.5
+    ],
+    [
+     2.5,
+     5.5
+    ],
+    [
+     3.5,
+     5.5
+    ]
+   ],
+   "color": "#f067f0ff",
+   "thickness": 9.6
+  },
+  {
+   "wayPoints": [
+    [
+     3.5,
+     2.5
+    ],
+    [
+     3.5,
+     4.5
+    ]
+   ],
+   "color": "#f067f0ff",
+   "thickness": 9.6
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     4,
+     1
+    ],
+    [
+     4,
+     0
+    ],
+    [
+     5,
+     0
+    ],
+    [
+     5,
+     6
+    ],
+    [
+     6,
+     6
+    ],
+    [
+     6,
+     5
+    ],
+    [
+     5,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     4,
+     0
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     5,
+     0
+    ],
+    [
+     6,
+     0
+    ],
+    [
+     6,
+     1
+    ],
+    [
+     5,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     5,
+     2
+    ],
+    [
+     6,
+     2
+    ],
+    [
+     6,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     5,
+     3
+    ],
+    [
+     6,
+     3
+    ],
+    [
+     6,
+     2
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     5,
+     4
+    ],
+    [
+     6,
+     4
+    ],
+    [
+     6,
+     3
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     5,
+     5
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     3,
+     0
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     6,
+     4
+    ],
+    [
+     6,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     5,
+     6
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     4,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     2,
+     0
+    ],
+    [
+     2,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     1,
+     0
+    ],
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     1,
+     2
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     1,
+     1
+    ],
+    [
+     0,
+     1
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     1,
+     3
+    ],
+    [
+     0,
+     3
+    ],
+    [
+     0,
+     2
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     1,
+     4
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     3
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     6
+    ],
+    [
+     2,
+     6
+    ],
+    [
+     2,
+     5
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     0,
+     5
+    ],
+    [
+     0,
+     6
+    ],
+    [
+     1,
+     6
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     3,
+     5
+    ],
+    [
+     3,
+     6
+    ],
+    [
+     2,
+     6
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     3,
+     6
+    ],
+    [
+     4,
+     6
+    ]
+   ],
+   "color": "#FFFFFF",
+   "thickness": 1.92
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     1,
+     4
+    ],
+    [
+     0,
+     4
+    ],
+    [
+     0,
+     5
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     6
+    ],
+    [
+     4,
+     6
+    ],
+    [
+     4,
+     5
+    ]
+   ],
+   "color": "#d7d7d7ff",
+   "thickness": 1.28
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     2,
+     6
+    ],
+    [
+     2,
+     5
+    ]
+   ],
+   "color": "#d7d7d7ff",
+   "thickness": 1.28
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     3,
+     6
+    ],
+    [
+     3,
+     5
+    ]
+   ],
+   "color": "#d7d7d7ff",
+   "thickness": 1.28
+  },
+  {
+   "target": "overlay",
+   "wayPoints": [
+    [
+     3,
+     3
+    ],
+    [
+     5,
+     3
+    ],
+    [
+     5,
+     5
+    ],
+    [
+     1,
+     5
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     5,
+     1
+    ],
+    [
+     5,
+     3
+    ]
+   ],
+   "color": "#000000",
+   "thickness": 3
+  }
+ ]
+}

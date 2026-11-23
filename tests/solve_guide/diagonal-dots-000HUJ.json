@@ -1,0 +1,350 @@
+{
+ "id": "sxsm_ChrisNeffshade_675f30a8b427171d225c90d4af9c0e06",
+ "metadata": {
+  "solution": "534162612543256431143256325614461325",
+  "source": "Sudoku Maker v2024.03.28-834a788",
+  "author": "Chris Neffshade ",
+  "rules": "Normal 6x6 sudoku rules apply.\n\nDiagonal Kropki dots: Every pair of digits diagonally connected by a black dot must be in a 2:1 ratio. Every pair of digits diagonally connected by a white dot must be consecutive. Not all possible dots are necessarily given.",
+  "title": "Diagonal Dots"
+ },
+ "cages": [],
+ "cellSize": 50,
+ "cells": [
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {
+    "value": 4
+   }
+  ],
+  [
+   {},
+   {},
+   {},
+   {},
+   {},
+   {}
+  ]
+ ],
+ "regions": [
+  [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    0,
+    2
+   ],
+   [
+    1,
+    0
+   ],
+   [
+    1,
+    1
+   ],
+   [
+    1,
+    2
+   ]
+  ],
+  [
+   [
+    0,
+    3
+   ],
+   [
+    0,
+    4
+   ],
+   [
+    0,
+    5
+   ],
+   [
+    1,
+    3
+   ],
+   [
+    1,
+    4
+   ],
+   [
+    1,
+    5
+   ]
+  ],
+  [
+   [
+    2,
+    0
+   ],
+   [
+    2,
+    1
+   ],
+   [
+    2,
+    2
+   ],
+   [
+    3,
+    0
+   ],
+   [
+    3,
+    1
+   ],
+   [
+    3,
+    2
+   ]
+  ],
+  [
+   [
+    2,
+    3
+   ],
+   [
+    2,
+    4
+   ],
+   [
+    2,
+    5
+   ],
+   [
+    3,
+    3
+   ],
+   [
+    3,
+    4
+   ],
+   [
+    3,
+    5
+   ]
+  ],
+  [
+   [
+    4,
+    0
+   ],
+   [
+    4,
+    1
+   ],
+   [
+    4,
+    2
+   ],
+   [
+    5,
+    0
+   ],
+   [
+    5,
+    1
+   ],
+   [
+    5,
+    2
+   ]
+  ],
+  [
+   [
+    4,
+    3
+   ],
+   [
+    4,
+    4
+   ],
+   [
+    4,
+    5
+   ],
+   [
+    5,
+    3
+   ],
+   [
+    5,
+    4
+   ],
+   [
+    5,
+    5
+   ]
+  ]
+ ],
+ "overlays": [
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    5,
+    2
+   ],
+   "width": 0.32,
+   "height": 0.32,
+   "thickness": 1,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    4,
+    2
+   ],
+   "width": 0.32,
+   "height": 0.32,
+   "thickness": 1,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    4,
+    4
+   ],
+   "width": 0.33,
+   "height": 0.33,
+   "thickness": 2,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    1,
+    3
+   ],
+   "width": 0.33,
+   "height": 0.33,
+   "thickness": 2,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    3,
+    4
+   ],
+   "width": 0.33,
+   "height": 0.33,
+   "thickness": 2,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    2,
+    1
+   ],
+   "width": 0.33,
+   "height": 0.33,
+   "thickness": 2,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    5,
+    2
+   ],
+   "width": 0.32,
+   "height": 0.32,
+   "thickness": 1,
+   "rounded": true,
+   "backgroundColor": "#FFFFFF",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    5,
+    1
+   ],
+   "width": 0.32,
+   "height": 0.32,
+   "thickness": 1,
+   "rounded": true,
+   "backgroundColor": "#000000",
+   "borderColor": "#000000"
+  },
+  {
+   "stroke": "none",
+   "angle": 360,
+   "center": [
+    1,
+    5
+   ],
+   "width": 0.33,
+   "height": 0.33,
+   "thickness": 2,
+   "rounded": true,
+   "backgroundColor": "#000000",
+   "borderColor": "#000000"
+  }
+ ]
+}
