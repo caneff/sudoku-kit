@@ -43,6 +43,16 @@ A **key idea** entry:
   `{"type": "circle", "cell": "r1c1"}`,
   `{"type": "label", "cell": "r1c1", "text": "pair"}` and
   `{"type": "highlight", "cell": "r1c1"}`.
+- `supposition` (optional): the idea argues "suppose this cell were X". An
+  object with `assume`, `forces` and `breaks`. `assume` is `{"cell": "r1c1",
+  "digit": 4}`, a digit the idea's explained steps eliminate. `forces` is a
+  list of `{"cell", "digit"}` in the order the assumption forces them (it may
+  be empty). `breaks` is a non-empty list of the cells where the assumption
+  clashes. The library draws a second grid beside the idea's own, from the
+  candidates before the idea's first step: the assumed and forced digits in
+  their own colour, the forced ones numbered in order, and the clash cells
+  circled. Every digit drawn must be a candidate in its cell at the idea's
+  start.
 
 A **fill** entry:
 
@@ -80,7 +90,13 @@ guide file:
 - flags more than one break-in;
 - explains a step outside its own run, or repeats one, or gives an empty list;
 - has a mark of another type, a field the type does not take, or a cell
-  outside the grid.
+  outside the grid;
+- has a supposition that is not an object with `assume`, `forces` and
+  `breaks`, names a cell outside the grid or a digit outside 1 to the board
+  size, or has an empty `breaks`;
+- has a supposition whose assumed digit the idea's explained steps do not
+  eliminate, or that draws a digit which is not a candidate in its cell at
+  the idea's start. The message names the cell and digit.
 
 Without `--guide` the command still checks the rules file and runs the
 search, but it writes no guide and says so.

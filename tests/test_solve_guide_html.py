@@ -771,3 +771,137 @@ def test_extra_marks_draw_on_the_ideas_grid():
 def test_a_bad_explained_step_or_mark_is_refused_naming_its_cause(entry, cause):
     with pytest.raises(ValueError, match=cause):
         guide_html.guide_page(TOY, _record(*SUBSET_STEPS), _guide(entry))
+
+
+def _suppose(assume=("r1c1", 4), forces=(("r1c2", 3), ("r2c2", 2)), breaks=("r2c1",)):
+    return {
+        "assume": {"cell": assume[0], "digit": assume[1]},
+        "forces": [{"cell": c, "digit": d} for c, d in forces],
+        "breaks": list(breaks),
+    }
+
+
+def _by_grid(page, cls, grid):
+    return [e for e in page.find("text", cls) if e[3] == grid]
+
+
+def test_a_supposition_draws_a_second_grid_in_the_ideas_row():
+    page = _toy(SUBSET_STEPS[:1], _key(1, 1, supposition=_suppose()))
+
+    row = page.find("section", "key")
+    assert len(row) == 1
+    grids = page.find("svg", "grid")[1:]
+    assert [(e[1].get("data-key"), e[1].get("data-supposition")) for e in grids] == [
+        ("1", None),
+        (None, "1"),
+    ]
+
+
+def test_a_supposition_numbers_the_forced_digits_in_order_and_circles_the_clash():
+    page = _toy(SUBSET_STEPS[:1], _key(1, 1, supposition=_suppose()))
+
+    second = next(e for e in page.find("svg", "grid") if e[1].get("data-supposition"))[
+        3
+    ]
+    assumed = _by_grid(page, "assumed", second)
+    assert [(e[1]["data-cell"], e[1]["data-digit"]) for e in assumed] == [("r1c1", "4")]
+    forced = _by_grid(page, "forced", second)
+    assert [
+        (e[1]["data-cell"], e[1]["data-digit"], e[1]["data-order"]) for e in forced
+    ] == [
+        ("r1c2", "3", "1"),
+        ("r2c2", "2", "2"),
+    ]
+    assert [(e[1]["data-cell"], e[2]) for e in _by_grid(page, "order", second)] == [
+        ("r1c2", "1"),
+        ("r2c2", "2"),
+    ]
+    circles = [e for e in page.find("circle", "circle") if e[3] == second]
+    assert [e[1]["data-cell"] for e in circles] == ["r2c1"]
+    # the main grid carries no supposition marks
+    main = page.grids()[1]
+    assert not _by_grid(page, "assumed", main) and not _by_grid(page, "forced", main)
+    assert not [e for e in page.find("circle", "circle") if e[3] == main]
+
+
+def test_a_supposition_grid_starts_from_the_ideas_starting_candidates():
+    page = _toy(SUBSET_STEPS[:1], _key(1, 1, supposition=_suppose()))
+
+    second = next(e for e in page.find("svg", "grid") if e[1].get("data-supposition"))[
+        3
+    ]
+    drawn = {
+        int(e[1]["data-digit"])
+        for e in page.find("text", "cand")
+        if e[3] == second and e[1].get("data-cell") == "r1c2"
+    }
+    assert drawn == {1, 2, 3, 4}
+
+
+def test_an_idea_without_a_supposition_draws_one_grid():
+    page = _toy(SUBSET_STEPS[:1], _key(1, 1))
+
+    assert len([e for e in page.find("svg", "grid") if e[1].get("data-key")]) == 1
+
+
+def test_an_assumed_digit_the_steps_do_not_eliminate_is_refused_naming_it():
+    with pytest.raises(ValueError, match=r"entry 1.*r1c1.*1.*eliminate"):
+        guide_html.guide_page(
+            TOY,
+            _record(*SUBSET_STEPS[:1]),
+            _guide(_key(1, 1, supposition=_suppose(assume=("r1c1", 1)))),
+        )
+
+
+def test_an_assumed_digit_only_an_unexplained_step_eliminates_is_refused():
+    with pytest.raises(ValueError, match=r"entry 1.*r1c1.*4.*eliminate"):
+        guide_html.guide_page(
+            TOY,
+            _record(*SUBSET_STEPS),
+            _guide(_key(1, 3, explains=[2], supposition=_suppose())),
+        )
+
+
+def test_a_drawn_digit_that_is_not_a_candidate_is_refused_naming_it():
+    steps = [_step(["row 1"], (0, 2), [1, 2, 3]), SUBSET_STEPS[0]]
+    guide = _guide(
+        _fill(1, 1),
+        _key(2, 2, supposition=_suppose(forces=(("r1c3", 4),))),
+    )
+    with pytest.raises(ValueError, match=r"entry 2.*r1c3.*4.*not a candidate"):
+        guide_html.guide_page(TOY, _record(*steps), guide)
+
+
+@pytest.mark.parametrize(
+    ("supposition", "cause"),
+    [
+        ("r1c1", r"entry 1.*supposition.*object"),
+        ({"assume": {"cell": "r1c1", "digit": 4}}, r"entry 1.*supposition.*no"),
+        (
+            {**_suppose(), "extra": 1},
+            r"entry 1.*supposition.*unknown fields.*extra",
+        ),
+        (_suppose(assume=("r9c1", 4)), r"entry 1.*r9c1.*outside the grid"),
+        (_suppose(assume=("r1c1", 9)), r"entry 1.*digit 9"),
+        (_suppose(forces=(("r1c9", 1),)), r"entry 1.*r1c9.*outside the grid"),
+        (_suppose(breaks=("r7c7",)), r"entry 1.*r7c7.*outside the grid"),
+        (_suppose(breaks=()), r"entry 1.*breaks.*empty"),
+    ],
+    ids=[
+        "not-object",
+        "missing",
+        "unknown",
+        "assume-outside",
+        "digit-range",
+        "force-outside",
+        "break-outside",
+        "no-break",
+    ],
+)
+def test_a_malformed_supposition_is_refused_naming_its_cause(supposition, cause):
+    with pytest.raises(ValueError, match=cause):
+        guide_html.guide_page(
+            TOY,
+            _record(*SUBSET_STEPS[:1]),
+            _guide(_key(1, 1, supposition=supposition)),
+        )
