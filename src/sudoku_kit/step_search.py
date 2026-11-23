@@ -123,6 +123,7 @@ class State:
     def __init__(self, rules):
         n = rules["size"]
         self.size = n
+        self.holes = rules_file.holes(rules)
         # Outside cells are variables too; leaving them out would let a proof
         # skip a clue's digit beside the grid.
         self.candidates = {
@@ -145,7 +146,10 @@ class State:
         n = self.size
         # A hole holds no digit, so it has no candidates and its grid entry is 0.
         rows = [
-            [sorted(self.candidates.get((r, c), ())) for c in range(n)]
+            [
+                [] if (r, c) in self.holes else sorted(self.candidates[r, c])
+                for c in range(n)
+            ]
             for r in range(n)
         ]
         on_grid = {(r, c) for r in range(n) for c in range(n)}

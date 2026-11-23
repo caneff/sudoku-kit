@@ -116,23 +116,31 @@ def _cell_of(point):
     return tuple(int((v + 1e-9) // 1) for v in point)
 
 
+def _is_path(line):
+    """True for a line SudokuPad stores as an SVG path, not as waypoints."""
+    return "wayPoints" not in line and "d" in line
+
+
 def _d_points(line):
-    """A line's SVG path as (row, column) points in cell units, or None when it
-    holds any command but M and L (tile art, never a rule's line)."""
+    """A line's SVG path as (row, column) points in cell units. Anything but
+    `M` and `L` commands, each with one x y pair, is refused: such a path is
+    unread, and a rule's line must never be dropped silently as tile art."""
     path = line["d"]
-    if not set(PATH_COMMAND.findall(path)) <= {"M", "L"}:
-        return None
     points = [
         (float(y) / CELL_PIXELS, float(x) / CELL_PIXELS)
         for _, x, y in PATH_POINT.findall(path)
     ]
-    return points or None
+    if not points or PATH_POINT.sub("", path).strip():
+        raise ValueError(
+            f"a line path the importer does not read (only M and L, one x y "
+            f"pair each): {_preview(line)}"
+        )
+    return points
 
 
 def _way_points(item):
     """The waypoints of a line or arrow, refusing one with none."""
-    points = _d_points(item) if "wayPoints" not in item and "d" in item else None
-    points = item["wayPoints"] if points is None else points
+    points = _d_points(item) if _is_path(item) else item["wayPoints"]
     if not points:
         raise ValueError(f"a line or arrow with no waypoints: {_preview(item)}")
     return points
@@ -311,9 +319,10 @@ def _decoration(line):
     """True for a line drawn over the grid along cell corners: the frame, the
     boxes round outside cells, a tessellation's tile outlines. No rule runs
     there, since a rule's line runs through cell centres."""
-    if "wayPoints" not in line and "d" in line:
-        points = _d_points(line)
-        return points is None or not all(_at_centre(p) for p in points)
+    if _is_path(line):
+        # Tile art touches no cell centre; a path that touches some and not all
+        # is a rule's line gone wrong, left for `_path` to refuse.
+        return not any(_at_centre(p) for p in _d_points(line))
     return line.get("target") == "overlay" and all(
         abs(v - round(v)) < 1e-6 for point in _way_points(line) for v in point
     )
@@ -409,27 +418,33 @@ def _board(puzzle, size):
     return top, left, n
 
 
-def _solution(text, size, top, left, n, holes_ok):
+def _solution(text, size, board, holes_ok):
     """(solution, {sheet cell: digit} beside the grid, holes), or (None, {}, set()).
     The sheet's digits cover the grid; a digit elsewhere is an outside cell's. A
-    grid cell with no digit is a hole where `holes_ok` (a board of no regions),
-    its solution entry None, and a refusal anywhere else."""
+    grid cell holding "." is a hole where `holes_ok` (a board of no regions),
+    its solution entry None; any other non-digit, or a "." beside regions, is
+    refused."""
+    top, left, n = board
     if text is None:
         return None, {}, set()
-    grid = [
-        [text[(top + r) * size + left + c] for c in range(n)]
-        if len(text) == size**2
-        else []
-        for r in range(n)
-    ]
+    if len(text) != size**2:
+        raise ValueError(f"the stored solution is not {size**2} characters: {text!r}")
+    grid = [[text[(top + r) * size + left + c] for c in range(n)] for r in range(n)]
+    odd = [d for row in grid for d in row if not d.isdigit() and d != "."]
+    if odd or (not holes_ok and any("." in row for row in grid)):
+        raise ValueError(
+            "the stored solution has a grid cell with no digit"
+            + ("" if odd else " beside regions, which mark every cell")
+            + f": {text!r}"
+        )
     holes = {
         (top + r, left + c)
         for r, row in enumerate(grid)
         for c, d in enumerate(row)
-        if not d.isdigit()
+        if d == "."
     }
-    if len(text) != size**2 or (holes and not holes_ok) or len(holes) == n * n:
-        raise ValueError(f"the stored solution is not {size**2} digits: {text!r}")
+    if len(holes) == n * n:
+        raise ValueError(f"the stored solution has no digit in the grid: {text!r}")
     inside = {(top + r, left + c) for r in range(n) for c in range(n)}
     beside = {
         divmod(k, size): int(d)
@@ -694,8 +709,8 @@ def _square_tiles(puzzle, playable):
     points = {
         (round(r * CELL_PIXELS), round(c * CELL_PIXELS))
         for line in puzzle.get("lines") or []
-        if "wayPoints" not in line and "d" in line
-        for r, c in _d_points(line) or []
+        if _is_path(line)
+        for r, c in _d_points(line)
     }
     return {
         (r, c)
@@ -717,7 +732,7 @@ def _tessellation_clues(puzzle, text, playable):
     sentence says that cells sharing an edge may not repeat: side by side,
     and corner to corner for two octagons (the cells that are not squares)."""
     sentences = [x for x in _sentences(text) if re.search(r"shar(e|ing) an edge", x)]
-    if not sentences:
+    if not sentences or not _says(text, "tessellation"):
         return []
     if not any(re.search(r"\b(not|never)\b|n't|differ", x) for x in sentences):
         raise ValueError(
@@ -732,7 +747,7 @@ def _tessellation_clues(puzzle, text, playable):
                 if not parities
                 else "small squares on cells of both parities"
             )
-            + ", so squares cannot be told from octagons"
+            + f", so squares cannot be told from octagons: {_preview(sentences[0])}"
         )
     (square,) = parities
     pairs = []
@@ -758,16 +773,20 @@ def _tessellation_clues(puzzle, text, playable):
 
 def _consecutive_clues(text, playable, board):
     """A consecutive-set clue for each row, each column or both, as the
-    sentence names them, over the `playable` cells of every line with two."""
+    sentence names them, over the `playable` cells of every line with two. A
+    consecutive-set sentence about a line rule's path is that rule's."""
     top, left, n = board
+    lines = {
+        "row": [[(r, c) for c in range(left, left + n)] for r in range(top, top + n)],
+        "column": [
+            [(r, c) for r in range(top, top + n)] for c in range(left, left + n)
+        ],
+    }
     clues = []
     for sentence in (x for x in _sentences(text) if "consecutive set" in x):
-        lines = {"row": [], "column": []}
-        for r in range(top, top + n):
-            lines["row"].append([(r, c) for c in range(left, left + n)])
-        for c in range(left, left + n):
-            lines["column"].append([(r, c) for r in range(top, top + n)])
-        named = [kind for kind in lines if kind in sentence]
+        named = [kind for kind in lines if re.search(rf"\b{kind}s?\b", sentence)]
+        if not named and any(pattern.search(sentence) for _, pattern in LINE_RULES):
+            continue
         if not named:
             raise ValueError(
                 f"a consecutive set sentence naming no row or column: {_preview(sentence)}"
@@ -828,8 +847,13 @@ def _rules_file(puzzle):
     top, left, n = board
     metadata = puzzle.get("metadata") or {}
     text = metadata.get("rules", "")
+    if not puzzle["regions"] and metadata.get("solution") is None:
+        raise ValueError(
+            "the puzzle has no regions and no stored solution, so which cells "
+            "of the sheet are part of the board cannot be told"
+        )
     solution, beside, holes = _solution(
-        metadata.get("solution"), size, top, left, n, not puzzle["regions"]
+        metadata.get("solution"), size, board, not puzzle["regions"]
     )
     playable = {
         (r, c)

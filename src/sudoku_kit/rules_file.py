@@ -103,12 +103,14 @@ def validate(rules):
     n = rules["size"]
     if not isinstance(n, int) or n < 1:
         raise ValueError(f"the rules file's size is {n!r}, not a positive integer")
-    for k, region in enumerate(rules["regions"], 1):
-        for cell in region:
-            _on_board(rules, cell, f"region {k}")
     for cell in rules.get("holes") or []:
         _on_board(rules, cell, "holes")
     off = holes(rules)
+    for k, region in enumerate(rules["regions"], 1):
+        for cell in region:
+            _on_board(rules, cell, f"region {k}")
+            if tuple(cell) in off:
+                raise ValueError(f"region {k} names cell {cell!r}, a hole")
     for given in rules["givens"]:
         _on_board(rules, given["cell"], f"given {given!r}")
         if tuple(given["cell"]) in off:
