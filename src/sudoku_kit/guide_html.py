@@ -69,7 +69,7 @@ img.original { max-width: 24rem; }
 .cell.changed { fill: #ffe08a; }
 .given { font-weight: bold; font-size: 26px; }
 .solved { font-size: 26px; fill: #236; }
-.cand { font-size: 11px; fill: #555; }
+.cand { font-size: 14px; fill: #555; }
 .cand.struck { fill: #c22; text-decoration: line-through; }
 .breakin, .hard { font-weight: bold; color: #b00; }
 .rules { white-space: pre-line; }
