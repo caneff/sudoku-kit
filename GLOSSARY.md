@@ -13,8 +13,8 @@ The digits still possible in a cell at a given point in a solve.
 _Avoid_: Pencil marks, notes, options
 
 **Step**:
-One deduction in a solve path, made from the candidates and a stated set of
-constraints.
+One claim in a solve path, proved from the candidates and a stated set of
+constraints. The guide groups steps into deductions.
 _Avoid_: Move, technique
 
 **Named constraints**:
@@ -65,10 +65,29 @@ _Avoid_: Smallest set, minimum set, core
 ### Solve guide
 
 **Solve guide**:
-A short document for a stuck solver showing the break-in and the key steps of
-one puzzle, each drawn on its own grid, with runs of singles collapsed into
-one line.
+A short document for a stuck solver showing the key ideas of one puzzle, the
+break-in first, each drawn on its own grid, with the fill between them summed
+up in one sentence per stretch.
 _Avoid_: Walkthrough, solution, write-up
+
+**Deduction**:
+A group of steps that name the same constraints, shown in the guide as one
+idea. Steps that are not adjacent join one deduction when no step between
+them changed a cell it uses; it sits at its last step's position. Grouping is
+computed from the step record, which keeps one entry per step.
+_Avoid_: Move
+
+**Key idea**:
+A deduction the guide draws on its own numbered grid: the break-in (the first
+deduction that needs a clue), one naming two or more constraints, the first
+to use its clue's rule type, or a hard one. Numbered 1..N with no gaps.
+_Avoid_: Key step, main step
+
+**Fill**:
+The deductions between two key ideas, shown as one sentence counting the
+digits placed and candidates removed and naming their houses and clues, with
+the deductions themselves in a collapsed list. Fill carries no numbers.
+_Avoid_: Singles, routine steps
 
 **Rules file**:
 The one JSON description of a puzzle every solve-guide stage reads: grid size,

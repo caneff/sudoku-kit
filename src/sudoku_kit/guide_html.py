@@ -1,20 +1,28 @@
-"""The solve guide as an HTML page: the main steps of a step record, each on
-its own SVG grid, redrawn from the rules file (spec #106).
+"""The solve guide as an HTML page: the key ideas of a step record, each on
+its own SVG grid, and the fill between them, redrawn from the rules file
+(specs #106 and #127).
 
-`shown(rules, record)` picks the main steps mechanically, so two runs over the
-same record show the same ones. A step is shown when it names a clue (a
-variant rule) or two or more constraints, or when it carries a chain or
-`either` claim. Every other step names one row, column or region, and each
-unbroken run of those collapses into one line. The break-in (`break_in`) is
-the first step that names a clue or two or more constraints: its section is
-labelled, and a hard step (more than 3 named constraints) is marked as hard.
-A stuck record ends the guide with the grid and candidates at the stuck point.
+`deductions(rules, record)` groups the record's steps into deductions. A step
+joins an earlier deduction naming the same set of constraints, adjacent or
+not, unless a step between them changed a cell that deduction uses (a cell of
+its named constraints or of its claims). A step whose claim is a chain or an
+`either` is a deduction of its own. A deduction sits at its last step's
+position. Grouping and the key ideas are computed from the record alone, so
+two runs over the same record give the same guide.
 
-A shown step's grid draws the candidates before the step, with the digits the
-step removes struck out. Cells of the constraints it names are marked `used`
-and the cell it changes `changed`. A chain claim is drawn as arrows along the
-chain, and an `either` claim circles each pattern's cells. A step may also
-carry, written there by the skill:
+A deduction is a key idea when it is the break-in (the first deduction that
+names a clue), names two or more constraints, is the first to name a clue of
+its rule type, or is hard (more than 3 named constraints, which the second
+rule already takes). Key ideas are numbered 1..N. Each stretch of deductions
+between them is fill: one sentence counting its placements and eliminations
+and naming its houses and clues, with a collapsed list of its deductions. A
+stuck record ends the guide with the grid and candidates at the stuck point.
+
+A key idea's grid draws the candidates before it, with the digits it removes
+struck out. Cells of the constraints it names are marked `used` and the cells
+it changes `changed`. A chain claim is drawn as arrows along the chain, and an
+`either` claim circles each pattern's cells. A step may also carry, written
+there by the skill, and shown only on a key idea:
 
 - `text`: a sentence shown under its grid.
 - `annotations`: a list of `{"type": "arrow", "from": cell, "to": cell}`,
@@ -58,47 +66,53 @@ img.original { max-width: 24rem; }
 """
 
 
-def _single_house(rules, step):
-    """True when the step names exactly one row, column or region."""
-    houses = rules_file.house_names(rules)
-    return len(step["named"]) == 1 and step["named"][0] in houses
-
-
-def break_in(rules, record):
-    """The number of the first step naming a clue or two or more constraints,
-    or None when there is no such step."""
-    return next(
-        (
-            i
-            for i, step in enumerate(record["steps"], 1)
-            if not _single_house(rules, step)
-        ),
-        None,
+def deductions(rules, record):
+    """The record's deductions in guide order, each `{"named", "steps",
+    "claims"}`: `steps` its step numbers from 1, `claims` theirs in order."""
+    registry = rules_file.registry(rules)
+    groups, open_groups = [], {}
+    for number, step in enumerate(record["steps"], 1):
+        claim = step["claim"]
+        key = frozenset(step["named"]) if "cell" in claim else None
+        group = open_groups.get(key)
+        if group is None:
+            group = {"named": step["named"], "steps": [], "claims": [], "cells": set()}
+            groups.append(group)
+            if key is not None:
+                open_groups[key] = group
+        group["steps"].append(number)
+        group["claims"].append(claim)
+        changed, _ = _claim_marks(claim)
+        group["cells"] |= changed
+        for name in step["named"]:
+            group["cells"].update(registry[name].cells)
+        if "cell" in claim:
+            open_groups = {
+                k: g
+                for k, g in open_groups.items()
+                if g is group or tuple(claim["cell"]) not in g["cells"]
+            }
+    return sorted(
+        ({k: g[k] for k in ("named", "steps", "claims")} for g in groups),
+        key=lambda g: g["steps"][-1],
     )
 
 
-def shown(rules, record):
-    """The guide's items in step order: ("step", number, step) for a shown
-    step and ("singles", [numbers], [steps]) for each run of the rest. Step
-    numbers count from 1."""
-    steps = record["steps"]
-    items, run = [], []
-    for i, step in enumerate(steps, 1):
-        main = (
-            not _single_house(rules, step)
-            or "chain" in step["claim"]
-            or "either" in step["claim"]
-        )
-        if not main:
-            run.append((i, step))
-            continue
-        if run:
-            items.append(("singles", [i for i, _ in run], [s for _, s in run]))
-            run = []
-        items.append(("step", i, step))
-    if run:
-        items.append(("singles", [i for i, _ in run], [s for _, s in run]))
-    return items
+def key_ideas(rules, groups):
+    """The indices into `groups` of its key ideas, and the break-in's index
+    or None."""
+    houses = rules_file.house_names(rules)
+    rule_of = {clue["id"]: clue["rule"] for clue in rules["clues"]}
+    keys, seen, first = [], set(), None
+    for i, group in enumerate(groups):
+        clues = [rule_of[n] for n in group["named"] if n not in houses]
+        new_rule = any(rule not in seen for rule in clues)
+        seen.update(clues)
+        if clues and first is None:
+            first = i
+        if i == first or len(group["named"]) >= 2 or new_rule:
+            keys.append(i)
+    return keys, first
 
 
 def _states(rules, record):
@@ -244,26 +258,27 @@ def _claim_marks(claim):
     return cells, [{"type": "circle", "cell": c} for c in sorted(cells)]
 
 
-def render(rules, candidates=None, step=None, prefix="g"):
+def render(rules, candidates=None, idea=None, prefix="g"):
     """One grid as an SVG string. `candidates` ({cell: digits}) draws each
-    cell's digits; without it only givens show. `step` marks that step's cells
-    and strikes out what it removes."""
+    cell's digits; without it only givens show. `idea`, a key idea (a
+    deduction with its `key` number, `annotations` and `removed`, {cell:
+    digits}), marks its cells and strikes out what it removes."""
     grid = Grid(rules)
     registry = rules_file.registry(rules)
     used, changed, removed, notes = set(), set(), {}, []
-    if step is not None:
-        for name in step["named"]:
+    if idea is not None:
+        for name in idea["named"]:
             used.update(registry[name].cells)
-        claim = step["claim"]
-        changed, notes = _claim_marks(claim)
-        if "cell" in claim:
-            cell = tuple(claim["cell"])
-            removed[cell] = candidates[cell] - set(claim["digits"])
-        notes = notes + step.get("annotations", [])
+        for claim in idea["claims"]:
+            cells, marks = _claim_marks(claim)
+            changed |= cells
+            notes += marks
+        removed = idea["removed"]
+        notes += idea["annotations"]
     out = [
         f'<svg class="grid" xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {grid.columns * CELL} {grid.rows * CELL}"'
-        + (f' data-step="{step["number"]}"' if step is not None else "")
+        + (f' data-key="{idea["key"]}"' if idea is not None else "")
         + ">",
         f'<defs><marker id="{prefix}-head" markerWidth="8" markerHeight="8" refX="6" '
         'refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c22"/></marker></defs>',
@@ -330,8 +345,7 @@ def _digits(grid, cell, candidates, removed):
     return out
 
 
-def _describe(step):
-    claim = step["claim"]
+def _describe(claim):
     if "cell" in claim:
         cell = rules_file.cell_name(claim["cell"])
         digits = claim["digits"]
@@ -345,38 +359,96 @@ def _describe(step):
     return "at least one of several patterns holds"
 
 
-def _singles(numbers, steps):
-    span = f"{numbers[0]}-{numbers[-1]}"
-    houses = ", ".join(dict.fromkeys(n for s in steps for n in s["named"]))
-    claims = "; ".join(_describe(s) for s in steps)
-    label = f"Step {numbers[0]}" if len(numbers) == 1 else f"Steps {span}"
+def _claims(group):
+    return ", ".join(_describe(claim) for claim in group["claims"])
+
+
+def _steps_attr(group):
+    return " ".join(map(str, group["steps"]))
+
+
+def _plural(count, word):
+    return f"{count} {word}" + ("" if count == 1 else "s")
+
+
+def _fill(rules, groups, before):
+    """One stretch of fill: a sentence, then its deductions collapsed."""
+    houses = rules_file.house_names(rules)
+    rule_of = {clue["id"]: clue["rule"] for clue in rules["clues"]}
+    placed = removed = 0
+    for group in groups:
+        for number, claim in zip(group["steps"], group["claims"], strict=True):
+            if "cell" not in claim:
+                continue
+            held = before[number][tuple(claim["cell"])]
+            if len(claim["digits"]) == 1:
+                placed += 1
+            else:
+                removed += len(held) - len(claim["digits"])
+    names = dict.fromkeys(n for g in groups for n in g["named"])
+    sources = [n for n in names if n in houses]
+    clues = [rule_of[n] for n in names if n not in houses]
+    for rule in dict.fromkeys(clues):
+        kind = rule.replace("_", " ")
+        sources.append(_plural(clues.count(rule), f"{kind} clue"))
+    made = [_plural(placed, "digit") + " placed"] if placed else []
+    if removed:
+        made.append(_plural(removed, "candidate") + " removed")
+    if not made:
+        made = ["no candidate changed"]
+    using = (
+        ", ".join(sources[:-1]) + " and " + sources[-1]
+        if len(sources) > 1
+        else sources[0]
+    )
+    items = "".join(
+        f'<li class="deduction" data-steps="{_steps_attr(g)}">'
+        f"{html.escape(', '.join(g['named']))}: {html.escape(_claims(g))}.</li>"
+        for g in groups
+    )
     return (
-        f'<p class="singles" data-steps="{span}">{label}: {len(steps)} from '
-        f"{html.escape(houses)} alone. {html.escape(claims)}.</p>"
+        f'<div class="fill"><p class="fill">Fill: {" and ".join(made)}, from '
+        f"{html.escape(using)}.</p><details><summary>The "
+        f"{_plural(len(groups), 'deduction')}</summary><ul>{items}</ul></details></div>"
     )
 
 
-def _step_section(rules, number, step, before, is_break_in):
-    named = ", ".join(step["named"])
-    drawn = dict(step, number=number)
+def _key_section(rules, number, group, record, before, is_break_in):
+    """One key idea: its heading, labels, grid and any text the skill wrote."""
+    steps = [record["steps"][i - 1] for i in group["steps"]]
+    held = dict(before[group["steps"][-1]])
+    removed = {}
+    for i, claim in zip(group["steps"], group["claims"], strict=True):
+        if "cell" not in claim:
+            continue
+        cell = tuple(claim["cell"])
+        if cell not in removed:
+            held[cell] = before[i][cell]
+        removed[cell] = held[cell] - set(claim["digits"])
+    idea = dict(
+        group,
+        key=number,
+        removed=removed,
+        annotations=[note for s in steps for note in s.get("annotations", [])],
+    )
+    named = group["named"]
     parts = [
-        f"<section><h2>Step {number}: {html.escape(_describe(step))}</h2>",
+        f'<section class="key" data-key="{number}" data-steps="{_steps_attr(group)}">'
+        f"<h2>Key idea {number}: {html.escape(_claims(group))}</h2>",
     ]
     if is_break_in:
         parts.append(
-            '<p class="breakin">Break-in: the first step that needs a clue.</p>'
+            '<p class="breakin">Break-in: the first deduction that needs a clue.</p>'
         )
-    if len(step["named"]) > step_search.HARD:
+    if len(named) > step_search.HARD:
         parts.append(
-            f'<p class="hard">Hard step: it uses {len(step["named"])} constraints '
-            "together.</p>"
+            f'<p class="hard">Hard step: it uses {len(named)} constraints together.</p>'
         )
     parts += [
-        f"<p>Uses {html.escape(named)}.</p>",
-        render(rules, before, drawn, prefix=f"s{number}"),
+        f"<p>Uses {html.escape(', '.join(named))}.</p>",
+        render(rules, held, idea, prefix=f"k{number}"),
     ]
-    if step.get("text"):
-        parts.append(f"<p>{html.escape(step['text'])}</p>")
+    parts.extend(f"<p>{html.escape(s['text'])}</p>" for s in steps if s.get("text"))
     parts.append("</section>")
     return "".join(parts)
 
@@ -429,15 +501,20 @@ def guide_page(rules, record, image=None):
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:
         body.append(_image(image))
-    first = break_in(rules, record)
-    for item in shown(rules, record):
-        if item[0] == "singles":
-            body.append(_singles(item[1], item[2]))
-        else:
-            _, number, step = item
-            body.append(
-                _step_section(rules, number, step, before[number], number == first)
-            )
+    groups = deductions(rules, record)
+    keys, first = key_ideas(rules, groups)
+    stretch = []
+    for i, group in enumerate(groups):
+        if i not in keys:
+            stretch.append(group)
+            continue
+        if stretch:
+            body.append(_fill(rules, stretch, before))
+            stretch = []
+        number = keys.index(i) + 1
+        body.append(_key_section(rules, number, group, record, before, i == first))
+    if stretch:
+        body.append(_fill(rules, stretch, before))
     if record.get("stuck"):
         body.append(_stuck(rules, record["stuck"]))
     return _page("Solve guide", "".join(body))
