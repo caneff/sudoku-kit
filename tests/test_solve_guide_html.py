@@ -133,7 +133,7 @@ def _used(rules, names):
     return used
 
 
-def test_a_key_ideas_grid_lights_its_cells_and_strikes_what_it_removes(
+def test_a_key_ideas_grid_lights_its_cells_draws_only_their_candidates_and_strikes(
     guide, diagonal_dots_record
 ):
     out, page = guide
@@ -158,6 +158,11 @@ def test_a_key_ideas_grid_lights_its_cells_and_strikes_what_it_removes(
             if t[3] == svg
         }
 
+        drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == svg}
+        acting = _used(rules, steps[group[0] - 1]["named"])
+        acting |= {_name(c["cell"]) for c in claims}
+
+        assert drawn and drawn <= acting
         assert page.cells(svg, "changed") == {_name(c["cell"]) for c in claims}
         assert page.cells(svg, "used") >= _used(rules, steps[group[0] - 1]["named"])
         assert struck == {
@@ -485,3 +490,61 @@ def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
         if (r + dr, c + dc) not in DIAMOND
     }
     assert drawn_edges == expected
+
+
+def test_a_key_idea_draws_candidates_only_in_the_cells_it_uses_or_changes():
+    page = _toy(
+        _step(["row 1"], (0, 3), [4]),
+        _step(["row 1"], (0, 1), [1, 2, 3]),
+        _step(["row 2"], (1, 3), [1, 2, 3]),
+        _step(["white-a"], (0, 0), [1, 2, 3]),
+    )
+
+    grid = page.grids()[1]
+    drawn = {e[1]["data-cell"] for e in page.find("text", "cand") if e[3] == grid}
+    assert drawn == {"r1c1", "r1c2"}
+    assert [e[2] for e in page.find("text", "solved") if e[3] == grid] == ["4"]
+
+
+def test_the_page_opens_with_the_title_the_rules_text_and_the_starting_grid():
+    rules = dict(
+        TOY,
+        title="Toy dots",
+        rules_text="Normal sudoku rules apply.\nWhite dots join consecutive digits.",
+        givens=[{"cell": [3, 3], "digit": 2}],
+    )
+    record = {"steps": [_step(["white-a"], (0, 0), [1, 2, 3])], "stuck": None}
+    page = Page(guide_html.guide_page(rules, record, image="original.png"))
+
+    heading, text, start = page.find("h1"), page.find("p", "rules"), page.find("svg")
+    assert [e[2] for e in heading] == ["Toy dots"]
+    assert [e[2] for e in text] == [rules["rules_text"]]
+    first_key = page.elements.index(page.find("section", "key")[0])
+    assert (
+        page.elements.index(heading[0])
+        < page.elements.index(page.find("img")[0])
+        < page.elements.index(text[0])
+        < page.elements.index(start[0])
+        < first_key
+    )
+    svg = start[0][3]
+    assert "data-key" not in start[0][1]
+    assert [e[2] for e in page.find("text", "given") if e[3] == svg] == ["2"]
+    assert not [e for e in page.find("text", "cand") if e[3] == svg]
+
+
+def test_each_key_idea_is_one_row_with_its_grid_left_of_its_text():
+    page = _toy(
+        _step(["white-a"], (0, 0), [1, 2, 3], text="The dot pins it."),
+        _step(["row 2", "column 3"], (1, 2), [1, 2]),
+    )
+
+    sections = page.find("section", "key")
+    at = page.elements.index
+    for k, section in enumerate(sections):
+        end = at(sections[k + 1]) if k + 1 < len(sections) else len(page.elements)
+        inside = page.elements[at(section) : end]
+        tags = [e[0] for e in inside if e[0] in ("svg", "div", "h2")]
+        assert tags[:3] == ["svg", "div", "h2"]
+        assert "text" in inside[[e[0] for e in inside].index("div")][1]["class"]
+    assert "The dot pins it." in [e[2] for e in page.find("p")]

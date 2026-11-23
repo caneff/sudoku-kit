@@ -19,9 +19,12 @@ and naming its houses and clues, with a collapsed list of its deductions. A
 stuck record ends the guide with the grid and candidates at the stuck point.
 
 Each deduction, key idea or fill, shows one reason sentence built from its
-named constraints by `reasons.reason`. A key idea's grid draws the candidates before it, with the digits it removes
-struck out. Cells of the constraints it names are marked `used` and the cells
-it changes `changed`. A chain claim is drawn as arrows along the chain, and an
+named constraints by `reasons.reason`. A key idea is one row: its grid on the
+left at half the page grid's width, and its heading, reason and prose on the
+right, so about 2 to 3 print per page. Its grid draws the candidates before it
+only in the cells it uses or changes, with the digits it removes struck out;
+every other cell shows its placed digit or stays blank. Cells of the
+constraints it names are marked `used` and the cells it changes `changed`. A chain claim is drawn as arrows along the chain, and an
 `either` claim circles each pattern's cells. A step may also carry, written
 there by the skill, and shown only on a key idea:
 
@@ -32,7 +35,9 @@ there by the skill, and shown only on a key idea:
 
 `render(rules)` is the plain grid, givens and clues only; `plain_page` puts it
 beside the original image for the import comparison, and `guide_page` is the
-whole guide with the image once at the top.
+whole guide. The guide opens with the title, the original image once when
+given, the rules file's `rules_text` and the plain grid of the starting
+position.
 """
 
 import html
@@ -52,6 +57,11 @@ LINE_COLOURS = {
 STYLE = """
 body { font-family: sans-serif; max-width: 52rem; margin: 2rem auto; }
 svg.grid { width: 24rem; height: auto; display: block; }
+section.key { display: flex; gap: 1.5rem; align-items: flex-start;
+  margin: 1.5rem 0; break-inside: avoid; }
+section.key svg.grid { width: 12rem; flex: none; }
+section.key h2 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+section.key p { margin: 0.4rem 0; }
 img.original { max-width: 24rem; }
 .sidebyside { display: flex; gap: 2rem; align-items: flex-start; }
 .cell { fill: #fff; stroke: #bbb; }
@@ -59,9 +69,10 @@ img.original { max-width: 24rem; }
 .cell.changed { fill: #ffe08a; }
 .given { font-weight: bold; font-size: 26px; }
 .solved { font-size: 26px; fill: #236; }
-.cand { font-size: 11px; fill: #555; }
+.cand { font-size: 14px; fill: #555; }
 .cand.struck { fill: #c22; text-decoration: line-through; }
 .breakin, .hard { font-weight: bold; color: #b00; }
+.rules { white-space: pre-line; }
 .label { font-size: 12px; fill: #b00; font-weight: bold; }
 .arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
 """
@@ -292,8 +303,9 @@ def render(rules, candidates=None, idea=None, prefix="g"):
     )
     out.extend(_house_edges(grid))
     out.extend(_clue(grid, clue) for clue in rules["clues"])
+    marked = used | changed if idea is not None else None
     for cell in rules_file.cells(rules):
-        out.extend(_digits(grid, cell, candidates, removed.get(cell, set())))
+        out.extend(_digits(grid, cell, candidates, removed.get(cell, set()), marked))
     out.extend(_annotation(grid, note, prefix) for note in notes)
     out.append("</svg>")
     return "".join(out)
@@ -324,7 +336,9 @@ def _house_edges(grid):
     ]
 
 
-def _digits(grid, cell, candidates, removed):
+def _digits(grid, cell, candidates, removed, marked=None):
+    """A cell's given, placed digit or candidates; with `marked`, a cell
+    outside it shows only its placed digit."""
     x, y = grid.centre(cell)
     given = grid.givens.get(cell)
     if given is not None:
@@ -334,6 +348,8 @@ def _digits(grid, cell, candidates, removed):
     held = candidates[cell]
     if len(held) == 1:
         return [_text(x, y + 9, "solved", next(iter(held)))]
+    if marked is not None and cell not in marked:
+        return []
     drawn = held | removed
     if len(drawn) == grid.n and not removed:
         return []
@@ -416,7 +432,8 @@ def _fill(rules, groups, before):
 
 
 def _key_section(rules, number, group, record, before, is_break_in):
-    """One key idea: its heading, labels, grid and any text the skill wrote."""
+    """One key idea as one row: its grid, then its heading, labels, reason
+    and any text the skill wrote."""
     steps = [record["steps"][i - 1] for i in group["steps"]]
     held = dict(before[group["steps"][-1]])
     removed = {}
@@ -435,8 +452,9 @@ def _key_section(rules, number, group, record, before, is_break_in):
     )
     named = group["named"]
     parts = [
-        f'<section class="key" data-key="{number}" data-steps="{_steps_attr(group)}">'
-        f"<h2>Key idea {number}: {html.escape(_claims(group))}</h2>",
+        f'<section class="key" data-key="{number}" data-steps="{_steps_attr(group)}">',
+        render(rules, held, idea, prefix=f"k{number}"),
+        f'<div class="text"><h2>Key idea {number}: {html.escape(_claims(group))}</h2>',
     ]
     if is_break_in:
         parts.append(
@@ -446,12 +464,9 @@ def _key_section(rules, number, group, record, before, is_break_in):
         parts.append(
             f'<p class="hard">Hard step: it uses {len(named)} constraints together.</p>'
         )
-    parts += [
-        f'<p class="reason">{html.escape(reasons.reason(rules, named))}</p>',
-        render(rules, held, idea, prefix=f"k{number}"),
-    ]
+    parts.append(f'<p class="reason">{html.escape(reasons.reason(rules, named))}</p>')
     parts.extend(f"<p>{html.escape(s['text'])}</p>" for s in steps if s.get("text"))
-    parts.append("</section>")
+    parts.append("</div></section>")
     return "".join(parts)
 
 
@@ -503,6 +518,9 @@ def guide_page(rules, record, image=None):
     body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
     if image:
         body.append(_image(image))
+    if rules.get("rules_text"):
+        body.append(f'<p class="rules">{html.escape(rules["rules_text"])}</p>')
+    body.append(render(rules, prefix="start"))
     groups = deductions(rules, record)
     keys, first = key_ideas(rules, groups)
     stretch = []
