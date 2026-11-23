@@ -143,7 +143,11 @@ class State:
 
     def snapshot(self):
         n = self.size
-        rows = [[sorted(self.candidates[r, c]) for c in range(n)] for r in range(n)]
+        # A hole holds no digit, so it has no candidates and its grid entry is 0.
+        rows = [
+            [sorted(self.candidates.get((r, c), ())) for c in range(n)]
+            for r in range(n)
+        ]
         on_grid = {(r, c) for r in range(n) for c in range(n)}
         return {
             "grid": [[d[0] if len(d) == 1 else 0 for d in row] for row in rows],

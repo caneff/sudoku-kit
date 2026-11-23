@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from sudoku_kit import guide_html, step_search
+from sudoku_kit import guide_html, step_search, sudokupad_import
 from sudoku_kit.solve_guide import main
 
 FIXTURES = Path(__file__).parent / "solve_guide"
@@ -345,3 +345,31 @@ def test_the_render_is_written_even_when_a_check_fails(tmp_path):
     assert main([str(source), str(out)]) == 1
     assert (out / "render.html").exists()
     assert not (out / "guide.html").exists()
+
+
+DIAMOND_BOARD = FIXTURES / "lockout-tessellation-000PT1.json"
+
+
+def test_a_board_with_holes_draws_only_its_cells_and_outlines_them():
+    """The diamond of Logic Masters 000PT1: a stuck point at the start draws
+    the 41 cells of the diamond and a thick edge wherever a cell meets a hole
+    or the sheet's edge."""
+    rules = sudokupad_import.rules_file(json.loads(DIAMOND_BOARD.read_text()))
+    record = step_search.new_record()
+    record["stuck"] = step_search.State(rules).snapshot() | {"timeouts": 0}
+    diamond = {
+        (r, c) for r in range(9) for c in range(9) if abs(r - 4) + abs(c - 4) <= 4
+    }
+
+    page = Page(guide_html.guide_page(rules, record))
+
+    stuck = page.find("svg", "grid")[-1][3]
+    drawn = {e[1]["data-cell"] for e in page.find("rect", "cell") if e[3] == stuck}
+    assert drawn == {_name(c) for c in diamond}
+    edges = [e for e in page.find("line", "edge") if e[3] == stuck]
+    meeting_a_hole = sum(
+        (r + dr, c + dc) not in diamond
+        for r, c in diamond
+        for dr, dc in ((0, 1), (0, -1), (1, 0), (-1, 0))
+    )
+    assert len(edges) == meeting_a_hole
