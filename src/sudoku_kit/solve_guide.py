@@ -20,9 +20,9 @@ searched.
 Writes `render.html` as soon as the checks have run: the plain render
 (givens and clues, no step) beside the original image when `--image` names
 one, for the import comparison. After the search, whether it solved, stopped
-or got stuck, it writes `guide.html` (`guide_html`): the main steps, each on
-its own SVG grid, runs of singles as one line each, the image once at the
-top. An `--image` path that exists is written into the HTML relative to the
+or got stuck, it writes `guide.html` (`guide_html`): the key ideas, each on
+its own SVG grid, the fill between them as one sentence each, the image once
+at the top. An `--image` path that exists is written into the HTML relative to the
 output directory; a URL, or a path not found, is written as given.
 
 Exit codes:

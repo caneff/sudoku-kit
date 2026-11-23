@@ -7,7 +7,9 @@ Diagonal Dots (Logic Masters 000HUJ, its decoded puzzle JSON in
 - every step in the step record proves again from scratch with `prove`, from
   only the constraints it names, on candidates rebuilt here from the givens;
 - the path ends at the stored solution, with no stuck point;
-- the guide HTML has one grid per shown step, with that step's cells marked.
+- the guide HTML numbers its key ideas 1..N, each merged deduction's steps
+  name the same constraints, and each key idea's grid marks the cells it
+  changes.
 
 Blind to: the consumers. grid-hunts and sudokumaker-custom-constraints both
 track main and each lock a commit in `uv.lock`, so none of this runs against
@@ -78,23 +80,35 @@ def test_the_path_ends_at_the_stored_solution(guide):
         assert digits == [rules["solution"][r][c]], (r, c)
 
 
-def test_the_guide_has_one_grid_per_shown_step_with_its_cells_marked(guide):
+def test_key_ideas_run_1_to_n_and_each_merge_shares_its_constraints(guide):
+    """Spec #127: the guide shows deductions. Every step lands in exactly one
+    (a key idea's section or a fill list's item); each one's steps name the
+    same constraints, and no step between them changed a cell they use."""
     rules, steps, page = guide["rules"], guide["record"]["steps"], guide["html"]
-    houses = set(rules_file.house_names(rules))
-    expected = {
-        i
-        for i, step in enumerate(steps, 1)
-        if len(step["named"]) >= 2 or not set(step["named"]) <= houses
-    }
-    grids = dict(
-        re.findall(
-            r'<svg class="grid"[^>]*data-step="(\d+)"[^>]*>(.*?)</svg>', page, re.S
-        )
+    registry = rules_file.registry(rules)
+    keys = re.findall(
+        r'<section class="key" data-key="(\d+)" data-steps="([\d ]+)">(.*?)</section>',
+        page,
+        re.S,
     )
-    assert expected
-    assert {int(i) for i in grids} == expected
-    for i in expected:
-        cell = rules_file.cell_name(steps[i - 1]["claim"]["cell"])
-        assert re.search(
-            rf'<rect class="[^"]*changed[^"]*"[^>]*data-cell="{cell}"', grids[str(i)]
-        )
+    fill = re.findall(r'<li class="deduction" data-steps="([\d ]+)">', page)
+    groups = [[int(n) for n in g.split()] for g in [k[1] for k in keys] + fill]
+
+    assert [int(k[0]) for k in keys] == list(range(1, len(keys) + 1))
+    assert keys and any(len(g) > 1 for g in groups)
+    assert sorted(n for g in groups for n in g) == list(range(1, len(steps) + 1))
+    for group in groups:
+        named = steps[group[0] - 1]["named"]
+        assert {frozenset(steps[n - 1]["named"]) for n in group} == {frozenset(named)}
+        used = {cell for name in named for cell in registry[name].cells}
+        for n in set(range(group[0], group[-1])) - set(group):
+            assert tuple(steps[n - 1]["claim"]["cell"]) not in used, (group, n)
+    for number, group, section in keys:
+        for n in group.split():
+            cell = rules_file.cell_name(steps[int(n) - 1]["claim"]["cell"])
+            assert re.search(
+                rf'<svg class="grid"[^>]*data-key="{number}".*'
+                rf'<rect class="[^"]*changed[^"]*"[^>]*data-cell="{cell}"',
+                section,
+                re.S,
+            )
