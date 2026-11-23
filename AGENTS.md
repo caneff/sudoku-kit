@@ -14,6 +14,14 @@ Default six canonical triage roles, each label string equal to its name. See `do
 
 Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+## Solution paths (always on)
+
+- **Never publish a solution path.** This repo is public, so a solve path for
+  a puzzle never goes into a commit, PR, issue, gist or artifact, here or
+  anywhere else. Work it in a session scratch file outside this repo and open
+  it for Chris. (Chris, 2026-10-13: "Never ever publish solution paths"; the
+  ruling covers every repo, agent-skills#1627.)
+
 ## Coding standards
 
 `CODING_STANDARDS.md` holds the conventions no gate checks; read it before writing code.
