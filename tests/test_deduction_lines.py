@@ -44,9 +44,9 @@ def test_an_invented_board_lists_every_step_once_merging_across_a_step_elsewhere
 
     assert code == 0
     assert lines == [
-        "D1 (step 2): r4c4 keeps 1 2 3, from row 4.",
-        "D2 (steps 1, 3): r1c12 keep 1 2 3, from white dot r1c1-r1c2.",
-        "D3 (step 4): r1c1 keeps 1 2, from row 1.",
+        "D1 (step 2): r4c4 loses 4, from row 4.",
+        "D2 (steps 1, 3): r1c12 lose 4, from white dot r1c1-r1c2.",
+        "D3 (step 4): r1c1 loses 3, from row 1.",
     ]
 
 
@@ -57,7 +57,7 @@ def test_a_deduction_line_gives_its_claims_and_names_its_constraints_in_words(
 
     _, lines, _ = _run(tmp_path, capsys)
 
-    assert lines == ["D1 (step 1): r1c1 = 3, from white dot r1c1-r1c2 and row 1."]
+    assert lines == ["D1 (step 1): r1c1 is 3, from white dot r1c1-r1c2 and row 1."]
 
 
 def test_a_deduction_of_several_steps_joins_its_claims(tmp_path, capsys):
@@ -73,7 +73,7 @@ def test_a_deduction_of_several_steps_joins_its_claims(tmp_path, capsys):
     _, lines, _ = _run(tmp_path, capsys)
 
     assert lines == [
-        "D1 (steps 1, 2): r1c1 keeps 1 2 3; r1c2 = 4, from white dot r1c1-r1c2."
+        "D1 (steps 1, 2): r1c1 loses 4; r1c2 is 4, from white dot r1c1-r1c2."
     ]
 
 
@@ -135,3 +135,25 @@ def test_on_diagonal_dots_every_line_names_its_constraints_in_words(dots, capsys
         range(1, len(record["steps"]) + 1)
     )
     assert not [line for line in lines for clue_id in ids if clue_id in line]
+
+
+def test_a_deduction_line_says_box_and_names_a_corner_dot_once(tmp_path, capsys):
+    rules = dict(
+        TOY,
+        clues=[
+            {"id": "x1", "rule": "ratio", "cells": [[0, 0], [1, 1]], "values": [2]},
+            {"id": "x2", "rule": "ratio", "cells": [[0, 1], [1, 0]], "values": [2]},
+        ],
+    )
+    record = make_record(
+        make_step(["region 4"], (2, 2), [1, 2, 3]),
+        make_step(["x1", "x2"], (0, 0), [1, 2, 4]),
+    )
+    _write(tmp_path, rules, record)
+
+    _, lines, _ = _run(tmp_path, capsys)
+
+    assert lines == [
+        "D1 (step 1): r3c3 loses 4, from box 4.",
+        "D2 (step 2): r1c1 loses 3, from black dot at r12c12.",
+    ]

@@ -4,11 +4,12 @@ read before it writes the guide file (spec #127):
     python -m sudoku_kit.deduction_lines <output directory>
 
 The directory is a `solve-guide` output directory: it reads `rules.json` and
-`steps.json`. Each line is `D<k> (steps <numbers>): <claims>, from <constraints>.`
+`steps.json`. Each line is `D<k> (steps <numbers>): <changes>, from <constraints>.`
 with the deductions of `guide_html.deductions` in guide order, so every step
-of the record appears on exactly one line. The claims are `guide_html`'s
-words, joined by `;`, and the constraints are `guide_html.constraint_words`,
-never a clue id.
+of the record appears on exactly one line. The changes are the guide's step
+lines' words (`guide_html.describe_steps`: the digits a cell loses, or the
+digit it is), and the constraints are `guide_html.named_words`, never a clue
+id.
 
 Exit codes: 0 printed, 2 `rules.json` or `steps.json` missing, unreadable or
 malformed: a rules file `rules_file.load` refuses, or a step record whose
@@ -20,20 +21,19 @@ import argparse
 import sys
 from pathlib import Path
 
-from sudoku_kit import guide_file, guide_html, rules_file, step_search
+from sudoku_kit import guide_html, rules_file, step_search
 
 
 def lines(rules, record):
     """One line per deduction of `record`, in guide order."""
     out = []
+    before = guide_html.states(rules, record)
     for k, group in enumerate(guide_html.deductions(rules, record), 1):
         steps = ", ".join(map(str, group["steps"]))
-        claims = guide_html.describe_claims(group["claims"])
-        named = guide_file.join_words(
-            [guide_html.constraint_words(rules, n) for n in group["named"]]
-        )
+        changes = guide_html.describe_steps(record, before, group["steps"])
+        named = guide_html.named_words(rules, group["named"])
         label = "steps" if len(group["steps"]) > 1 else "step"
-        out.append(f"D{k} ({label} {steps}): {claims}, from {named}.")
+        out.append(f"D{k} ({label} {steps}): {changes}, from {named}.")
     return out
 
 

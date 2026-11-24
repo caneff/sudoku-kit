@@ -125,6 +125,22 @@ def _keys(page):
     ]
 
 
+def _lines(page):
+    """[(data-steps, text)] of each step line, in page order."""
+    return [(e[1]["data-steps"], e[2]) for e in page.find("li", "step")]
+
+
+def _covered(page):
+    """The step numbers the step lines cover, in page order."""
+    return [int(n) for steps, _ in _lines(page) for n in steps.split()]
+
+
+CELLS = r"r[\d,]+c[\d,]+"
+CHANGE = rf"{CELLS}(, {CELLS})*( and {CELLS})? (loses?|is|are) \d( and \d|, \d)*"
+LOSE = rf"{CHANGE}(; {CHANGE})*, from .+\."
+GIVEN = rf"The \d in {CELLS}: .+ lose \d(, so .+)?\."
+
+
 def _grouped(*steps):
     """The step numbers of each deduction, in guide order."""
     return [g["steps"] for g in guide_html.deductions(TOY, make_record(*steps))]
@@ -224,19 +240,15 @@ def test_each_fill_stretch_is_its_sentence_and_a_collapsed_line_per_step():
         "Show all 3 steps",
         "Show all 2 steps",
     ]
-    assert [e[1]["data-step"] for e in page.find("li", "step")] == [
-        "1",
-        "2",
-        "3",
-        "5",
-        "6",
-    ]
-    assert [e[2] for e in page.find("li", "step")] == [
-        "r1c3 keeps 1 2 3, from row 1.",
-        "r1c1 keeps 1 2 3, from white dot r1c1-r1c2.",
-        "r2c3 keeps 1 2, from row 2 and column 3.",
-        "r3c3 keeps 1 2 3, from white dot r3c3-r3c4.",
-        "r3c4 keeps 2 3, from white dot r3c3-r3c4, row 3, column 3 and region 4.",
+    assert _lines(page) == [
+        ("1", "r1c3 loses 4, from row 1."),
+        ("2", "r1c1 loses 4, from white dot r1c1-r1c2."),
+        ("3", "r2c3 loses 3 and 4, from row 2 and column 3."),
+        ("5", "r3c3 loses 4, from white dot r3c3-r3c4."),
+        (
+            "6",
+            "r3c4 loses 1 and 4, from white dot r3c3-r3c4, row 3, column 3 and box 4.",
+        ),
     ]
 
 
@@ -244,7 +256,7 @@ def test_a_placement_reads_as_the_digit_it_places():
     page = _toy([make_step(["black-a"], (3, 0), [4])], _fill(1, 1))
 
     assert [e[2] for e in page.find("li", "step")] == [
-        "r4c1 = 4, from black dot r4c1-r4c2."
+        "r4c1 is 4, from black dot r4c1-r4c2."
     ]
 
 
@@ -531,11 +543,13 @@ def test_no_step_line_of_a_diagonal_dots_guide_shows_a_bare_clue_id(
 
     page = Page(guide_html.guide_page(dots_rules, diagonal_dots_record, guide))
 
-    lines = [e[2] for e in page.find("li", "step")]
+    lines = [text for _, text in _lines(page)]
     ids = [c["id"] for c in dots_rules["clues"]]
-    assert len(lines) == len(steps)
-    assert all(re.fullmatch(r"r\dc\d (= \d|keeps[\d ]+), from .+\.", s) for s in lines)
+    assert _covered(page) == list(range(1, len(steps) + 1))
+    assert len(lines) < len(steps)
+    assert all(re.fullmatch(f"({LOSE}|{GIVEN})", s) for s in lines)
     assert not [s for s in lines for clue_id in ids if clue_id in s]
+    assert not [s for s in lines if "region" in s]
 
 
 def test_outside_clue_cells_start_empty_on_every_grid(tmp_path):
@@ -641,7 +655,7 @@ def test_the_command_line_renders_the_guide_file_it_is_given(
     page = Page((out / "guide.html").read_text())
     assert code == 0
     assert [e[2] for e in page.find("p", "fill")] == ["Every step, as fill."]
-    assert len(page.find("li", "step")) == steps
+    assert _covered(page) == list(range(1, steps + 1))
 
 
 def test_a_guide_file_that_is_not_json_is_refused_before_anything_is_written(
@@ -746,9 +760,7 @@ def test_the_unexplained_steps_are_listed_under_also_in_this_stretch():
     assert len(details) == 1
     summary = page.find("summary")
     assert [e[2] for e in summary] == ["Also in this stretch"]
-    assert [(e[1]["data-step"], e[2]) for e in page.find("li", "step")] == [
-        ("2", "r3c3 keeps 1 2 3, from white dot r3c3-r3c4.")
-    ]
+    assert _lines(page) == [("2", "r3c3 loses 4, from white dot r3c3-r3c4.")]
 
 
 def test_an_idea_with_no_list_explains_its_whole_run_and_lists_nothing_else():
@@ -1256,3 +1268,98 @@ def test_in_print_cards_and_fill_panels_pack_tighter_so_two_cards_share_a_page()
     assert max(_rem(card, "padding")) <= 0.85
     assert max(_rem(fill, "margin")) <= 0.5
     assert max(_rem(_rules(print_css, ".grids"), "margin-bottom")) <= 0.5
+
+
+def test_a_run_of_steps_from_one_constraint_is_one_line_naming_what_goes():
+    page = _toy(
+        [
+            make_step(["row 1"], (0, 0), [1, 2, 3]),
+            make_step(["row 1"], (0, 1), [1, 2, 3]),
+            make_step(["row 1"], (0, 2), [3]),
+            make_step(["column 4"], (1, 3), [1, 2]),
+        ],
+        _fill(1, 4),
+    )
+
+    assert [e[2] for e in page.find("summary")] == ["Show all 4 steps"]
+    assert _lines(page) == [
+        ("1 2 3", "r1c12 lose 4; r1c3 is 3, from row 1."),
+        ("4", "r2c4 loses 3 and 4, from column 4."),
+    ]
+
+
+def test_a_given_clearing_its_row_column_and_box_is_one_line():
+    rules = dict(TOY, givens=[{"cell": [1, 1], "digit": 4}])
+    page = _toy(
+        [
+            make_step(["row 2"], (1, 0), [1, 2, 3]),
+            make_step(["row 2"], (1, 2), [1, 2, 3]),
+            make_step(["row 2"], (1, 3), [1, 2, 3]),
+            make_step(["column 2"], (0, 1), [1, 2, 3]),
+            make_step(["column 2"], (2, 1), [1, 2, 3]),
+            make_step(["column 2"], (3, 1), [1, 2, 3]),
+            make_step(["region 1"], (0, 0), [1, 2, 3]),
+        ],
+        _fill(1, 7),
+        rules=rules,
+    )
+
+    assert _lines(page) == [
+        ("1 2 3 4 5 6 7", "The 4 in r2c2: r2c134, r134c2 and r1c1 lose 4."),
+    ]
+
+
+def test_a_given_run_that_places_a_digit_says_so():
+    rules = dict(TOY, givens=[{"cell": [0, 3], "digit": 4}])
+    page = _toy(
+        [
+            make_step(["column 3"], (1, 2), [2, 4]),
+            make_step(["row 1"], (0, 0), [1, 2, 3]),
+            make_step(["column 4"], (1, 3), [1, 2, 3]),
+            make_step(["region 2"], (1, 2), [2]),
+        ],
+        _fill(1, 4),
+        rules=rules,
+    )
+
+    assert _lines(page) == [
+        ("1", "r2c3 loses 1 and 3, from column 3."),
+        ("2 3 4", "The 4 in r1c4: r1c1, r2c4 and r2c3 lose 4, so r2c3 is 2."),
+    ]
+
+
+def test_step_lines_say_box_and_name_a_corner_dot_of_two_diagonal_clues_once():
+    rules = dict(
+        TOY,
+        clues=[
+            {"id": "x1", "rule": "ratio", "cells": [[0, 0], [1, 1]], "values": [2]},
+            {"id": "x2", "rule": "ratio", "cells": [[0, 1], [1, 0]], "values": [2]},
+            {"id": "x3", "rule": "ratio", "cells": [[2, 2], [3, 3]], "values": [2]},
+        ],
+    )
+    page = _toy(
+        [
+            make_step(["region 4"], (2, 2), [1, 2, 3]),
+            make_step(["x1", "x2"], (0, 0), [1, 2, 4]),
+            make_step(["x3"], (3, 3), [1, 2, 4]),
+        ],
+        _fill(1, 3),
+        rules=rules,
+    )
+
+    assert [e[2] for e in page.find("li", "step")] == [
+        "r3c3 loses 4, from box 4.",
+        "r1c1 loses 3, from black dot at r12c12.",
+        "r4c4 loses 3, from black dot r3c3-r4c4.",
+    ]
+
+
+def test_in_print_the_collapsed_step_lists_are_hidden_and_on_screen_they_stay():
+    """Chris's ruling on #151: the HTML is the guide and the PDF only a
+    printout, where a "Show all N steps" button does nothing."""
+    page = _toy(SIX, _fill(1, 3), _key(4, 6, explains=[4]))
+
+    assert page.find("details") and page.find("details", "also")
+    assert "display: none" in _rules(_print_css(), "details")
+    screen = _stylesheet().split("@media print")[0]
+    assert "display: none" not in _rules(screen, "details")

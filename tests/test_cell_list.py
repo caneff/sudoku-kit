@@ -3,7 +3,7 @@
 import pytest
 from guide_helpers import TOY, make_record, make_step
 
-from sudoku_kit import guide_html, rules_file
+from sudoku_kit import rules_file
 
 
 @pytest.mark.parametrize(
@@ -29,38 +29,31 @@ def test_a_single_cell_keeps_its_name():
     assert rules_file.cell_list([(2, 3)]) == rules_file.cell_name((2, 3))
 
 
-def test_claims_of_one_deduction_on_cells_with_the_same_digits_share_a_block():
-    claims = [
-        {"cell": [0, 2], "digits": [3]},
-        {"cell": [0, 3], "digits": [3]},
-        {"cell": [1, 2], "digits": [3]},
-        {"cell": [1, 3], "digits": [3]},
-        {"cell": [2, 0], "digits": [1, 2]},
-        {"cell": [2, 1], "digits": [1, 2]},
-    ]
-    assert guide_html.describe_claims(claims) == "r12c34 = 3; r3c12 keep 1 2"
-
-
-def test_a_lone_claim_reads_as_describe_claim_does():
-    claim = {"cell": [0, 0], "digits": [1, 2]}
-    assert guide_html.describe_claims([claim]) == guide_html.describe_claim(claim)
-    chain = {"chain": [[0, 0], [0, 1]]}
-    assert guide_html.describe_claims([chain]) == "chain r1c1 < r1c2"
-
-
-def test_a_deduction_line_groups_cells(tmp_path, capsys):
+def _deduction_lines(tmp_path, capsys, *steps):
     import json
 
     from sudoku_kit.deduction_lines import main
 
     (tmp_path / "rules.json").write_text(json.dumps(TOY))
-    record = make_record(
-        make_step(["row 1"], (0, 0), [3]), make_step(["row 1"], (0, 1), [3])
-    )
-    (tmp_path / "steps.json").write_text(json.dumps(record))
+    (tmp_path / "steps.json").write_text(json.dumps(make_record(*steps)))
     assert main([str(tmp_path)]) == 0
-    assert capsys.readouterr().out.splitlines() == [
-        "D1 (steps 1, 2): r1c12 = 3, from row 1."
+    return capsys.readouterr().out.splitlines()
+
+
+def test_cells_of_one_deduction_with_the_same_change_share_a_block(tmp_path, capsys):
+    steps = [make_step(["row 1"], cell, [3]) for cell in [(0, 2), (0, 3)]]
+    steps += [make_step(["row 1"], cell, [1, 2]) for cell in [(0, 0), (0, 1)]]
+
+    assert _deduction_lines(tmp_path, capsys, *steps) == [
+        "D1 (steps 1, 2, 3, 4): r1c34 are 3; r1c12 lose 3 and 4, from row 1."
+    ]
+
+
+def test_a_chain_step_reads_as_its_chain(tmp_path, capsys):
+    chain = {"claim": {"chain": [[0, 0], [0, 1]]}, "named": ["white-a"]}
+
+    assert _deduction_lines(tmp_path, capsys, chain) == [
+        "D1 (step 1): chain r1c1 < r1c2, from white dot r1c1-r1c2."
     ]
 
 
