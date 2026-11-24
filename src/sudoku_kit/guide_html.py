@@ -19,26 +19,32 @@ with the title, the original image once when given, the rules file's
 `rules_text` and the plain grid of the starting position.
 
 The library numbers key ideas 1..N in file order and shows the break-in label
-on the flagged one; every other word is the skill's. A key idea is one row:
-its grid on the left at half the page grid's width, and its numbered heading
-and paragraphs on the right, so about 2 to 3 print per page. Its grid draws
+on the flagged one; every other word is the skill's. A key idea is one card,
+never split across a printed page: its grid about 16rem wide on top, then its
+number badge, heading and paragraphs, so about 1 to 2 print per A4 page. The
+grids follow SudokuPad's look: light cell lines, dark region lines, a heavy
+border, blue pencil marks and placed digits, black givens, each digit's pencil
+mark in its own fixed spot in the cell. Its grid draws
 its starting candidates (those before its first step, less what the run's
 steps it does not explain remove) only in the cells its explained steps use
-or change, with the digits they remove struck out; every other cell shows its
+or change, with the digits they remove drawn grey under a red slash; every
+other cell shows its
 placed digit or stays blank. Cells of the constraints its steps name are
-marked `used` and the cells they change `changed`. A chain claim is drawn as
+tinted `used` and the cells they change `changed` (yellow). A chain claim is
+drawn as
 arrows along the chain, and an `either` claim circles each pattern's cells.
 
-A fill stretch is the skill's one sentence over a collapsed list with one
-line per step, written here: the claim, then each named constraint in words
+A fill stretch is the skill's one sentence on a light panel over a list,
+collapsed behind a "Show all N steps" button, with one line per step, written
+here: the claim, then each named constraint in words
 (`constraint_words`), never a clue id. A stuck record ends the guide with the
 grid and candidates at the stuck point.
 
 A key idea may carry a `supposition` (spec #127): "suppose this cell were X".
-It draws as a second grid beside the idea's own (`render_supposition`), from
-the idea's starting candidates, drawn in the cells the supposition names: the
-assumed digit and the forced digits each in their own colour, the forced ones
-numbered in order, and the clash cells circled. `guide_file` checks its shape;
+It draws as a second grid beside the idea's own (`render_supposition`) with no
+pencil marks: the givens, the assumed digit and the forced digits each in
+their own colour, the forced ones numbered in order, and the clash cells
+circled. `guide_file` checks its shape;
 the page refuses one whose assumed digit the idea's explained steps do not
 eliminate, or that draws a digit which is not among the idea's starting
 candidates in its cell.
@@ -63,35 +69,79 @@ LINE_COLOURS = {
     "arrow": "#555",
 }
 STYLE = """
-body { font-family: sans-serif; max-width: 52rem; margin: 2rem auto; }
+:root { --ink: #1e2430; --muted: #6a7280; --line: #b9bfc8; --box: #000;
+  --blue: #1d6ae5; --red: #d0342c; --changed: #fff1a8; --used: #eef3fb;
+  --card: #f7f8fa; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: "Segoe UI", "Ubuntu Sans", Ubuntu, system-ui, Roboto, Arial, sans-serif;
+  color: var(--ink); font-size: 10pt; line-height: 1.5; max-width: 52rem;
+  margin: 2rem auto; padding: 0 1.5rem; }
+header.intro { display: flex; gap: 1.75rem; align-items: flex-start;
+  background: var(--card); border-radius: 12px; padding: 1.25rem 1.4rem;
+  margin-bottom: 1.1rem; }
+header.intro .introtext { flex: 1; }
+.overline { font-size: 8pt; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--blue); }
+h1 { font-size: 22pt; font-weight: 700; margin: 0.1rem 0 0.7rem; line-height: 1.15;
+  letter-spacing: -0.01em; }
+.rules { white-space: pre-line; color: #3a4250; margin: 0; }
+header.intro svg.grid { width: 14rem; flex: none; }
 svg.grid { width: 24rem; height: auto; display: block; }
-section.key { display: flex; gap: 1.5rem; align-items: flex-start;
-  margin: 1.5rem 0; break-inside: avoid; }
-section.key svg.grid { width: 12rem; flex: none; }
-section.key h2 { font-size: 1.1rem; margin: 0 0 0.5rem; }
+section.key { margin: 0.8rem 0; padding: 1.1rem 1.2rem; background: #fff;
+  border: 1px solid #e3e6eb; border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(20,30,50,0.06), 0 2px 8px rgba(20,30,50,0.05);
+  break-inside: avoid; }
+.grids { display: flex; gap: 1.25rem; margin-bottom: 0.8rem; }
+figure { margin: 0; }
+figcaption { font-size: 8pt; font-weight: 600; color: var(--muted);
+  text-align: center; margin-top: 0.35rem; }
+section.key svg.grid { width: 16rem; }
+.eyebrow { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; }
+.num { display: inline-flex; min-width: 1.45rem; height: 1.45rem; border-radius: 7px;
+  background: var(--blue); color: #fff; align-items: center; justify-content: center;
+  font-size: 9.5pt; font-weight: 700; }
+.kicker { font-size: 8pt; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--muted); }
+.breakin { font-size: 7.5pt; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #fff; background: var(--red);
+  border-radius: 999px; padding: 0.1rem 0.55rem; }
+section.key h2 { font-size: 13pt; font-weight: 700; margin: 0 0 0.35rem;
+  line-height: 1.3; }
 section.key p { margin: 0.4rem 0; }
+div.fill { break-inside: avoid; margin: 0.8rem 0; padding: 0.7rem 1.2rem;
+  background: var(--card); border-radius: 10px; }
+p.fill { break-after: avoid; margin: 0; color: #3a4250; }
+details { margin-top: 0.35rem; }
+summary { display: inline-block; font-size: 8pt; font-weight: 600; color: var(--blue);
+  cursor: pointer; list-style: none; border: 1px solid #c9d8f5; border-radius: 999px;
+  padding: 0.05rem 0.6rem; background: #fff; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "▸ "; }
+details[open] summary::before { content: "▾ "; }
+details ul { font-size: 9pt; color: #3a4250; padding-left: 1.1rem; margin: 0.4rem 0; }
 img.original { max-width: 24rem; }
 .sidebyside { display: flex; gap: 2rem; align-items: flex-start; }
-.cell { fill: #fff; stroke: #bbb; }
-.cell.used { fill: #cfe3ff; }
-.cell.changed { fill: #ffe08a; }
-.cell.highlight { fill: #c9f0c9; }
-.label { font-size: 12px; font-weight: bold; fill: #063; }
-.given { font-weight: bold; font-size: 26px; }
-.solved { font-size: 26px; fill: #236; }
-.cand { font-size: 14px; fill: #555; }
-.cand.struck { fill: #c22; text-decoration: line-through; }
-.breakin { font-weight: bold; color: #b00; }
-.rules { white-space: pre-line; }
-.cand.assumed { fill: #c22; font-weight: bold; }
-.cand.forced, .solved.forced { fill: #07a; font-weight: bold; }
-.order { font-size: 11px; font-weight: bold; fill: #07a; }
-.arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
-div.fill { break-inside: avoid; }
-p.fill { break-after: avoid; }
+.cell { fill: #fff; stroke: var(--line); stroke-width: 1; }
+.cell.used { fill: var(--used); }
+.cell.changed { fill: var(--changed); }
+.cell.highlight { fill: #dff3df; }
+.edge { stroke: var(--box); stroke-width: 2.6; }
+.border { fill: none; stroke: var(--box); stroke-width: 4; }
+.dot { stroke: #000; }
+text { font-family: "Segoe UI", "Ubuntu Sans", Ubuntu, Roboto, Arial, sans-serif; }
+.label { font-size: 12px; font-weight: bold; fill: var(--red); }
+.given { font-size: 30px; fill: #000; }
+.solved { font-size: 30px; fill: var(--blue); }
+.cand { font-size: 12.5px; fill: var(--blue); }
+.cand.struck { fill: #a9b0bb; }
+.slash { stroke: var(--red); stroke-width: 1.4; stroke-linecap: round; }
+.solved.assumed { fill: var(--red); font-weight: 700; }
+.solved.forced { fill: var(--blue); font-weight: 600; }
+.order { paint-order: stroke; stroke: #fff; stroke-width: 2.5px; stroke-linejoin: round; font-size: 10.5px; font-weight: 700; fill: var(--red); }
+.arrow, .circle { stroke: var(--red); fill: none; stroke-width: 2.4; }
 @page { size: A4; margin: 15mm; }
 @media print {
-  body { max-width: none; margin: 0; }
+  body { max-width: none; margin: 0; padding: 0; }
 }
 """
 
@@ -199,7 +249,8 @@ def _clue(grid, clue):
         shown_value = values[0] not in (1, 2)
         mark = (
             f'<circle class="dot" cx="{(ax + bx) / 2:.1f}" cy="{(ay + by) / 2:.1f}" '
-            f'r="6" fill="{fill}" stroke="#000" data-clue="{html.escape(clue["id"])}"/>'
+            f'r="7.5" fill="{fill}" stroke="#111" stroke-width="1.6" '
+            f'data-clue="{html.escape(clue["id"])}"/>'
         )
         if shown_value:
             mark += _text((ax + bx) / 2, (ay + by) / 2 + 4, "dotvalue", values[0])
@@ -246,7 +297,7 @@ def _annotation(grid, note, prefix):
     if kind == "circle":
         x, y = grid.centre(note["cell"])
         return (
-            f'<circle class="circle" cx="{x:.1f}" cy="{y:.1f}" r="{CELL / 2 - 3}" '
+            f'<circle class="circle" cx="{x:.1f}" cy="{y:.1f}" r="{CELL / 2 - 9.5}" '
             f'data-cell="{rules_file.cell_name(note["cell"])}"/>'
         )
     if kind == "label":
@@ -291,6 +342,10 @@ def _frame(grid, prefix, data="", used=(), changed=(), lit=()):
         for cell in rules_file.cells(grid.rules)
     )
     out.extend(_house_edges(grid))
+    out.append(
+        f'<rect class="border" x="0" y="0" width="{grid.columns * CELL}" '
+        f'height="{grid.rows * CELL}"/>'
+    )
     out.extend(_clue(grid, clue) for clue in grid.rules["clues"])
     return out
 
@@ -327,25 +382,37 @@ def render(rules, candidates=None, idea=None, prefix="g"):
     return "".join(out)
 
 
-def render_supposition(rules, candidates, suppose, key, prefix):
-    """Key idea `key`'s supposition as its own grid: `candidates` in the cells
-    `suppose` (`assume`: (cell, digit), `forces`: [(cell, digit)], `breaks`:
-    [cell]) names, the assumed and forced digits in their own colour, the
-    forced ones numbered in order, and the clash circled."""
+def render_supposition(rules, suppose, key, prefix):
+    """Key idea `key`'s supposition as its own grid, `suppose` being
+    `assume`: (cell, digit), `forces`: [(cell, digit)] and `breaks`: [cell].
+    It draws no pencil marks: only the givens, the assumed digit and the
+    forced digits, each in its own colour and the forced ones numbered in
+    order, with the cells it names tinted and the clash circled."""
     grid = Grid(rules)
     marked = {
         suppose["assume"][0],
         *(c for c, _ in suppose["forces"]),
         *suppose["breaks"],
     }
-    roles = {suppose["assume"]: ("assumed", 0)}
-    roles |= {
-        (cell, digit): ("forced", order)
+    cell, digit = suppose["assume"]
+    placed = {cell: (digit, "assumed", {})}
+    placed |= {
+        cell: (digit, "forced", {"order": order})
         for order, (cell, digit) in enumerate(suppose["forces"], 1)
     }
-    out = _frame(grid, prefix, f' data-supposition="{key}"')
+    out = _frame(grid, prefix, f' data-supposition="{key}"', changed=marked)
     for cell in rules_file.cells(rules):
-        out.extend(_digits(grid, cell, candidates, marked=marked, roles=roles))
+        if cell in grid.givens:
+            out.extend(_digits(grid, cell, None))
+        elif cell in placed:
+            digit, role, extra = placed[cell]
+            x, y = grid.centre(cell)
+            name = rules_file.cell_name(cell)
+            out.append(
+                _text(
+                    x, y + 10, f"solved {role}", digit, cell=name, digit=digit, **extra
+                )
+            )
     out.extend(_suppose_marks(grid, suppose))
     out.append("</svg>")
     return "".join(out)
@@ -358,8 +425,8 @@ def _suppose_marks(grid, suppose):
         x, y = grid.centre(cell)
         out.append(
             _text(
-                x - CELL / 2 + 8,
-                y - CELL / 2 + 11,
+                x + 18.5,
+                y - 5,
                 "order",
                 order,
                 cell=rules_file.cell_name(cell),
@@ -392,49 +459,41 @@ def _house_edges(grid):
                 edges.append((c, r, c + 1, r))
     return [
         f'<line class="edge" x1="{grid.x(a)}" y1="{grid.y(b)}" x2="{grid.x(c)}" '
-        f'y2="{grid.y(d)}" stroke="#000" stroke-width="2.5"/>'
+        f'y2="{grid.y(d)}" stroke-linecap="square"/>'
         for a, b, c, d in edges
     ]
 
 
-def _digits(grid, cell, candidates, removed=frozenset(), marked=None, roles=None):
+def _digits(grid, cell, candidates, removed=frozenset(), marked=None):
     """A cell's given, placed digit or candidates; with `marked`, a cell
-    outside it shows only its placed digit. `roles`, {(cell, digit): (role,
-    order)}, colours a supposition's digits, a placed one too."""
+    outside it shows only its placed digit. Each digit's pencil mark has its
+    own fixed spot in the cell, three to a row; a struck one gets a slash."""
     x, y = grid.centre(cell)
     given = grid.givens.get(cell)
     if given is not None:
-        return [_text(x, y + 9, "given", given)]
+        return [_text(x, y + 10, "given", given)]
     if candidates is None:
         return []
-    roles = roles or {}
     held = candidates[cell]
     if len(held) == 1:
-        digit = next(iter(held))
-        role, order = roles.get((cell, digit), ("", 0))
-        extra = {"cell": rules_file.cell_name(cell), "digit": digit} if role else {}
-        if order:
-            extra["order"] = order
-        return [_text(x, y + 9, f"solved {role}".strip(), digit, **extra)]
+        return [_text(x, y + 10, "solved", next(iter(held)))]
     if marked is not None and cell not in marked:
         return []
     drawn = held | removed
-    if len(drawn) == grid.n and not removed and not any(c == cell for c, _ in roles):
+    if len(drawn) == grid.n and not removed:
         return []
     out = []
+    rows = -(-grid.n // 3)
     for d in sorted(drawn):
-        dx = grid.x(cell[1]) + CELL * (1 + (d - 1) % 3) / 4
-        dy = grid.y(cell[0]) + CELL * (1 + (d - 1) // 3) / 4 + 4
+        dx = grid.x(cell[1]) + 5 + (CELL - 10) * ((d - 1) % 3 + 0.5) / 3
+        dy = grid.y(cell[0]) + 3 + (CELL - 6) * ((d - 1) // 3 + 0.5) / rows + 4.5
         cls = "cand struck" if d in removed else "cand"
-        extra = {}
-        if (cell, d) in roles:
-            role, order = roles[cell, d]
-            cls += f" {role}"
-            if order:
-                extra["order"] = order
-        out.append(
-            _text(dx, dy, cls, d, cell=rules_file.cell_name(cell), digit=d, **extra)
-        )
+        out.append(_text(dx, dy, cls, d, cell=rules_file.cell_name(cell), digit=d))
+        if d in removed:
+            out.append(
+                f'<line class="slash" x1="{dx - 5:.1f}" y1="{dy + 1.5:.1f}" '
+                f'x2="{dx + 5:.1f}" y2="{dy - 10.5:.1f}"/>'
+            )
     return out
 
 
@@ -507,8 +566,8 @@ def _fill(rules, entry, record):
     numbers = range(entry["first"], entry["last"] + 1)
     return (
         f'<div class="fill" data-steps="{entry["first"]}-{entry["last"]}">'
-        f'<p class="fill">{html.escape(entry["sentence"])}</p><details><summary>The '
-        f"{plural(len(numbers), 'step')}</summary>"
+        f'<p class="fill">{html.escape(entry["sentence"])}</p><details><summary>'
+        f"Show all {plural(len(numbers), 'step')}</summary>"
         f"<ul>{_step_items(rules, record, numbers)}</ul></details></div>"
     )
 
@@ -545,9 +604,9 @@ def _check_supposed_digits(sup, removed, start, *, entry_number):
 
 
 def _key_section(rules, entry, record, before, *, key, entry_number):
-    """Key idea `key`, the guide file's entry `entry_number`, as one row: its
-    grid, then its numbered heading, the break-in label when flagged, and its
-    paragraphs. Its starting candidates are those before its first step less
+    """Key idea `key`, the guide file's entry `entry_number`, as one card: its
+    grid (and its supposition's), then its number badge, the break-in label
+    when flagged, its heading and its paragraphs. Its starting candidates are those before its first step less
     what the run's unexplained steps remove."""
     first, last = entry["first"], entry["last"]
     numbers = range(first, last + 1)
@@ -570,17 +629,26 @@ def _key_section(rules, entry, record, before, *, key, entry_number):
     parts = [
         f'<section class="key" data-key="{key}" '
         f'data-steps="{" ".join(map(str, numbers))}">',
+        '<div class="grids"><figure>',
         render(rules, start, idea, prefix=f"k{key}"),
     ]
     if "supposition" in entry:
         sup = entry["supposition"]
         _check_supposed_digits(sup, removed, start, entry_number=entry_number)
-        parts.append(render_supposition(rules, start, sup, key, prefix=f"s{key}"))
+        cell, digit = sup["assume"]
+        parts.append("<figcaption>The candidates</figcaption></figure><figure>")
+        parts.append(render_supposition(rules, sup, key, prefix=f"s{key}"))
+        parts.append(
+            f"<figcaption>Suppose {rules_file.cell_name(cell)} were {digit}"
+            "</figcaption>"
+        )
+    parts.append("</figure></div>")
+    tag = '<span class="breakin">Break-in</span>' if entry.get("break_in") else ""
     parts.append(
-        f'<div class="text"><h2>Key idea {key}: {html.escape(entry["heading"])}</h2>'
+        f'<div class="text"><div class="eyebrow"><span class="num">{key}</span>'
+        f'<span class="kicker">Key idea {key}</span>{tag}</div>'
+        f"<h2>{html.escape(entry['heading'])}</h2>"
     )
-    if entry.get("break_in"):
-        parts.append('<p class="breakin">Break-in</p>')
     parts.extend(f"<p>{html.escape(p)}</p>" for p in entry["paragraphs"])
     if also:
         parts.append(
@@ -638,12 +706,18 @@ def guide_page(rules, record, guide, image=None):
     `record`, the image once at the top when given."""
     guide = guide_file.check(rules, record, guide)
     before = _states(rules, record)
-    body = [f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"]
+    body = [
+        '<header class="intro"><div class="introtext">'
+        '<div class="overline">Solve guide</div>'
+        f"<h1>{html.escape(rules.get('title', 'Solve guide'))}</h1>"
+    ]
     if image:
         body.append(_image(image))
     if rules.get("rules_text"):
         body.append(f'<p class="rules">{html.escape(rules["rules_text"])}</p>')
+    body.append("</div>")
     body.append(render(rules, prefix="start"))
+    body.append("</header>")
     keys = 0
     for k, entry in enumerate(guide["entries"], 1):
         if entry["type"] == "fill":

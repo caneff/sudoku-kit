@@ -29,7 +29,8 @@ A **key idea** entry:
 - `type`: `"key"`.
 - `first`, `last`: its run of steps.
 - `heading`: its heading, without a number. The library numbers key ideas
-  1..N in file order and writes `Key idea <k>: <heading>`.
+  1..N in file order and writes the number in a badge, `Key idea <k>` beside
+  it, and the heading below.
 - `paragraphs`: a list of strings, each one paragraph of explanation.
 - `break_in` (optional): `true` on the break-in. At most one entry has it;
   the library shows the break-in label on that entry.
@@ -50,8 +51,8 @@ A **key idea** entry:
   "digit": 4}`, a digit the idea's explained steps eliminate. `forces` is a
   list of `{"cell", "digit"}` in the order the assumption forces them (it may
   be empty). `breaks` is a non-empty list of the cells where the assumption
-  clashes. The library draws a second grid beside the idea's own, from the
-  idea's starting candidates: the assumed and forced digits in their own
+  clashes. The library draws a second grid beside the idea's own with no
+  pencil marks: the givens, the assumed and forced digits in their own
   colour, the forced ones numbered in order, and the clash cells circled.
   Every digit drawn must be among the idea's starting candidates in its cell.
 
@@ -70,13 +71,17 @@ loudly rather than going missing from the page.
 
 ## What the library draws
 
-- A key idea is one row: its grid on the left and its text on the right. The
+- A key idea is one card, never split across a printed page: its grid about
+  16rem wide on top and its text below, so about 1 to 2 print per A4 page. The
   grid shows the idea's starting candidates: those before the run's first
   step, less what the run's unexplained steps remove (none when it has no
-  `explains`). It strikes out what the explained steps remove and marks the
+  `explains`), each digit's pencil mark in the same spot in every cell. It
+  strikes out what the explained steps remove (grey, with a red slash) and
+  marks the
   cells those steps use or change. It draws candidates only in marked cells.
   Every other cell shows its placed digit or stays blank.
-- A fill stretch is its sentence over the collapsed list of step lines.
+- A fill stretch is its sentence over the list of step lines, collapsed
+  behind a "Show all N steps" button.
 - The page opens with the title, the original image when given, the rules
   text and the starting grid. A stuck record ends with the stuck-point grid.
 
