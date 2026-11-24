@@ -8,7 +8,8 @@ The directory is a `solve-guide` output directory: it reads `rules.json` and
 with the deductions of `guide_html.deductions` in guide order, so every step
 of the record appears on exactly one line. The changes are the guide's step
 lines' words (`guide_html.describe_steps`: the digits a cell loses, or the
-digit it is), and the constraints are `guide_html.named_words`, never a clue
+digit it is), each loss followed by what its cells have left
+(`r2c4 loses 6 (left: 1 2 3 4 5)`), and the constraints are `guide_html.named_words`, never a clue
 id.
 
 Exit codes: 0 printed, 2 `rules.json` or `steps.json` missing, unreadable or
@@ -30,7 +31,7 @@ def lines(rules, record):
     before = guide_html.states(rules, record)
     for k, group in enumerate(guide_html.deductions(rules, record), 1):
         steps = ", ".join(map(str, group["steps"]))
-        changes = guide_html.describe_steps(record, before, group["steps"])
+        changes = guide_html.describe_steps(record, before, group["steps"], left=True)
         named = guide_html.named_words(rules, group["named"])
         label = "steps" if len(group["steps"]) > 1 else "step"
         out.append(f"D{k} ({label} {steps}): {changes}, from {named}.")

@@ -605,28 +605,33 @@ def _changes(record, before, numbers):
     return out
 
 
-def _change_words(changes, record, numbers):
+def _change_words(changes, record, numbers, left=False):
     """What `changes` does in words, joined by `;`: cells losing the same
     digits share one phrase (r1c12 lose 4), a placed cell reads as its digit
     (r1c3 is 3), and one that loses nothing by what it keeps. A claim on no
-    cell reads as `describe_claim` gives it."""
+    cell reads as `describe_claim` gives it. With `left`, a losing phrase also
+    says what its cells have left (r1c12 lose 4 (left: 1 2)), and only cells
+    left with the same digits share it."""
     phrases = {}
-    for cell, (gone, left) in changes.items():
-        if len(left) == 1:
-            key = ("is", next(iter(left)))
+    for cell, (gone, rest) in changes.items():
+        if len(rest) == 1:
+            key = ("is", next(iter(rest)), None)
         elif gone:
-            key = ("loses", gone)
+            key = ("loses", gone, rest if left else None)
         else:
-            key = ("keeps", left)
+            key = ("keeps", rest, None)
         phrases.setdefault(key, []).append(cell)
     out = []
-    for (verb, digits), cells in phrases.items():
+    for (verb, digits, rest), cells in phrases.items():
         one = len(cells) == 1
         if verb == "is":
             out.append(f"{_cell_words(cells)} {'is' if one else 'are'} {digits}")
         elif verb == "loses":
             words = _digit_words(digits)
-            out.append(f"{_cell_words(cells)} {'loses' if one else 'lose'} {words}")
+            phrase = f"{_cell_words(cells)} {'loses' if one else 'lose'} {words}"
+            if rest is not None:
+                phrase += f" (left: {' '.join(map(str, sorted(rest)))})"
+            out.append(phrase)
         else:
             out.append(
                 f"{_cell_words(cells)} {'keeps' if one else 'keep'} "
@@ -639,11 +644,12 @@ def _change_words(changes, record, numbers):
     return "; ".join(out)
 
 
-def describe_steps(record, before, numbers):
+def describe_steps(record, before, numbers, left=False):
     """What steps `numbers` of `record` do, in words: the digits each cell
     loses, or the digit it is, cells with the same change in one phrase.
-    `before` is `states(rules, record)`."""
-    return _change_words(_changes(record, before, numbers), record, numbers)
+    `before` is `states(rules, record)`. `left` adds what each losing cell has
+    left, as `solve-deductions` prints it (`_change_words`)."""
+    return _change_words(_changes(record, before, numbers), record, numbers, left)
 
 
 CLUE_WORDS = {
@@ -714,6 +720,22 @@ def named_words(rules, named):
     return join_words(list(dict.fromkeys(constraint_words(rules, n) for n in named)))
 
 
+def constraint_names(rules, names):
+    """`names` as the rules file names constraints: a house or clue name is
+    kept, and a name in the words `constraint_words` gives (box 5, black dot
+    at r12c12) stands for every constraint that reads as it, so a corner dot
+    gives both its diagonal clues. A name that is neither is kept, for the
+    caller to refuse. Each name once, in order."""
+    registry = rules_file.registry(rules)
+    by_words = {}
+    for name in registry:
+        by_words.setdefault(constraint_words(rules, name), []).append(name)
+    out = []
+    for name in names:
+        out += [name] if name in registry else by_words.get(name, [name])
+    return list(dict.fromkeys(out))
+
+
 def _removes_one(record, before, i):
     """The one digit step `i` removes from its cell, or None."""
     claim = record["steps"][i - 1]["claim"]
@@ -743,15 +765,17 @@ def _runs(rules, record, before, numbers):
     the list, placed where the set first appears; a claim on no cell is a run
     of its own. Then neighbouring runs of single houses that each remove only
     the digit of one solved cell in all of them join (a given clearing its
-    row, column and box). Each run is `{"steps", "named", "sources",
-    "digit"}`: `named` the one set of constraints, or None once the run spans
-    houses; `sources` the solved cells holding `digit` in every house of the
-    run, empty when there is none."""
+    row, column and box). A set of constraints is the words it reads as
+    (`constraint_words`), so the two diagonal clues of one corner dot are one
+    set (#153). Each run is `{"steps", "named", "sources", "digit"}`: `named`
+    the one set of constraints' words, or None once the run spans houses;
+    `sources` the solved cells holding `digit` in every house of the run,
+    empty when there is none."""
     houses = rules_file.house_names(rules)
     runs, by_named = [], {}
     for i in numbers:
         step = record["steps"][i - 1]
-        named = frozenset(step["named"])
+        named = frozenset(constraint_words(rules, n) for n in step["named"])
         digit, sources = _sources(houses, record, before, i)
         run = by_named.get(named) if "cell" in step["claim"] else None
         if run is None:
