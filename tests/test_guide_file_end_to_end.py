@@ -138,6 +138,7 @@ def test_the_command_draws_a_guide_file_built_from_its_own_step_record(
     assert not [line for line in lines for clue in CLUE_IDS if clue in line]
     assert "Also in this stretch" in page
     assert page.count('data-supposition="1"') == 1
+    assert "@page { size: A4; margin: 15mm; }" in page
 
     skipping = _guide_for(record)
     skipping["entries"][-1]["first"] += 1
