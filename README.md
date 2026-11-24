@@ -60,8 +60,9 @@ and grid-hunts. Neither imports the step prover.
   stuck, 4 a hint not proved, 5 a time limit.
 - `sudoku_kit.deduction_lines`: `uv run solve-deductions <output directory>`
   prints a `solve-guide` run's step record as one line per deduction (its
-  steps, what each cell loses or is, and its constraints in words), for the
-  `/solve-guide` skill to read.
+  steps, what each cell loses or is and what it has left, and its constraints
+  in words), for the `/solve-guide` skill to read. `solve-guide --named` takes
+  those words too.
 - `sudoku_kit.step_search`: the step search and the step record.
 - `sudoku_kit.guide_file`: the guide file the `/solve-guide` skill writes
   (`docs/guide-file.md`): reading it and checking it against the step record.

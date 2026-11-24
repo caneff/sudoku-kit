@@ -44,9 +44,9 @@ def test_an_invented_board_lists_every_step_once_merging_across_a_step_elsewhere
 
     assert code == 0
     assert lines == [
-        "D1 (step 2): r4c4 loses 4, from row 4.",
-        "D2 (steps 1, 3): r1c12 lose 4, from white dot r1c1-r1c2.",
-        "D3 (step 4): r1c1 loses 3, from row 1.",
+        "D1 (step 2): r4c4 loses 4 (left: 1 2 3), from row 4.",
+        "D2 (steps 1, 3): r1c12 lose 4 (left: 1 2 3), from white dot r1c1-r1c2.",
+        "D3 (step 4): r1c1 loses 3 (left: 1 2), from row 1.",
     ]
 
 
@@ -73,7 +73,8 @@ def test_a_deduction_of_several_steps_joins_its_claims(tmp_path, capsys):
     _, lines, _ = _run(tmp_path, capsys)
 
     assert lines == [
-        "D1 (steps 1, 2): r1c1 loses 4; r1c2 is 4, from white dot r1c1-r1c2."
+        "D1 (steps 1, 2): r1c1 loses 4 (left: 1 2 3); r1c2 is 4, from white dot "
+        "r1c1-r1c2."
     ]
 
 
@@ -154,6 +155,28 @@ def test_a_deduction_line_says_box_and_names_a_corner_dot_once(tmp_path, capsys)
     _, lines, _ = _run(tmp_path, capsys)
 
     assert lines == [
-        "D1 (step 1): r3c3 loses 4, from box 4.",
-        "D2 (step 2): r1c1 loses 3, from black dot at r12c12.",
+        "D1 (step 1): r3c3 loses 4 (left: 1 2 3), from box 4.",
+        "D2 (step 2): r1c1 loses 3 (left: 1 2 4), from black dot at r12c12.",
     ]
+
+
+def test_cells_losing_the_same_digits_but_left_with_different_ones_say_each(
+    tmp_path, capsys
+):
+    """Each line states what its changed cells have left, so a suppose chain
+    is checked without adding up removals from the start (#153)."""
+    record = make_record(
+        make_step(["row 1"], (0, 0), [1, 2]),
+        make_step(["row 2"], (1, 0), [1, 3, 4]),
+        make_step(["column 1"], (0, 0), [1]),
+        make_step(["column 1"], (1, 0), [3, 4]),
+        make_step(["column 1"], (2, 0), [2, 3, 4]),
+    )
+    _write(tmp_path, TOY, record)
+
+    _, lines, _ = _run(tmp_path, capsys)
+
+    assert lines[-1] == (
+        "D3 (steps 3, 4, 5): r1c1 is 1; r2c1 loses 1 (left: 3 4); "
+        "r3c1 loses 1 (left: 2 3 4), from column 1."
+    )

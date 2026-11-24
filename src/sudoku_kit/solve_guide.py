@@ -12,8 +12,9 @@ saving `steps.json`, the step record, after every step. A `steps.json`
 already there is resumed from once every step in it proves again on this
 rules file; one that does not (left by another puzzle, or by this one before
 a clue changed) is refused. `--hint` gives a claim, as the step record
-writes one, and `--named` each constraint it uses (at least one): the hint
-is proved from those alone and appended before the search goes on; a hint
+writes one, and `--named` each constraint it uses (at least one), by its
+rules-file name or as `solve-deductions` prints it (box 5, a corner dot's
+words for both its clues): the hint is proved from those alone and appended before the search goes on; a hint
 not proved is reported (a refuted one with its witness) and nothing is
 searched.
 
@@ -127,11 +128,12 @@ def main(argv=None):
     try:
         rules = _read(args.input)
         hint = _hint(args)
+        named = guide_html.constraint_names(rules, args.named)
         guide = None if args.guide is None else _guide(args.guide, rules, page_path)
         record = step_search.load_record(path)
         search = step_search.Search(rules, record, path, args.proof_limit)
         if hint is not None:
-            search.check_hint(hint, args.named)
+            search.check_hint(hint, named)
         checks = rules_file.check(rules, args.time_limit)
     except ValueError as e:
         print(f"solve-guide: {e}", file=sys.stderr)
@@ -159,7 +161,7 @@ def main(argv=None):
     if not rules_file.passed(checks):
         return 1
     if hint is not None:
-        result = search.hint(hint, args.named)
+        result = search.hint(hint, named)
         if result.status != "proved":
             print(f"hint: {result.status}")
             if result.witness:

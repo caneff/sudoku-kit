@@ -1396,3 +1396,35 @@ def test_steps_from_one_constraint_share_a_line_across_steps_between_them():
         ("2 4", "r1c2 loses 3 and 4, from white dot r1c1-r1c2."),
         ("6", "r4c1 loses 3, from black dot r4c1-r4c2."),
     ]
+
+
+def test_steps_from_the_two_clues_of_one_corner_dot_are_one_line():
+    """Two diagonal clues crossing at one corner are one drawn dot, so steps
+    from each that remove the same digits read as one line (#153)."""
+    rules = dict(
+        TOY,
+        clues=[
+            {
+                "id": "w1",
+                "rule": "difference",
+                "cells": [[0, 2], [1, 3]],
+                "values": [1],
+            },
+            {
+                "id": "w2",
+                "rule": "difference",
+                "cells": [[0, 3], [1, 2]],
+                "values": [1],
+            },
+        ],
+    )
+    page = _toy(
+        [
+            make_step(["w1"], (1, 3), [1, 2, 3]),
+            make_step(["w2"], (0, 3), [1, 2, 3]),
+        ],
+        _fill(1, 2),
+        rules=rules,
+    )
+
+    assert _lines(page) == [("1 2", "r12c4 lose 4, from white dot at r12c34.")]

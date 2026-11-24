@@ -19,7 +19,7 @@ import re
 
 from guide_helpers import cell_name
 
-from sudoku_kit import step_search
+from sudoku_kit import deduction_lines, step_search
 from sudoku_kit.solve_guide import main
 
 BOARD = {
@@ -174,3 +174,55 @@ def test_the_command_refuses_an_early_removal_that_does_not_hold(tmp_path, capsy
         assert _run(tmp_path, "--guide", str(guide)) == 2
         assert re.search(cause, capsys.readouterr().err)
         assert not (out / "guide.html").exists()
+
+
+# A corner white dot at r34c23 the solution keeps: r3c2=1, r4c3=2 and r3c3=4,
+# r4c2=3. Its two clues are one dot to a reader (#153).
+CORNER_BOARD = dict(
+    BOARD,
+    clues=[
+        *BOARD["clues"],
+        {"id": "w-a", "rule": "difference", "cells": [[2, 1], [3, 2]], "values": [1]},
+        {"id": "w-b", "rule": "difference", "cells": [[2, 2], [3, 1]], "values": [1]},
+    ],
+)
+
+
+def _hint(tmp_path, claim, *named):
+    board = tmp_path / "corner.json"
+    board.write_text(json.dumps(CORNER_BOARD))
+    flags = [f for name in named for f in ("--named", name)]
+    out = tmp_path / "out"
+    return main([str(board), str(out), "--hint", json.dumps(claim), *flags])
+
+
+def test_named_takes_the_display_names_solve_deductions_prints(tmp_path, capsys):
+    out = tmp_path / "out"
+    # r2c3 is given 1 and r1c4 given 4, so box 2 keeps both out of r1c3.
+    assert _hint(tmp_path, {"cell": [0, 2], "digits": [2, 3]}, "box 2") == 0
+    assert json.loads((out / "steps.json").read_text())["steps"][0]["named"] == [
+        "region 2"
+    ]
+    (out / "steps.json").unlink()
+    # r4c3 is given 2, so the dot's r3c2-r4c3 clue keeps r3c2 to 1 or 3.
+    claim = {"cell": [2, 1], "digits": [1, 3]}
+    assert _hint(tmp_path, claim, "white dot at r34c23") == 0
+    first = json.loads((out / "steps.json").read_text())["steps"][0]
+    assert first["named"] == ["w-a", "w-b"]
+
+    capsys.readouterr()
+    assert deduction_lines.main([str(out)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    dot = next(line for line in lines if line.startswith("D1 (step"))
+    assert "r3c2 loses 2 and 4 (left: 1 3)" in dot
+    assert dot.endswith(", from white dot at r34c23.")
+    assert all("(left: " in line for line in lines if " loses " in line)
+
+
+def test_named_refuses_a_name_that_is_neither_a_constraint_nor_its_words(
+    tmp_path, capsys
+):
+    claim = {"cell": [2, 1], "digits": [1, 3]}
+    assert _hint(tmp_path, claim, "white dot at r12c34") == 2
+    assert "white dot at r12c34" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
