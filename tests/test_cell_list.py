@@ -14,8 +14,14 @@ from sudoku_kit import rules_file
         ([(0, 2), (0, 3), (1, 2), (1, 3)], "r12c34"),
         ([(1, 0), (0, 0)], "r12c1"),
         ([(0, 0), (0, 2)], "r1c13"),
-        # not a block: one block per run of identical column sets, reading order
+        # not a block: the fewest blocks, rows with the same columns on a tie
         ([(0, 0), (0, 1), (1, 0)], "r1c12, r2c1"),
+        ([(0, 0), (1, 0), (1, 1), (2, 1)], "r12c1, r23c2"),
+        # neither grouping rows nor grouping columns alone gives the fewest
+        (
+            [(0, 0), (1, 0), (1, 1), (2, 1), (4, 4), (4, 5), (5, 5), (5, 6)],
+            "r12c1, r23c2, r5c56, r6c67",
+        ),
         ([(2, 2), (0, 0)], "r1c1, r3c3"),
         ([(0, 0), (0, 0)], "r1c1"),
         ([(0, 8), (0, 9)], "r1c9,10"),

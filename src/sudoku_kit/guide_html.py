@@ -56,12 +56,10 @@ eliminate, or that draws a digit which is not among the idea's starting
 candidates in its cell.
 
 A key idea may carry `early_removals` (#147): digits its words rule out
-before the record does. The page refuses one that is not a candidate after
-the idea's steps and the early removals before it, or that is the cell's
-solution digit (`_known_solution`), naming the key idea, cell and digit. The
-idea's grid strikes them and marks their cells; every later grid starts
-without them. A label mark keeps clear of its cell's pencil marks
-(`_label_spot`).
+before the record does, which `guide_file.check` checks against the record.
+The idea's grid strikes them and marks their cells; every later grid starts
+without them. A label mark keeps clear of every pencil mark, and is refused
+when there is no room for it (`_label_spot`).
 
 `render(rules)` is the plain grid, givens and clues only; `plain_page` puts it
 beside the original image for the import comparison.
@@ -70,8 +68,8 @@ beside the original image for the import comparison.
 import html
 import itertools
 
-from sudoku_kit import guide_file, rules_file, step_search
-from sudoku_kit.guide_file import join_words, plural
+from sudoku_kit import guide_file, rules_file
+from sudoku_kit.guide_file import join_words, plural, states
 
 CELL = 48
 LABEL_CHAR = 7.2  # a label letter's width at 12px bold, about 0.6em
@@ -166,8 +164,8 @@ text { font-family: "Segoe UI", "Ubuntu Sans", Ubuntu, Roboto, Arial, sans-serif
 
 
 def deductions(rules, record):
-    """The record's deductions in guide order, each `{"named", "steps",
-    "claims"}`: `steps` its step numbers from 1, `claims` theirs in order."""
+    """The record's deductions in guide order, each `{"named", "steps"}`:
+    `steps` its step numbers from 1."""
     registry = rules_file.registry(rules)
     groups, open_groups = [], {}
     for number, step in enumerate(record["steps"], 1):
@@ -175,12 +173,11 @@ def deductions(rules, record):
         key = frozenset(step["named"]) if "cell" in claim else None
         group = open_groups.get(key)
         if group is None:
-            group = {"named": step["named"], "steps": [], "claims": [], "cells": set()}
+            group = {"named": step["named"], "steps": [], "cells": set()}
             groups.append(group)
             if key is not None:
                 open_groups[key] = group
         group["steps"].append(number)
-        group["claims"].append(claim)
         changed, _ = _claim_marks(claim)
         group["cells"] |= changed
         for name in step["named"]:
@@ -192,21 +189,9 @@ def deductions(rules, record):
                 if g is group or tuple(claim["cell"]) not in g["cells"]
             }
     return sorted(
-        ({k: g[k] for k in ("named", "steps", "claims")} for g in groups),
+        ({k: g[k] for k in ("named", "steps")} for g in groups),
         key=lambda g: g["steps"][-1],
     )
-
-
-def states(rules, record):
-    """The candidates before each step, by step number from 1, and after the
-    last step under the number past it."""
-    state = step_search.State(rules)
-    before = {}
-    for i, step in enumerate(record["steps"], 1):
-        before[i] = dict(state.candidates)
-        state.apply(step_search.claim_from_json(step["claim"]))
-    before[len(record["steps"]) + 1] = dict(state.candidates)
-    return before
 
 
 class Grid:
@@ -306,35 +291,53 @@ def _clue(grid, clue):
     return f'<polyline class="line" points="{points}" fill="none" stroke="#888"/>'
 
 
-def _label_spot(grid, cell, text, drawn):
-    """(x, baseline y, width or None) of a label in `cell` that keeps clear of
-    `drawn`, the digits whose pencil marks the cell draws. With none, the label
-    sits along the cell's foot. Otherwise it takes the widest run of empty
-    pencil-mark spots in one row of them, the lowest such row on a tie,
-    squeezed to fit; with no spot empty it sits just under the cell, or just
-    over it on the grid's last row."""
-    x, y = grid.centre(cell)
-    if not drawn:
-        return x, y + CELL / 2 - 4, None
-    natural = LABEL_CHAR * len(text)
-    runs = []  # (length, band, first column) of each run of empty spots
-    for band in range(_bands(grid)):
+def _empty_runs(drawn, bands):
+    """(length, band, first column) of each run of a cell's pencil-mark spots
+    in `bands` that draw no digit of `drawn`."""
+    runs = []
+    for band in bands:
         empty = [col for col in range(3) if band * 3 + col + 1 not in drawn]
         for _, run in itertools.groupby(enumerate(empty), lambda p: p[1] - p[0]):
             columns = [col for _, col in run]
             runs.append((len(columns), band, columns[0]))
-    if not runs:
-        last_row = cell[0] == grid.top + grid.rows - 1
-        top = grid.y(cell[0])
-        return x, (top - 3 if last_row else top + CELL + 11), natural
-    length, band, start = max(runs)
+    return runs
+
+
+def _label_spot(grid, cell, text, drawn):
+    """(x, baseline y, width or None) of a label in `cell` that keeps clear of
+    every pencil mark, `drawn` being {cell: digits whose pencil marks it
+    draws}. With none in the cell, the label sits along the cell's foot.
+    Otherwise it takes the widest run of empty pencil-mark spots in one row
+    of them, the lowest such row on a tie, squeezed to fit; with no spot
+    empty, the widest run in the top row of spots of the cell below, else the
+    bottom row of the cell above. A label with no room in any of them is
+    refused, naming its cell."""
+    x, y = grid.centre(cell)
+    if not drawn.get(cell):
+        return x, y + CELL / 2 - 4, None
+    bands = _bands(grid)
+    places = [(cell, range(bands))]
+    if cell[0] < grid.top + grid.rows - 1:
+        places.append(((cell[0] + 1, cell[1]), [0]))
+    if cell[0] > grid.top:
+        places.append(((cell[0] - 1, cell[1]), [bands - 1]))
     slot = (CELL - 10) / 3
-    left = grid.x(cell[1]) + 5 + slot * start
-    _, baseline = _spot(grid, cell, band * 3 + 1)
-    return left + slot * length / 2, baseline, min(natural, slot * length - 2)
+    for spot_cell, spot_bands in places:
+        runs = _empty_runs(drawn.get(spot_cell, set()), spot_bands)
+        if runs:
+            length, band, start = max(runs)
+            left = grid.x(spot_cell[1]) + 5 + slot * start
+            _, baseline = _spot(grid, spot_cell, band * 3 + 1)
+            width = min(LABEL_CHAR * len(text), slot * length - 2)
+            return left + slot * length / 2, baseline, width
+    raise ValueError(
+        f"the label {text!r} in {rules_file.cell_name(cell)} has no room clear "
+        "of the pencil marks in its cell and the cells above and below it; "
+        "put it in another cell"
+    )
 
 
-def _annotation(grid, note, prefix, drawn=frozenset()):
+def _annotation(grid, note, prefix, drawn=None):
     kind = note["type"]
     if kind == "arrow":
         (ax, ay), (bx, by) = grid.centre(note["from"]), grid.centre(note["to"])
@@ -351,7 +354,7 @@ def _annotation(grid, note, prefix, drawn=frozenset()):
             f'data-cell="{rules_file.cell_name(note["cell"])}"/>'
         )
     if kind == "label":
-        x, y, width = _label_spot(grid, note["cell"], note["text"], drawn)
+        x, y, width = _label_spot(grid, note["cell"], note["text"], drawn or {})
         return _text(
             x, y, "label", note["text"], width, cell=rules_file.cell_name(note["cell"])
         )
@@ -426,10 +429,7 @@ def render(rules, candidates=None, idea=None, prefix="g"):
         gone = removed.get(cell, set())
         drawn[cell] = _drawn(grid, cell, candidates, gone, marked)
         out.extend(_digits(grid, cell, candidates, gone, marked=marked))
-    out.extend(
-        _annotation(grid, note, prefix, drawn.get(note.get("cell"), set()))
-        for note in notes
-    )
+    out.extend(_annotation(grid, note, prefix, drawn) for note in notes)
     out.append("</svg>")
     return "".join(out)
 
@@ -566,14 +566,7 @@ def _digits(grid, cell, candidates, removed=frozenset(), marked=None):
 
 
 def describe_claim(claim):
-    if "cell" in claim:
-        cell = rules_file.cell_name(claim["cell"])
-        digits = claim["digits"]
-        return (
-            f"{cell} = {digits[0]}"
-            if len(digits) == 1
-            else (f"{cell} keeps {' '.join(map(str, digits))}")
-        )
+    """A claim on no cell in words: a chain, or an `either`."""
     if "chain" in claim:
         return "chain " + " < ".join(rules_file.cell_name(c) for c in claim["chain"])
     return "at least one of several patterns holds"
@@ -892,53 +885,7 @@ def _less(candidates, gone):
     return {cell: digits - gone.get(cell, set()) for cell, digits in candidates.items()}
 
 
-def _known_solution(rules, final):
-    """{cell: digit} of the solution as far as it is known: the rules file's
-    stored solution, else each cell `final`, the record's last candidates,
-    has solved."""
-    known = {cell: next(iter(ds)) for cell, ds in final.items() if len(ds) == 1}
-    stored = rules.get("solution")
-    if stored is not None:
-        known |= {
-            (r, c): d
-            for r, row in enumerate(stored)
-            for c, d in enumerate(row)
-            if d is not None
-        }
-        known |= {
-            tuple(o["cell"]): o["digit"] for o in rules.get("solution_outside") or []
-        }
-    return known
-
-
-def _check_early_removals(entry, after, solution, *, key, entry_number):
-    """{cell: digits} entry's early removals take out, refused naming the key
-    idea, cell and digit when one is not a candidate in `after` (the
-    candidates after the idea's steps), with the earlier ones applied, or is
-    the cell's solution digit."""
-    out = {}
-    for cell, digit in entry.get("early_removals", []):
-        name = rules_file.cell_name(cell)
-        where = (
-            f"key idea {key} (entry {entry_number}) removes {digit} from {name} early"
-        )
-        if digit not in after[cell] - out.get(cell, set()):
-            raise ValueError(
-                f"{where}, but {digit} is not a candidate there after the idea's "
-                "steps and the early removals before it"
-            )
-        if cell not in solution:
-            raise ValueError(
-                f"{where}, but the solution digit there is not known: the rules "
-                "file stores no solution and the step record does not solve it"
-            )
-        if solution[cell] == digit:
-            raise ValueError(f"{where}, but {digit} is the solution digit there")
-        out.setdefault(cell, set()).add(digit)
-    return out
-
-
-def _key_section(rules, entry, record, before, early, solution, *, key, entry_number):
+def _key_section(rules, entry, record, before, early, *, key, entry_number):
     """Key idea `key`, the guide file's entry `entry_number`, as one card: its
     grid (and its supposition's), then its number badge, the break-in label
     when flagged, its heading and its paragraphs, with {cell: digits} of the
@@ -947,20 +894,19 @@ def _key_section(rules, entry, record, before, early, solution, *, key, entry_nu
     early removals, remove."""
     first, last = entry["first"], entry["last"]
     numbers = range(first, last + 1)
-    states = before
-    before = {i: _less(before[i], early) for i in range(first, last + 2)}
+    held = {i: _less(before[i], early) for i in range(first, last + 2)}
     explained = entry.get("explains") or list(numbers)
     also = [i for i in numbers if i not in explained]
     steps = [record["steps"][i - 1] for i in explained]
-    unexplained = _eliminations(record, before, also)
+    unexplained = _eliminations(record, held, also)
     start = {
         cell: digits - unexplained.get(cell, set())
-        for cell, digits in before[first].items()
+        for cell, digits in held[first].items()
     }
-    removed = _eliminations(record, before, explained)
-    added = _check_early_removals(
-        entry, before[last + 1], solution, key=key, entry_number=entry_number
-    )
+    removed = _eliminations(record, held, explained)
+    added = {}
+    for cell, digit in entry.get("early_removals", []):
+        added.setdefault(cell, set()).add(digit)
     idea = {
         "key": key,
         "named": list(dict.fromkeys(n for step in steps for n in step["named"])),
@@ -999,7 +945,7 @@ def _key_section(rules, entry, record, before, early, solution, *, key, entry_nu
     if also:
         parts.append(
             '<details class="also"><summary>Also in this stretch</summary>'
-            f"<ul>{_step_items(rules, record, states, also)}</ul></details>"
+            f"<ul>{_step_items(rules, record, before, also)}</ul></details>"
         )
     parts.append("</div></section>")
     return "".join(parts), added
@@ -1067,14 +1013,13 @@ def guide_page(rules, record, guide, image=None):
     body.append(render(rules, prefix="start"))
     body.append("</header>")
     keys, early = 0, {}
-    solution = _known_solution(rules, before[len(record["steps"]) + 1])
     for k, entry in enumerate(guide["entries"], 1):
         if entry["type"] == "fill":
             body.append(_fill(rules, entry, record, before))
             continue
         keys += 1
         section, added = _key_section(
-            rules, entry, record, before, early, solution, key=keys, entry_number=k
+            rules, entry, record, before, early, key=keys, entry_number=k
         )
         body.append(section)
         for cell, digits in added.items():

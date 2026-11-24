@@ -47,8 +47,10 @@ A **key idea** entry:
   `{"type": "label", "cell": "r1c1", "text": "pair"}` and
   `{"type": "highlight", "cell": "r1c1"}`. A label never prints over a pencil
   mark: in a cell that draws pencil marks it takes the widest run of empty
-  pencil-mark spots in one row, squeezed to fit, or sits just outside the
-  cell when every spot is drawn.
+  pencil-mark spots in one row, squeezed to fit. When every spot is drawn it
+  goes into the widest empty run of the top row of spots of the cell below,
+  else the bottom row of the cell above; when neither has room the guide is
+  refused.
 - `supposition` (optional): the idea argues "suppose this cell were X". An
   object with `assume`, `forces` and `breaks`. `assume` is `{"cell": "r1c1",
   "digit": 4}`, a digit the idea's explained steps eliminate. `forces` is a
@@ -132,7 +134,10 @@ an earlier run left is removed. The guide file:
   idea's steps and the early removals before it, is the cell's solution
   digit, or falls in a cell whose solution digit neither the rules file nor
   the step record gives. The message names the key idea, its entry, the cell
-  and the digit.
+  and the digit;
+- has a label with no room: every pencil-mark spot in its cell is drawn, and
+  neither the cell below's top row nor the cell above's bottom row has an
+  empty run for it. The message names the label's text and cell.
 
 Without `--guide` the command still checks the rules file and runs the
 search, but it writes no guide, removes a `guide.html` an earlier run left,

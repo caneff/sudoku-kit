@@ -26,6 +26,7 @@ two checks: exactly one solution, and the stored solution fits every named
 constraint.
 """
 
+import itertools
 import json
 from pathlib import Path
 
@@ -50,19 +51,84 @@ def _numbers(counts):
     return ",".join(words) if any(len(w) > 1 for w in words) else "".join(words)
 
 
+BLOCK_TRIES = 20_000  # blocks `_fewest_blocks` tries before it keeps its best
+
+
+def _classes(lines):
+    """{line: crossing lines} as classes: lines crossing the same set, in
+    order of their first line."""
+    out = {}
+    for line, crossing in sorted(lines.items()):
+        out.setdefault(frozenset(crossing), []).append(line)
+    return out
+
+
+def _larger_first(items):
+    """Every subset of `items`, as tuples, the larger first."""
+    return itertools.chain.from_iterable(
+        itertools.combinations(items, k) for k in range(len(items), -1, -1)
+    )
+
+
+def _fewest_blocks(cells):
+    """`cells` split into blocks, each (rows, columns): the fewest found, and
+    on a tie the rows holding the same columns as one block. Rows holding the
+    same columns, then columns holding the same rows, stay together, which
+    keeps some fewest split. The search tries at most BLOCK_TRIES blocks, so a
+    long scattered list may keep a split with a block more than it needs."""
+    by_row = {}
+    for r, c in cells:
+        by_row.setdefault(r, set()).add(c)
+    row_classes = _classes(by_row)
+    best = [(rows, sorted(cols)) for cols, rows in row_classes.items()]
+    by_column = {}
+    for k, cols in enumerate(row_classes):
+        for c in cols:
+            by_column.setdefault(c, set()).add(k)
+    column_classes = _classes(by_column)
+    rows_of, columns_of = list(row_classes.values()), list(column_classes.values())
+    tries = 0
+
+    def search(left, chosen):
+        """Cover `left`, (row class, column class) pairs, after `chosen`."""
+        nonlocal best, tries
+        if not left:
+            best = [
+                (
+                    sorted(r for k in ks for r in rows_of[k]),
+                    sorted(c for j in js for c in columns_of[j]),
+                )
+                for ks, js in chosen
+            ]
+            return
+        if len(chosen) + 1 >= len(best):
+            return
+        k, j = min(left)
+        wider = sorted(b for a, b in left if a == k and b > j)
+        for more in _larger_first(wider):
+            js = (j, *more)
+            below = sorted({a for a, _ in left if a > k})
+            below = [a for a in below if all((a, b) in left for b in js)]
+            for down in _larger_first(below):
+                tries += 1
+                if tries > BLOCK_TRIES:
+                    return
+                ks = (k, *down)
+                search(left - set(itertools.product(ks, js)), [*chosen, (ks, js)])
+
+    search({(k, j) for j, ks in enumerate(column_classes) for k in ks}, [])
+    return best
+
+
 def cell_list(cells):
     """Cells in words, in the standard notation: a block of rows by columns is
-    one name (r12c34), a single cell stays r1c5. Rows holding the same columns
-    form one block; the blocks come in reading order of their first cell."""
-    columns = {}
-    for r, c in sorted(set(map(tuple, cells))):
-        columns.setdefault(r, set()).add(c)
-    blocks = {}
-    for r, cols in columns.items():
-        blocks.setdefault(frozenset(cols), []).append(r)
+    one name (r12c34), a single cell stays r1c5. A list that is no one block
+    is split into the fewest blocks (`_fewest_blocks`), which come in reading
+    order of their first cell."""
+    blocks = _fewest_blocks(set(map(tuple, cells)))
     return ", ".join(
         f"r{_numbers(rows)}c{_numbers(cols)}"
-        for cols, rows in sorted(blocks.items(), key=lambda b: (b[1][0], sorted(b[0])))
+        for rows, cols in sorted(blocks, key=lambda b: (b[0][0], b[1][0]))
     )
 
 

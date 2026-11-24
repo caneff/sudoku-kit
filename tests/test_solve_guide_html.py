@@ -1194,20 +1194,16 @@ def _boxes_overlap(a, b):
 
 def _label_clears_its_pencil_marks(page, grid):
     """True when each label's box, its `textLength` wide and 9px tall above
-    its baseline, misses every pencil mark of its cell, each 7px wide and 9px
+    its baseline, misses every pencil mark on the grid, each 7px wide and 9px
     tall above its own baseline."""
     labels = [e for e in page.find("text", "label") if e[3] == grid]
     assert labels
+    marks = [e for e in page.find("text", "cand") if e[3] == grid]
     for label in labels:
         x, y = float(label[1]["x"]), float(label[1]["y"])
         half = float(label[1]["textlength"]) / 2
         box = (x - half, y - 9, x + half, y)
-        marks = [
-            e
-            for e in page.find("text", "cand")
-            if e[3] == grid and e[1]["data-cell"] == label[1]["data-cell"]
-        ]
-        assert marks
+        assert any(m[1]["data-cell"] == label[1]["data-cell"] for m in marks)
         for mark in marks:
             mx, my = float(mark[1]["x"]), float(mark[1]["y"])
             if _boxes_overlap(box, (mx - 3.5, my - 9, mx + 3.5, my)):
@@ -1243,6 +1239,31 @@ def test_a_label_on_a_cell_whose_every_pencil_spot_is_drawn_sits_outside_it():
     assert _label_clears_its_pencil_marks(page, grid)
     ys = [float(e[1]["y"]) for e in page.find("text", "label") if e[3] == grid]
     assert ys[0] > 48 and ys[1] < 5 * 48
+
+
+def _six_by_six_label(cell, *full):
+    """The key idea's page on `SIX_BY_SIX` whose steps leave every pencil
+    spot of each `full` cell drawn, with a label on `cell`."""
+    steps = [make_step([f"column {c + 1}"], (r, c), [1, 2, 3, 4, 5]) for r, c in full]
+    marks = [{"type": "label", "cell": cell, "text": "pair"}]
+    return guide_html.guide_page(
+        SIX_BY_SIX, make_record(*steps), _guide(_key(1, len(steps), marks=marks))
+    )
+
+
+def test_a_label_with_no_room_below_its_cell_goes_above_it():
+    """r2c1 and r3c1 below it draw every pencil spot; r1c1 draws none."""
+    page = Page(_six_by_six_label("r2c1", (1, 0), (2, 0)))
+
+    grid = page.grids()[1]
+    assert _label_clears_its_pencil_marks(page, grid)
+    [label] = [e for e in page.find("text", "label") if e[3] == grid]
+    assert float(label[1]["y"]) < 48
+
+
+def test_a_label_with_no_room_in_or_beside_its_cell_is_refused_naming_it():
+    with pytest.raises(ValueError, match=r"label 'pair' in r1c1 has no room"):
+        _six_by_six_label("r1c1", (0, 0), (1, 0))
 
 
 def _print_css():
@@ -1428,3 +1449,36 @@ def test_steps_from_the_two_clues_of_one_corner_dot_are_one_line():
     )
 
     assert _lines(page) == [("1 2", "r12c4 lose 4, from white dot at r12c34.")]
+
+
+def test_two_crossing_dots_of_different_values_are_two_dots():
+    rules = dict(
+        TOY,
+        clues=[
+            {
+                "id": "w1",
+                "rule": "difference",
+                "cells": [[0, 2], [1, 3]],
+                "values": [2],
+            },
+            {
+                "id": "w2",
+                "rule": "difference",
+                "cells": [[0, 3], [1, 2]],
+                "values": [1],
+            },
+        ],
+    )
+    page = _toy(
+        [
+            make_step(["w1"], (1, 3), [1, 2, 3]),
+            make_step(["w2"], (0, 3), [1, 2, 3]),
+        ],
+        _fill(1, 2),
+        rules=rules,
+    )
+
+    assert _lines(page) == [
+        ("1", "r2c4 loses 4, from white dot 2 r1c3-r2c4."),
+        ("2", "r1c4 loses 4, from white dot r1c4-r2c3."),
+    ]

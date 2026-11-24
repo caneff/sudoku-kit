@@ -9,7 +9,10 @@ field, a field of the wrong kind, a run that ends before it starts, an
 a cell outside `rules`' grid, or more than one break-in. It needs only the rules file, so the
 command line refuses such a file before the search. `check(rules, record,
 guide)` also refuses one that skips, repeats or reorders a step of `record`,
-or reaches past its last step. Both return the guide with its cell names read
+or reaches past its last step, and a key idea's early removal (#147) that is
+not a candidate after the idea's steps and the early removals before it, or
+that is the cell's solution digit (`_known_solution`), naming the key idea,
+cell and digit. Both return the guide with its cell names read
 as (row, column) cells: each mark's `from`, `to` or `cell`, and a supposition
 as `{"assume": (cell, digit), "forces": [(cell, digit)], "breaks": [cell]}`,
 and `early_removals` as a list of (cell, digit) pairs in file order.
@@ -18,7 +21,7 @@ and `early_removals` as a list of (cell, digit) pairs in file order.
 import itertools
 import re
 
-from sudoku_kit import rules_file
+from sudoku_kit import rules_file, step_search
 
 VERSION = 1
 ENTRY_FIELDS = {
@@ -246,9 +249,71 @@ def parse(rules, guide):
     return guide | {"entries": parsed}
 
 
+def states(rules, record):
+    """The candidates before each step, by step number from 1, and after the
+    last step under the number past it."""
+    state = step_search.State(rules)
+    before = {}
+    for i, step in enumerate(record["steps"], 1):
+        before[i] = dict(state.candidates)
+        state.apply(step_search.claim_from_json(step["claim"]))
+    before[len(record["steps"]) + 1] = dict(state.candidates)
+    return before
+
+
+def _known_solution(rules, final):
+    """{cell: digit} of the solution as far as it is known: the rules file's
+    stored solution, else each cell `final`, the record's last candidates,
+    has solved."""
+    known = {cell: next(iter(ds)) for cell, ds in final.items() if len(ds) == 1}
+    stored = rules.get("solution")
+    if stored is not None:
+        known |= {
+            (r, c): d
+            for r, row in enumerate(stored)
+            for c, d in enumerate(row)
+            if d is not None
+        }
+        known |= {
+            tuple(o["cell"]): o["digit"] for o in rules.get("solution_outside") or []
+        }
+    return known
+
+
+def _check_early_removals(rules, record, entries):
+    """Refuse, naming the key idea, cell and digit, an early removal that is
+    not a candidate after its idea's steps and the early removals before it,
+    or that is the cell's solution digit."""
+    before = states(rules, record)
+    solution = _known_solution(rules, before[len(record["steps"]) + 1])
+    gone, key = {}, 0
+    for k, entry in enumerate(entries, 1):
+        if entry["type"] != "key":
+            continue
+        key += 1
+        after = before[entry["last"] + 1]
+        for cell, digit in entry.get("early_removals", []):
+            name = rules_file.cell_name(cell)
+            where = f"key idea {key} (entry {k}) removes {digit} from {name} early"
+            if digit not in after[cell] - gone.get(cell, set()):
+                raise ValueError(
+                    f"{where}, but {digit} is not a candidate there after the "
+                    "idea's steps and the early removals before it"
+                )
+            if cell not in solution:
+                raise ValueError(
+                    f"{where}, but the solution digit there is not known: the "
+                    "rules file stores no solution and the step record does not "
+                    "solve it"
+                )
+            if solution[cell] == digit:
+                raise ValueError(f"{where}, but {digit} is the solution digit there")
+            gone.setdefault(cell, set()).add(digit)
+
+
 def check(rules, record, guide):
     """`parse`'s guide, also refused when it does not cover every step of
-    `record` exactly once, in order."""
+    `record` exactly once, in order, or an early removal does not hold."""
     guide = parse(rules, guide)
     entries, total = guide["entries"], len(record["steps"])
     covered = {}
@@ -274,4 +339,5 @@ def check(rules, record, guide):
                 f"entry {k} is out of order: steps {b['first']}-{b['last']} come "
                 f"after steps {a['first']}-{a['last']} of entry {k - 1}"
             )
+    _check_early_removals(rules, record, entries)
     return guide
