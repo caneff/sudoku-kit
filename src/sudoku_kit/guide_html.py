@@ -36,11 +36,12 @@ arrows along the chain, and an `either` claim circles each pattern's cells.
 
 A fill stretch is the skill's one sentence on a light panel over a list,
 collapsed behind a "Show all N steps" button, written here (#151). N counts
-the steps, and one line covers a run of them: consecutive steps proved by the
-same constraints say what goes and from what ("r1c12 lose 4; r1c3 is 3, from
-row 1."), and single-house steps that each remove the digit of one solved cell
-in all those houses name that cell first ("The 4 in r2c2: r2c134, r134c2 and
-r1c1 lose 4."). Constraints are in words (`constraint_words`), a region as a
+the steps, and one line covers several: the list's steps proved by the same
+set of constraints share a line where that set first appears, saying what
+goes and from what ("r1c12 lose 4; r1c3 is 3, from row 1."), and neighbouring
+lines of single houses that each remove the digit of one solved cell in all
+those houses become one line naming that cell first ("The 4 in r2c2: r2c134,
+r134c2 and r1c1 lose 4."). Constraints are in words (`constraint_words`), a region as a
 box, never a clue id. In print the collapsed lists are hidden: they do nothing
 on paper. A stuck record ends the guide with the grid and candidates at the
 stuck point.
@@ -723,50 +724,61 @@ def _removes_one(record, before, i):
     return next(iter(gone)) if len(gone) == 1 else None
 
 
+def _sources(houses, record, before, i):
+    """(digit, cells): the one digit step `i` removes and the solved cells
+    holding it in the one house the step names, other than its own cell; or
+    (None, empty) when the step removes more or names more than one house."""
+    step = record["steps"][i - 1]
+    digit = _removes_one(record, before, i)
+    house = houses.get(step["named"][0]) if len(set(step["named"])) == 1 else None
+    if digit is None or house is None:
+        return None, set()
+    cell = tuple(step["claim"]["cell"])
+    return digit, {c for c in house if c != cell and before[i][c] == {digit}}
+
+
 def _runs(rules, record, before, numbers):
-    """Steps `numbers` as runs for one line each: consecutive cell claims
-    proved by the same constraints, or by single houses that each remove the
-    digit one solved cell in all of them holds (a given clearing its row,
-    column and box). A claim on no cell is a run of its own. Each run is
-    `{"steps", "named", "sources", "digit"}`: `named` the one set of
-    constraints, or None once the run spans houses; `sources` the solved cells
-    holding `digit` in every house so far, empty when there is none."""
+    """Steps `numbers` as runs for one line each (Chris on #151). Cell claims
+    proved by the same set of constraints share a run, wherever they fall in
+    the list, placed where the set first appears; a claim on no cell is a run
+    of its own. Then neighbouring runs of single houses that each remove only
+    the digit of one solved cell in all of them join (a given clearing its
+    row, column and box). Each run is `{"steps", "named", "sources",
+    "digit"}`: `named` the one set of constraints, or None once the run spans
+    houses; `sources` the solved cells holding `digit` in every house of the
+    run, empty when there is none."""
     houses = rules_file.house_names(rules)
-    runs = []
+    runs, by_named = [], {}
     for i in numbers:
         step = record["steps"][i - 1]
         named = frozenset(step["named"])
-        digit = _removes_one(record, before, i)
-        house = houses.get(next(iter(named))) if len(named) == 1 else None
-        sources = None
-        if digit is not None and house is not None:
-            sources = {c for c in house if before[i][c] == {digit}} - {
-                tuple(step["claim"]["cell"])
-            }
-        run = runs[-1] if runs else None
-        cell = "cell" in step["claim"]
-        if run is not None and cell and run["cell"]:
-            same = run["named"] == named
-            shared = (
-                run["sources"] & sources
-                if run["sources"] and sources and run["digit"] == digit
-                else set()
-            )
-            if same or shared:
-                run["steps"].append(i)
-                run["named"] = named if same else None
-                run["sources"] = shared
-                continue
-        runs.append(
-            {
-                "steps": [i],
-                "named": named,
-                "sources": sources or set(),
-                "digit": digit,
-                "cell": cell,
-            }
+        digit, sources = _sources(houses, record, before, i)
+        run = by_named.get(named) if "cell" in step["claim"] else None
+        if run is None:
+            run = {"steps": [], "named": named, "sources": sources, "digit": digit}
+            runs.append(run)
+            if "cell" in step["claim"]:
+                by_named[named] = run
+        elif run["digit"] == digit:
+            run["sources"] = run["sources"] & sources
+        else:
+            run["sources"] = set()
+        run["steps"].append(i)
+    joined = []
+    for run in runs:
+        last = joined[-1] if joined else None
+        shared = (
+            last["sources"] & run["sources"]
+            if last is not None and last["digit"] == run["digit"]
+            else set()
         )
-    return runs
+        if shared:
+            last["steps"] += run["steps"]
+            last["named"] = None
+            last["sources"] = shared
+        else:
+            joined.append(dict(run))
+    return joined
 
 
 def _run_line(rules, record, before, run):

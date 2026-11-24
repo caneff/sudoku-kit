@@ -77,7 +77,7 @@ A **fill** entry:
 - `sentence`: one sentence summing up the stretch.
 
 The library writes the collapsed list under a fill sentence itself, one line
-per run of steps from the same constraints, such as
+per set of constraints, wherever in the list its steps fall, such as
 `r1c12 lose 4; r1c3 is 3, from row 1`, or from one solved cell clearing its
 houses, such as `The 4 in r2c2: r2c134, r134c2 and r1c1 lose 4.` Its "Show
 all N steps" button still counts the steps. Print hides the list.

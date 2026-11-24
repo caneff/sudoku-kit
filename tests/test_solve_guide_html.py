@@ -131,8 +131,8 @@ def _lines(page):
 
 
 def _covered(page):
-    """The step numbers the step lines cover, in page order."""
-    return [int(n) for steps, _ in _lines(page) for n in steps.split()]
+    """The step numbers the step lines cover, sorted."""
+    return sorted(int(n) for steps, _ in _lines(page) for n in steps.split())
 
 
 CELLS = r"r[\d,]+c[\d,]+"
@@ -1372,4 +1372,27 @@ def test_a_chain_and_a_cell_step_from_the_same_constraint_keep_their_own_lines()
     assert _lines(page) == [
         ("1", "chain r1c1 < r1c2, from white dot r1c1-r1c2."),
         ("2", "r1c1 loses 4, from white dot r1c1-r1c2."),
+    ]
+
+
+def test_steps_from_one_constraint_share_a_line_across_steps_between_them():
+    """Chris on #151: a stretch whose steps alternate between constraints
+    reads as one line per constraint set, where that set first appears."""
+    page = _toy(
+        [
+            make_step(["region 3", "column 1"], (0, 0), [1, 2, 3]),
+            make_step(["white-a"], (0, 1), [1, 2, 3]),
+            make_step(["region 3", "column 1"], (1, 0), [1, 2]),
+            make_step(["white-a"], (0, 1), [1, 2]),
+            make_step(["region 3", "column 1"], (0, 0), [1, 2]),
+            make_step(["black-a"], (3, 0), [1, 2, 4]),
+        ],
+        _fill(1, 6),
+    )
+
+    assert [e[2] for e in page.find("summary")] == ["Show all 6 steps"]
+    assert _lines(page) == [
+        ("1 3 5", "r12c1 lose 3 and 4, from box 3 and column 1."),
+        ("2 4", "r1c2 loses 3 and 4, from white dot r1c1-r1c2."),
+        ("6", "r4c1 loses 3, from black dot r4c1-r4c2."),
     ]
