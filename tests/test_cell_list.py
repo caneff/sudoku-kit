@@ -45,7 +45,7 @@ def test_cells_of_one_deduction_with_the_same_change_share_a_block(tmp_path, cap
     steps += [make_step(["row 1"], cell, [1, 2]) for cell in [(0, 0), (0, 1)]]
 
     assert _deduction_lines(tmp_path, capsys, *steps) == [
-        "D1 (steps 1, 2, 3, 4): r1c34 are 3; r1c12 lose 3 and 4, from row 1."
+        "D1 (steps 1, 2, 3, 4): r1c34 are 3; r1c12 lose 3 and 4 (left: 1 2), from row 1."
     ]
 
 
