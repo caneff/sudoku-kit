@@ -7,7 +7,8 @@ Diagonal Dots (Logic Masters 000HUJ, its decoded puzzle JSON in
 - every step in the step record proves again from scratch with `prove`, from
   only the constraints it names, on candidates rebuilt here from the givens;
 - the path ends at the stored solution, with no stuck point;
-- the guide HTML has one grid per shown step, with that step's cells marked.
+- with no guide file given, it writes no guide and names the `/solve-guide`
+  skill, which writes the guide file (spec #127).
 
 Blind to: the consumers. grid-hunts and sudokumaker-custom-constraints both
 track main and each lock a commit in `uv.lock`, so none of this runs against
@@ -20,7 +21,6 @@ committed JSON by the `needs_app` tests.
 """
 
 import json
-import re
 
 import pytest
 
@@ -30,15 +30,18 @@ from sudoku_kit.step_prover import Place, prove
 
 @pytest.fixture(scope="module")
 def guide(diagonal_dots_run):
-    out, code = diagonal_dots_run
+    out, code, stderr = diagonal_dots_run
     read = lambda name: json.loads((out / name).read_text())
-    return {
+    found = {
         "code": code,
+        "stderr": stderr,
         "rules": read("rules.json"),
         "checks": read("checks.json"),
         "record": read("steps.json"),
-        "html": (out / "guide.html").read_text(),
     }
+    if (out / "guide.html").exists():
+        found["html"] = (out / "guide.html").read_text()
+    return found
 
 
 def _candidates_before_each_step(rules, steps):
@@ -78,23 +81,9 @@ def test_the_path_ends_at_the_stored_solution(guide):
         assert digits == [rules["solution"][r][c]], (r, c)
 
 
-def test_the_guide_has_one_grid_per_shown_step_with_its_cells_marked(guide):
-    rules, steps, page = guide["rules"], guide["record"]["steps"], guide["html"]
-    houses = set(rules_file.house_names(rules))
-    expected = {
-        i
-        for i, step in enumerate(steps, 1)
-        if len(step["named"]) >= 2 or not set(step["named"]) <= houses
-    }
-    grids = dict(
-        re.findall(
-            r'<svg class="grid"[^>]*data-step="(\d+)"[^>]*>(.*?)</svg>', page, re.S
-        )
-    )
-    assert expected
-    assert {int(i) for i in grids} == expected
-    for i in expected:
-        cell = rules_file.cell_name(steps[i - 1]["claim"]["cell"])
-        assert re.search(
-            rf'<rect class="[^"]*changed[^"]*"[^>]*data-cell="{cell}"', grids[str(i)]
-        )
+def test_without_a_guide_file_it_writes_no_guide_and_names_the_skill(guide):
+    """Spec #127: the guide is drawn only from the guide file the `/solve-guide`
+    skill writes; with none given, the command says so and draws nothing."""
+    assert "html" not in guide
+    assert "--guide" in guide["stderr"]
+    assert "/solve-guide" in guide["stderr"]

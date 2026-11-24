@@ -13,8 +13,8 @@ The digits still possible in a cell at a given point in a solve.
 _Avoid_: Pencil marks, notes, options
 
 **Step**:
-One deduction in a solve path, made from the candidates and a stated set of
-constraints.
+One claim in a solve path, proved from the candidates and a stated set of
+constraints. The guide groups steps into deductions.
 _Avoid_: Move, technique
 
 **Named constraints**:
@@ -65,10 +65,54 @@ _Avoid_: Smallest set, minimum set, core
 ### Solve guide
 
 **Solve guide**:
-A short document for a stuck solver showing the break-in and the key steps of
-one puzzle, each drawn on its own grid, with runs of singles collapsed into
-one line.
+A short document for a stuck solver showing the key ideas of one puzzle, the
+break-in first, each drawn on its own grid, with the fill between them summed
+up in one sentence per stretch. The `/solve-guide` skill writes its words as a
+guide file; the library checks that file against the step record and draws
+the page.
 _Avoid_: Walkthrough, solution, write-up
+
+**Guide file**:
+The JSON file the `/solve-guide` skill writes and the library draws: an
+ordered list of key ideas and fill stretches, each a run of steps with its
+words, together covering every step of the step record once, in order. Its
+format is `docs/guide-file.md`.
+_Avoid_: Guide JSON, script, outline
+
+**Deduction**:
+A group of steps that name the same constraints, which the skill reads as
+one candidate idea. Steps that are not adjacent join one deduction when no step between
+them changed a cell it uses; it sits at its last step's position. Grouping is
+computed from the step record, which keeps one entry per step.
+_Avoid_: Move
+
+**Key idea**:
+A run of consecutive steps the skill chooses as one move a solver would name,
+with its heading and paragraphs, drawn on its own numbered grid. The library
+numbers key ideas 1..N with no gaps; the skill may flag one as the break-in.
+_Avoid_: Key step, main step
+
+**Supposition**:
+A key idea's argument "suppose this cell were X", drawn as a second grid
+beside the idea's own: the assumed digit, the digits it forces in order and
+the cells where it clashes. The assumed digit is one the idea's steps
+eliminate; the guide file names it, and the library refuses one that does not
+fit the step record.
+_Avoid_: Contradiction, bifurcation, what-if
+
+**Early removal**:
+A digit a key idea's words rule out of a cell before the step record does,
+named in the guide file. The library refuses one that is not a candidate there
+after the idea's steps, or that is the cell's solution digit; it strikes the
+digit on the idea's grid and leaves it off every later grid.
+_Avoid_: Extra elimination, manual elimination
+
+**Fill**:
+A run of steps between key ideas, shown as one sentence the skill writes,
+with its steps in a collapsed list, one plain line per set of constraints
+the steps name, or per solved cell clearing its houses: what each cell loses or is, then the
+constraints in words, never a clue id. Fill carries no numbers.
+_Avoid_: Singles, routine steps
 
 **Rules file**:
 The one JSON description of a puzzle every solve-guide stage reads: grid size,

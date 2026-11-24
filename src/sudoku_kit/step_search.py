@@ -99,10 +99,7 @@ def load_record(path):
     path = Path(path)
     if not path.exists():
         return new_record()
-    try:
-        record = json.loads(path.read_text())
-    except ValueError as e:
-        raise ValueError(f"{path} is not JSON: {e}") from e
+    record = rules_file.read_json(path)
     if not isinstance(record, dict) or not isinstance(record.get("steps"), list):
         raise ValueError(f"{path} is not a step record: no steps list")
     return record
@@ -378,7 +375,9 @@ class Search:
             raise ValueError(f"the hint names {unknown}, not a house or clue")
         off = [c for c in claim.claim_cells() if c not in self.state.candidates]
         if off:
-            raise ValueError(f"the hint names cells {off}, not on the board")
+            raise ValueError(
+                f"the hint names cells {rules_file.cell_list(off)}, not on the board"
+            )
 
     def hint(self, claim, named):
         """Prove `claim` from the constraints `named`; when proved, append it
