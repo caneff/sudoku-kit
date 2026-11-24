@@ -5,13 +5,14 @@ guide, which the `/solve-guide` skill writes and `guide_html` draws (spec
 `parse(rules, guide)` refuses, naming the problem, a guide file whose shape is
 wrong whatever the step record holds: not version 1, an unknown or missing
 field, a field of the wrong kind, a run that ends before it starts, an
-`explains` step outside its run, a mark or supposition naming a cell outside
-`rules`' grid, or more than one break-in. It needs only the rules file, so the
+`explains` step outside its run, a mark, supposition or early removal naming
+a cell outside `rules`' grid, or more than one break-in. It needs only the rules file, so the
 command line refuses such a file before the search. `check(rules, record,
 guide)` also refuses one that skips, repeats or reorders a step of `record`,
 or reaches past its last step. Both return the guide with its cell names read
 as (row, column) cells: each mark's `from`, `to` or `cell`, and a supposition
-as `{"assume": (cell, digit), "forces": [(cell, digit)], "breaks": [cell]}`.
+as `{"assume": (cell, digit), "forces": [(cell, digit)], "breaks": [cell]}`,
+and `early_removals` as a list of (cell, digit) pairs in file order.
 """
 
 import itertools
@@ -23,7 +24,7 @@ VERSION = 1
 ENTRY_FIELDS = {
     "key": (
         {"heading", "paragraphs"},
-        {"break_in", "explains", "marks", "supposition"},
+        {"break_in", "early_removals", "explains", "marks", "supposition"},
     ),
     "fill": ({"sentence"}, set()),
 }
@@ -130,6 +131,33 @@ def _supposition(k, sup, board, size):
     }
 
 
+def _early_removals(k, removals, board, size):
+    """The (cell, digit) pairs of `removals`, in file order."""
+    if not isinstance(removals, list):
+        raise ValueError(f"entry {k}'s early_removals is not a list")
+    out = []
+    for item in removals:
+        if not isinstance(item, dict) or set(item) != {"cell", "digits"}:
+            raise ValueError(
+                f"entry {k}'s early removal {str(item)[:60]!r} is not a cell and "
+                "its digits"
+            )
+        cell = _cell(item["cell"], f"entry {k}'s early removal", board)
+        digits = item["digits"]
+        if not isinstance(digits, list) or not digits:
+            raise ValueError(
+                f"entry {k}'s early removal from {item['cell']} has no digits list"
+            )
+        for digit in digits:
+            if not _is_int(digit) or not 1 <= digit <= size:
+                raise ValueError(
+                    f"entry {k}'s early removal has digit {digit!r} for "
+                    f"{item['cell']}, not 1-{size}"
+                )
+            out.append((cell, digit))
+    return out
+
+
 def _explains(k, entry):
     steps = entry["explains"]
     if not isinstance(steps, list) or not all(_is_int(s) for s in steps):
@@ -188,6 +216,10 @@ def _entry(k, entry, board, size):
         parsed["marks"] = _marks(k, entry["marks"], board)
     if "supposition" in entry:
         parsed["supposition"] = _supposition(k, entry["supposition"], board, size)
+    if "early_removals" in entry:
+        parsed["early_removals"] = _early_removals(
+            k, entry["early_removals"], board, size
+        )
     return parsed
 
 

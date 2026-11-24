@@ -1040,3 +1040,194 @@ def test_the_closing_fill_line_is_kept_with_what_it_belongs_to():
     css = _stylesheet()
     assert "break-inside: avoid" in _rules(css, "div.fill")
     assert "break-after: avoid" in _rules(css, "p.fill")
+
+
+# TOY with a solution that keeps its three dots: 1-2 and 2-1 consecutive,
+# 2-1 doubled.
+SOLVED_TOY = TOY | {
+    "solution": [[1, 2, 3, 4], [3, 4, 1, 2], [4, 3, 2, 1], [2, 1, 4, 3]]
+}
+
+
+def _early(*removals):
+    return [{"cell": cell, "digits": list(digits)} for cell, digits in removals]
+
+
+def _cands(page, grid, cell):
+    return {
+        int(e[1]["data-digit"])
+        for e in page.find("text", "cand")
+        if e[3] == grid and e[1]["data-cell"] == cell
+    }
+
+
+def test_an_early_removal_is_struck_on_its_ideas_grid_and_absent_from_later_grids():
+    page = _toy(
+        SUBSET_STEPS,
+        _key(1, 1, early_removals=_early(("r1c2", [4]))),
+        _key(2, 3),
+        rules=SOLVED_TOY,
+    )
+
+    first, second = page.grids()[1], page.grids()[2]
+    assert _struck(page, first) == {("r1c1", 4), ("r1c2", 4)}
+    assert "r1c2" in page.cells(first, "changed")
+    # Step 3 removes the same 4 from r1c2: it is neither drawn nor struck again.
+    assert _cands(page, second, "r1c2") == {1, 2, 3}
+    assert _struck(page, second) == {("r3c3", 4)}
+
+
+def test_the_stuck_grid_starts_without_the_early_removals():
+    record = make_record(*SUBSET_STEPS[:1])
+    state = step_search.State(SOLVED_TOY)
+    state.apply(step_search.claim_from_json(SUBSET_STEPS[0]["claim"]))
+    record["stuck"] = state.snapshot()
+    guide = _guide(_key(1, 1, early_removals=_early(("r1c2", [3, 4]))))
+
+    page = Page(guide_html.guide_page(SOLVED_TOY, record, guide))
+
+    stuck = page.find("svg", "grid")[-1][3]
+    assert _cands(page, stuck, "r1c2") == {1, 2}
+
+
+@pytest.mark.parametrize(
+    ("entries", "rules", "cause"),
+    [
+        (
+            [_key(1, 1, early_removals=_early(("r1c2", [2])))],
+            SOLVED_TOY,
+            r"key idea 1 \(entry 1\).*2 from r1c2.*2 is the solution digit",
+        ),
+        (
+            [_key(1, 1, early_removals=_early(("r1c1", [4])))],
+            SOLVED_TOY,
+            r"key idea 1.*4 from r1c1.*not a candidate",
+        ),
+        (
+            [_key(1, 1, early_removals=_early(("r1c2", [4]), ("r1c2", [4])))],
+            SOLVED_TOY,
+            r"key idea 1.*4 from r1c2.*not a candidate",
+        ),
+        (
+            [
+                _key(1, 1, early_removals=_early(("r2c1", [4]))),
+                _fill(2, 2),
+                _key(3, 3, early_removals=_early(("r2c1", [4]))),
+            ],
+            SOLVED_TOY,
+            r"key idea 2 \(entry 3\).*4 from r2c1.*not a candidate",
+        ),
+        (
+            [_key(1, 1, early_removals=_early(("r1c2", [4])))],
+            TOY,
+            r"key idea 1.*4 from r1c2.*solution digit there is not known",
+        ),
+    ],
+    ids=["solution-digit", "not-a-candidate", "twice", "earlier-idea", "no-solution"],
+)
+def test_an_early_removal_that_does_not_hold_is_refused_naming_it(
+    entries, rules, cause
+):
+    with pytest.raises(ValueError, match=cause):
+        guide_html.guide_page(
+            rules, make_record(*SUBSET_STEPS[: entries[-1]["last"]]), _guide(*entries)
+        )
+
+
+def test_an_early_removal_the_record_solves_is_checked_against_the_record():
+    steps = [*SUBSET_STEPS[:1], make_step(["white-a"], (0, 1), [2])]
+    guide = _guide(_key(1, 1, early_removals=_early(("r1c2", [2]))), _fill(2, 2))
+
+    with pytest.raises(ValueError, match=r"2 is the solution digit"):
+        guide_html.guide_page(TOY, make_record(*steps), guide)
+
+
+@pytest.mark.parametrize(
+    ("removals", "cause"),
+    [
+        ("r1c2", r"entry 1's early_removals is not a list"),
+        (["r1c2"], r"entry 1's early removal 'r1c2'.*cell and its digits"),
+        ([{"cell": "r1c2", "digit": 4}], r"entry 1's early removal.*cell and"),
+        (_early(("r5c1", [4])), r"entry 1.*r5c1.*outside the grid"),
+        (_early(("r1c2", [])), r"entry 1.*r1c2 has no digits"),
+        (_early(("r1c2", [5])), r"entry 1.*digit 5 for r1c2, not 1-4"),
+    ],
+    ids=["not-a-list", "not-object", "wrong-field", "outside", "empty", "range"],
+)
+def test_a_malformed_early_removal_is_refused_naming_its_cause(removals, cause):
+    with pytest.raises(ValueError, match=cause):
+        guide_html.guide_page(
+            SOLVED_TOY,
+            make_record(*SUBSET_STEPS[:1]),
+            _guide(_key(1, 1, early_removals=removals)),
+        )
+
+
+# A made-up 6x6 board, regions two rows by three columns, with no clue.
+SIX_BY_SIX = {
+    "size": 6,
+    "regions": [
+        [[r, c] for r in range(top, top + 2) for c in range(left, left + 3)]
+        for top in (0, 2, 4)
+        for left in (0, 3)
+    ],
+    "givens": [],
+    "clues": [],
+}
+
+
+def _boxes_overlap(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def _label_clears_its_pencil_marks(page, grid):
+    """True when each label's box, its `textLength` wide and 9px tall above
+    its baseline, misses every pencil mark of its cell, each 7px wide and 9px
+    tall above its own baseline."""
+    labels = [e for e in page.find("text", "label") if e[3] == grid]
+    assert labels
+    for label in labels:
+        x, y = float(label[1]["x"]), float(label[1]["y"])
+        half = float(label[1]["textlength"]) / 2
+        box = (x - half, y - 9, x + half, y)
+        marks = [
+            e
+            for e in page.find("text", "cand")
+            if e[3] == grid and e[1]["data-cell"] == label[1]["data-cell"]
+        ]
+        assert marks
+        for mark in marks:
+            mx, my = float(mark[1]["x"]), float(mark[1]["y"])
+            if _boxes_overlap(box, (mx - 3.5, my - 9, mx + 3.5, my)):
+                return False
+    return True
+
+
+def test_a_label_on_a_cell_with_pencil_marks_is_placed_clear_of_them():
+    page = _toy(
+        SUBSET_STEPS[:1],
+        _key(1, 1, marks=[{"type": "label", "cell": "r1c1", "text": "pair"}]),
+    )
+
+    assert _label_clears_its_pencil_marks(page, page.grids()[1])
+
+
+def test_a_label_on_a_cell_whose_every_pencil_spot_is_drawn_sits_outside_it():
+    steps = [
+        make_step(["row 1"], (0, 0), [1, 2, 3, 4, 5]),
+        make_step(["row 6"], (5, 0), [1, 2, 3, 4, 5]),
+    ]
+    marks = [
+        {"type": "label", "cell": "r1c1", "text": "pair"},
+        {"type": "label", "cell": "r6c1", "text": "pair"},
+    ]
+    page = Page(
+        guide_html.guide_page(
+            SIX_BY_SIX, make_record(*steps), _guide(_key(1, 2, marks=marks))
+        )
+    )
+
+    grid = page.grids()[1]
+    assert _label_clears_its_pencil_marks(page, grid)
+    ys = [float(e[1]["y"]) for e in page.find("text", "label") if e[3] == grid]
+    assert ys[0] > 48 and ys[1] < 5 * 48

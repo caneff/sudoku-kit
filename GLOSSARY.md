@@ -100,6 +100,13 @@ eliminate; the guide file names it, and the library refuses one that does not
 fit the step record.
 _Avoid_: Contradiction, bifurcation, what-if
 
+**Early removal**:
+A digit a key idea's words rule out of a cell before the step record does,
+named in the guide file. The library refuses one that is not a candidate there
+after the idea's steps, or that is the cell's solution digit; it strikes the
+digit on the idea's grid and leaves it off every later grid.
+_Avoid_: Extra elimination, manual elimination
+
 **Fill**:
 A run of steps between key ideas, shown as one sentence the skill writes,
 with one plain line per step in a collapsed list: the claim, then its named
