@@ -727,8 +727,10 @@ def _runs(rules, record, before, numbers):
     """Steps `numbers` as runs for one line each: consecutive cell claims
     proved by the same constraints, or by single houses that each remove the
     digit one solved cell in all of them holds (a given clearing its row,
-    column and box). Each run is `{"steps", "named", "source"}`: `named` the
-    one set of constraints or None, `source` (cell, digit) or None."""
+    column and box). A claim on no cell is a run of its own. Each run is
+    `{"steps", "named", "sources", "digit"}`: `named` the one set of
+    constraints, or None once the run spans houses; `sources` the solved cells
+    holding `digit` in every house so far, empty when there is none."""
     houses = rules_file.house_names(rules)
     runs = []
     for i in numbers:
@@ -742,7 +744,8 @@ def _runs(rules, record, before, numbers):
                 tuple(step["claim"]["cell"])
             }
         run = runs[-1] if runs else None
-        if run is not None and "cell" in step["claim"]:
+        cell = "cell" in step["claim"]
+        if run is not None and cell and run["cell"]:
             same = run["named"] == named
             shared = (
                 run["sources"] & sources
@@ -760,6 +763,7 @@ def _runs(rules, record, before, numbers):
                 "named": named,
                 "sources": sources or set(),
                 "digit": digit,
+                "cell": cell,
             }
         )
     return runs

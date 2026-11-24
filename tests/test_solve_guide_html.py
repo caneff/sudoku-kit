@@ -1363,3 +1363,13 @@ def test_in_print_the_collapsed_step_lists_are_hidden_and_on_screen_they_stay():
     assert "display: none" in _rules(_print_css(), "details")
     screen = _stylesheet().split("@media print")[0]
     assert "display: none" not in _rules(screen, "details")
+
+
+def test_a_chain_and_a_cell_step_from_the_same_constraint_keep_their_own_lines():
+    chain = {"claim": {"chain": [[0, 0], [0, 1]]}, "named": ["white-a"]}
+    page = _toy([chain, make_step(["white-a"], (0, 0), [1, 2, 3])], _fill(1, 2))
+
+    assert _lines(page) == [
+        ("1", "chain r1c1 < r1c2, from white dot r1c1-r1c2."),
+        ("2", "r1c1 loses 4, from white dot r1c1-r1c2."),
+    ]
