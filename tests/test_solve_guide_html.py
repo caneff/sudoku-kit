@@ -1231,3 +1231,28 @@ def test_a_label_on_a_cell_whose_every_pencil_spot_is_drawn_sits_outside_it():
     assert _label_clears_its_pencil_marks(page, grid)
     ys = [float(e[1]["y"]) for e in page.find("text", "label") if e[3] == grid]
     assert ys[0] > 48 and ys[1] < 5 * 48
+
+
+def _print_css():
+    return re.search(r"@media print\s*\{(.*)\}", _stylesheet(), re.S).group(1)
+
+
+def _rem(declarations, prop):
+    """The rem values of `prop` in `declarations`, as floats."""
+    found = re.search(rf"(?<![\w-]){prop}:\s*([^;]+);", declarations + ";")
+    assert found, f"no {prop} in {declarations!r}"
+    return [float(v) for v in re.findall(r"([\d.]+)rem", found.group(1))]
+
+
+def test_in_print_cards_and_fill_panels_pack_tighter_so_two_cards_share_a_page():
+    """Chromium A4 printing: two cards of just under half a page, with a fill
+    panel between them, overflowed the page by a few pixels, so each sat
+    alone. The print rules trim the spacing around them; the card itself still
+    never splits."""
+    css, print_css = _stylesheet(), _print_css()
+    assert "break-inside: avoid" in _rules(css, "section.key")
+    card, fill = _rules(print_css, "section.key"), _rules(print_css, "div.fill")
+    assert max(_rem(card, "margin")) <= 0.5
+    assert max(_rem(card, "padding")) <= 0.85
+    assert max(_rem(fill, "margin")) <= 0.5
+    assert max(_rem(_rules(print_css, ".grids"), "margin-bottom")) <= 0.5

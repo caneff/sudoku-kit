@@ -163,10 +163,7 @@ def main(argv=None):
         if result.status != "proved":
             print(f"hint: {result.status}")
             if result.witness:
-                cells = " ".join(
-                    f"{rules_file.cell_name(c)}={d}" for c, d in result.witness.items()
-                )
-                print(f"witness: {cells}")
+                print(f"witness: {rules_file.witness_words(result.witness)}")
             return 4
     outcome = search.run(args.max_steps)
     steps = record["steps"]

@@ -375,7 +375,9 @@ class Search:
             raise ValueError(f"the hint names {unknown}, not a house or clue")
         off = [c for c in claim.claim_cells() if c not in self.state.candidates]
         if off:
-            raise ValueError(f"the hint names cells {off}, not on the board")
+            raise ValueError(
+                f"the hint names cells {rules_file.cell_list(off)}, not on the board"
+            )
 
     def hint(self, claim, named):
         """Prove `claim` from the constraints `named`; when proved, append it
