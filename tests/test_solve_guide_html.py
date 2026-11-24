@@ -59,11 +59,12 @@ class Page(HTMLParser):
         if self._open:
             self._open[-1][2] += data
 
-    def find(self, tag, cls=None):
+    def find(self, tag=None, cls=None):
         return [
             e
             for e in self.elements
-            if e[0] == tag and (cls is None or cls in e[1].get("class", "").split())
+            if tag in (None, e[0])
+            and (cls is None or cls in e[1].get("class", "").split())
         ]
 
     def grids(self):
@@ -159,10 +160,9 @@ def test_key_ideas_are_numbered_1_to_n_in_file_order_with_their_words():
     )
 
     assert _keys(page) == [(1, "2 3"), (2, "5 6")]
-    assert [e[2] for e in page.find("h2")] == [
-        "Key idea 1: The dot and the pair",
-        "Key idea 2: Round the cage",
-    ]
+    assert [e[2] for e in page.find("h2")] == ["The dot and the pair", "Round the cage"]
+    assert [e[2] for e in page.find("span", "num")] == ["1", "2"]
+    assert [e[2] for e in page.find("span", "kicker")] == ["Key idea 1", "Key idea 2"]
     first = page.find("section", "key")[0]
     at = page.elements.index
     inside = page.elements[at(first) : at(page.find("section", "key")[1])]
@@ -170,7 +170,7 @@ def test_key_ideas_are_numbered_1_to_n_in_file_order_with_their_words():
     assert paragraphs == ["First this.", "Then that."]
 
 
-def test_each_key_idea_is_one_row_with_its_grid_left_of_its_text():
+def test_each_key_idea_draws_its_grid_above_its_text_and_never_splits():
     page = _toy(SIX[:3], _key(1, 1), _key(2, 2), _key(3, 3))
 
     sections = page.find("section", "key")
@@ -179,16 +179,21 @@ def test_each_key_idea_is_one_row_with_its_grid_left_of_its_text():
     for k, section in enumerate(sections):
         end = at(sections[k + 1]) if k + 1 < len(sections) else len(page.elements)
         inside = page.elements[at(section) : end]
-        tags = [e[0] for e in inside if e[0] in ("svg", "div", "h2")]
-        assert tags[:3] == ["svg", "div", "h2"]
-        assert "text" in inside[[e[0] for e in inside].index("div")][1]["class"]
+        divs = [e[1]["class"] for e in inside if e[0] == "div"]
+        assert divs[:2] == ["grids", "text"]
         assert len([e for e in inside if e[0] == "svg"]) == 1
+    css = _stylesheet()
+    card = _rules(css, "section.key")
+    assert "break-inside: avoid" in card
+    assert "display: flex" not in card or "flex-direction: column" in card
+    width = re.search(r"width:\s*([\d.]+)rem", _rules(css, "section.key svg.grid"))
+    assert width and 15 <= float(width.group(1)) <= 17
 
 
 def test_the_break_in_label_shows_on_the_flagged_idea_only():
     page = _toy(SIX, _key(1, 2), _key(3, 4, break_in=True), _key(5, 6))
 
-    breakin = page.find("p", "breakin")
+    breakin = page.find("span", "breakin")
     sections = page.find("section", "key")
     at = page.elements.index
     assert len(breakin) == 1
@@ -198,7 +203,7 @@ def test_the_break_in_label_shows_on_the_flagged_idea_only():
 def test_a_guide_with_no_flag_has_no_break_in_label():
     page = _toy(SIX, _key(1, 6))
 
-    assert not page.find("p", "breakin")
+    assert not page.find(cls="breakin")
 
 
 def test_each_fill_stretch_is_its_sentence_and_a_collapsed_line_per_step():
@@ -215,6 +220,10 @@ def test_each_fill_stretch_is_its_sentence_and_a_collapsed_line_per_step():
         "The cage finishes the corner.",
     ]
     assert len(fills) == len(page.find("details")) == 2
+    assert [e[2] for e in page.find("summary")] == [
+        "Show all 3 steps",
+        "Show all 2 steps",
+    ]
     assert [e[1]["data-step"] for e in page.find("li", "step")] == [
         "1",
         "2",
@@ -273,6 +282,68 @@ def test_a_key_ideas_grid_strikes_out_what_all_its_steps_remove():
     assert struck == {("r1c1", 1), ("r1c1", 4), ("r1c2", 4)}
     assert page.cells(page.grids()[1], "changed") == {"r1c1", "r1c2"}
     assert page.cells(page.grids()[1], "used") == {"r1c1", "r1c2"}
+
+
+def _offsets(page, grid):
+    """{digit: {(dx, dy) of its pencil mark from its cell's corner}} on `grid`."""
+    corner = {
+        e[1]["data-cell"]: (float(e[1]["x"]), float(e[1]["y"]))
+        for e in page.find("rect", "cell")
+        if e[3] == grid
+    }
+    out = {}
+    for e in page.find("text", "cand"):
+        if e[3] == grid:
+            x, y = corner[e[1]["data-cell"]]
+            out.setdefault(int(e[1]["data-digit"]), set()).add(
+                (round(float(e[1]["x"]) - x, 1), round(float(e[1]["y"]) - y, 1))
+            )
+    return out
+
+
+def test_a_digits_pencil_mark_sits_in_the_same_spot_in_every_cell():
+    page = _toy(
+        [
+            make_step(["row 1"], (0, 0), [2, 3]),
+            make_step(["row 1"], (0, 1), [1, 2, 3]),
+            make_step(["row 1"], (0, 2), [3, 4]),
+            make_step(["row 1"], (0, 3), [1, 2]),
+        ],
+        _fill(1, 3),
+        _key(4, 4),
+    )
+
+    offsets = _offsets(page, page.grids()[1])
+    assert set(offsets) == {1, 2, 3, 4}
+    assert all(len(spots) == 1 for spots in offsets.values()), offsets
+    assert len({next(iter(s)) for s in offsets.values()}) == 4
+
+
+def test_a_struck_pencil_mark_is_grey_with_a_red_slash_through_it():
+    page = _toy(SUBSET_STEPS[:1], _key(1, 1))
+
+    grid = page.grids()[1]
+    struck = [e for e in page.find("text", "struck") if e[3] == grid]
+    slashes = [e for e in page.find("line", "slash") if e[3] == grid]
+    assert len(slashes) == len(struck) == 1
+    (x1, x2) = float(slashes[0][1]["x1"]), float(slashes[0][1]["x2"])
+    assert x1 < float(struck[0][1]["x"]) < x2
+    css = _stylesheet()
+    assert "#a9b0bb" in _rules(css, ".cand.struck")
+    assert "var(--red)" in _rules(css, ".slash")
+
+
+def test_pencil_marks_and_placed_digits_are_blue_and_givens_black():
+    css = _stylesheet()
+    assert "fill: var(--blue)" in _rules(css, ".cand")
+    assert "fill: var(--blue)" in _rules(css, ".solved")
+    assert "fill: #000" in _rules(css, ".given")
+
+
+def test_the_page_fetches_no_font_and_falls_back_to_sans_serif():
+    css = _stylesheet()
+    assert "@import" not in css and "url(" not in css
+    assert re.search(r"font-family:[^;]*sans-serif;", _rules(css, "body"))
 
 
 def test_a_key_ideas_grid_starts_from_the_candidates_before_its_first_step():
@@ -819,18 +890,26 @@ def test_a_supposition_numbers_the_forced_digits_in_order_and_circles_the_clash(
     assert not [e for e in page.find("circle", "circle") if e[3] == main]
 
 
-def test_a_supposition_grid_starts_from_the_ideas_starting_candidates():
-    page = _toy(SUBSET_STEPS[:1], _key(1, 1, supposition=_suppose()))
+def test_a_supposition_grid_draws_only_givens_and_the_assumed_and_forced_digits():
+    rules = dict(TOY, givens=[{"cell": [3, 3], "digit": 2}])
+    steps = [make_step(["row 4"], (3, 2), [1]), SUBSET_STEPS[0]]
+    page = _toy(steps, _fill(1, 1), _key(2, 2, supposition=_suppose()), rules=rules)
 
     second = next(e for e in page.find("svg", "grid") if e[1].get("data-supposition"))[
         3
     ]
-    drawn = {
-        int(e[1]["data-digit"])
-        for e in page.find("text", "cand")
-        if e[3] == second and e[1].get("data-cell") == "r1c2"
-    }
-    assert drawn == {1, 2, 3, 4}
+    assert not [e for e in page.find("text", "cand") if e[3] == second]
+    digits = [
+        (e[1]["class"], e[2])
+        for e in page.find("text")
+        if e[3] == second and "order" not in e[1]["class"]
+    ]
+    assert sorted(digits) == [
+        ("given", "2"),
+        ("solved assumed", "4"),
+        ("solved forced", "2"),
+        ("solved forced", "3"),
+    ]
 
 
 def test_a_forced_digit_in_a_cell_solved_at_the_ideas_start_keeps_its_colour():

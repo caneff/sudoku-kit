@@ -130,7 +130,7 @@ def test_the_command_draws_a_guide_file_built_from_its_own_step_record(
 
     top = page.index('<section class="key"')
     assert page.index("<h1>Invented dots</h1>") < page.index('class="rules"') < top
-    assert re.findall(r"<h2>Key idea (\d+):", page) == ["1", "2"]
+    assert re.findall(r'<span class="num">(\d+)</span>', page) == ["1", "2"]
     assert page.count('class="breakin"') == 1
     assert "Singles open it." in page and "It ends." in page
     lines = re.findall(r'<li class="step"[^>]*>([^<]*)</li>', page)
