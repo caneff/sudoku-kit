@@ -38,8 +38,8 @@ A **key idea** entry:
   the idea explains. The grid strikes out and marks only those steps. The
   run's other steps are taken off the idea's starting candidates without
   being drawn, whether they come before or after the explained ones, and
-  listed under the idea in a collapsed "Also in this stretch", one line per
-  step as a fill's list writes them. Omitted, the idea explains its whole run.
+  listed under the idea in a collapsed "Also in this stretch", in lines
+  as a fill's list writes them. Omitted, the idea explains its whole run.
 - `marks` (optional): extra marks drawn on the idea's grid, each an object
   with a `type` and cells named as `r<row>c<column>`:
   `{"type": "arrow", "from": "r1c1", "to": "r2c2"}`,
@@ -77,8 +77,10 @@ A **fill** entry:
 - `sentence`: one sentence summing up the stretch.
 
 The library writes the collapsed list under a fill sentence itself, one line
-per step. Each line gives the claim, then its named constraints in words, such
-as `r1c2 = 3, from row 1 and white dot r1c1-r1c2`.
+per set of constraints, wherever in the list its steps fall, such as
+`r1c12 lose 4; r1c3 is 3, from row 1`, or from one solved cell clearing its
+houses, such as `The 4 in r2c2: r2c134, r134c2 and r1c1 lose 4.` Its "Show
+all N steps" button still counts the steps. Print hides the list.
 
 A field the version does not name is refused, so a misspelt field fails
 loudly rather than going missing from the page.

@@ -133,8 +133,12 @@ def test_the_command_draws_a_guide_file_built_from_its_own_step_record(
     assert re.findall(r'<span class="num">(\d+)</span>', page) == ["1", "2"]
     assert page.count('class="breakin"') == 1
     assert "Singles open it." in page and "It ends." in page
-    lines = re.findall(r'<li class="step"[^>]*>([^<]*)</li>', page)
-    assert len(lines) == len(record["steps"]) - 3
+    items = re.findall(r'<li class="step" data-steps="([\d ]+)">([^<]*)</li>', page)
+    lines = [text for _, text in items]
+    covered = sorted(int(n) for steps, _ in items for n in steps.split())
+    assert len(covered) == len(record["steps"]) - 3
+    assert len(lines) < len(covered)
+    assert "r1c123 lose 4, from row 1." in lines
     assert not [line for line in lines for clue in CLUE_IDS if clue in line]
     assert "Also in this stretch" in page
     assert page.count('data-supposition="1"') == 1

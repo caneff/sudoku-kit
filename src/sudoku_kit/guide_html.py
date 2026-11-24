@@ -35,10 +35,16 @@ drawn as
 arrows along the chain, and an `either` claim circles each pattern's cells.
 
 A fill stretch is the skill's one sentence on a light panel over a list,
-collapsed behind a "Show all N steps" button, with one line per step, written
-here: the claim, then each named constraint in words
-(`constraint_words`), never a clue id. A stuck record ends the guide with the
-grid and candidates at the stuck point.
+collapsed behind a "Show all N steps" button, written here (#151). N counts
+the steps, and one line covers several: the list's steps proved by the same
+set of constraints share a line where that set first appears, saying what
+goes and from what ("r1c12 lose 4; r1c3 is 3, from row 1."), and neighbouring
+lines of single houses that each remove the digit of one solved cell in all
+those houses become one line naming that cell first ("The 4 in r2c2: r2c134,
+r134c2 and r1c1 lose 4."). Constraints are in words (`constraint_words`), a region as a
+box, never a clue id. In print the collapsed lists are hidden: they do nothing
+on paper. A stuck record ends the guide with the grid and candidates at the
+stuck point.
 
 A key idea may carry a `supposition` (spec #127): "suppose this cell were X".
 It draws as a second grid beside the idea's own (`render_supposition`) with no
@@ -154,6 +160,7 @@ text { font-family: "Segoe UI", "Ubuntu Sans", Ubuntu, Roboto, Arial, sans-serif
   section.key { margin: 0.5rem 0; padding: 0.8rem 0.85rem; }
   div.fill { margin: 0.5rem 0; }
   .grids { margin-bottom: 0.5rem; }
+  details { display: none; }
 }
 """
 
@@ -190,7 +197,7 @@ def deductions(rules, record):
     )
 
 
-def _states(rules, record):
+def states(rules, record):
     """The candidates before each step, by step number from 1, and after the
     last step under the number past it."""
     state = step_search.State(rules)
@@ -572,26 +579,71 @@ def describe_claim(claim):
     return "at least one of several patterns holds"
 
 
-def describe_claims(claims):
-    """Claims in words, joined by `;`. Cell claims leaving the same digits
-    share one phrase over their cells in block notation (r12c34 = 3)."""
-    slots = {}
-    for claim in claims:
-        key = tuple(claim["digits"]) if "cell" in claim else id(claim)
-        slots.setdefault(key, []).append(claim)
-    out = []
-    for group in slots.values():
-        if len(group) == 1:
-            out.append(describe_claim(group[0]))
+def _cell_words(cells):
+    """Cells as a list of blocks in words: r2c134, r134c2 and r1c1."""
+    return join_words(rules_file.cell_list(cells).split(", "))
+
+
+def _digit_words(digits):
+    return join_words([str(d) for d in sorted(digits)])
+
+
+def _changes(record, before, numbers):
+    """{cell: (digits removed, digits left)} over the cell claims of steps
+    `numbers`, in order of each cell's first claim."""
+    out = {}
+    for i in numbers:
+        claim = record["steps"][i - 1]["claim"]
+        if "cell" not in claim:
             continue
-        cells = rules_file.cell_list(c["cell"] for c in group)
-        digits = group[0]["digits"]
-        out.append(
-            f"{cells} = {digits[0]}"
-            if len(digits) == 1
-            else f"{cells} keep {' '.join(map(str, digits))}"
+        cell = tuple(claim["cell"])
+        gone, _ = out.get(cell, (frozenset(), None))
+        out[cell] = (
+            gone | (before[i][cell] - before[i + 1][cell]),
+            before[i + 1][cell],
         )
+    return out
+
+
+def _change_words(changes, record, numbers):
+    """What `changes` does in words, joined by `;`: cells losing the same
+    digits share one phrase (r1c12 lose 4), a placed cell reads as its digit
+    (r1c3 is 3), and one that loses nothing by what it keeps. A claim on no
+    cell reads as `describe_claim` gives it."""
+    phrases = {}
+    for cell, (gone, left) in changes.items():
+        if len(left) == 1:
+            key = ("is", next(iter(left)))
+        elif gone:
+            key = ("loses", gone)
+        else:
+            key = ("keeps", left)
+        phrases.setdefault(key, []).append(cell)
+    out = []
+    for (verb, digits), cells in phrases.items():
+        one = len(cells) == 1
+        if verb == "is":
+            out.append(f"{_cell_words(cells)} {'is' if one else 'are'} {digits}")
+        elif verb == "loses":
+            words = _digit_words(digits)
+            out.append(f"{_cell_words(cells)} {'loses' if one else 'lose'} {words}")
+        else:
+            out.append(
+                f"{_cell_words(cells)} {'keeps' if one else 'keep'} "
+                + " ".join(map(str, sorted(digits)))
+            )
+    for i in numbers:
+        claim = record["steps"][i - 1]["claim"]
+        if "cell" not in claim:
+            out.append(describe_claim(claim))
     return "; ".join(out)
+
+
+def describe_steps(record, before, numbers):
+    """What steps `numbers` of `record` do, in words: the digits each cell
+    loses, or the digit it is, cells with the same change in one phrase.
+    `before` is `states(rules, record)`."""
+    return _change_words(_changes(record, before, numbers), record, numbers)
 
 
 CLUE_WORDS = {
@@ -614,44 +666,170 @@ CLUE_WORDS = {
 OUTSIDE_RULES = ("skyscraper", "numbered_rooms")
 
 
+def _corner_partner(rules, clue):
+    """The clue that crosses `clue` at one corner, a dot of the same kind and
+    value on the other diagonal of the same 2x2 block, or None."""
+    if clue["rule"] not in ("difference", "ratio") or len(clue["cells"]) != 2:
+        return None
+    (r1, c1), (r2, c2) = clue["cells"]
+    if abs(r1 - r2) != 1 or abs(c1 - c2) != 1:
+        return None
+    other = {(r1, c2), (r2, c1)}
+    return next(
+        (
+            c
+            for c in rules["clues"]
+            if c["rule"] == clue["rule"]
+            and c["values"] == clue["values"]
+            and {tuple(x) for x in c["cells"]} == other
+        ),
+        None,
+    )
+
+
 def constraint_words(rules, name):
-    """A named constraint as a solver reads it: a house by its name, a clue by
-    its kind and its cells (first to last, or the outside cell of a clue read
-    from outside), never by its id."""
+    """A named constraint as a solver reads it: a row or column by its name, a
+    region as a box, a clue by its kind and its cells (first to last, or the
+    outside cell of a clue read from outside), never by its id. Two diagonal
+    dots that cross at one corner are one dot at their 2x2 block, as the
+    picture draws them."""
     if name in rules_file.house_names(rules):
-        return name
+        return name.replace("region", "box")
     clue = next(c for c in rules["clues"] if c["id"] == name)
+    value = clue["values"][0] if clue["values"] else None
+    kind = CLUE_WORDS[clue["rule"]](value)
+    partner = _corner_partner(rules, clue)
+    if partner is not None:
+        return f"{kind} at {rules_file.cell_list(clue['cells'] + partner['cells'])}"
     cells = [rules_file.cell_name(c) for c in clue["cells"]]
     if clue["rule"] in OUTSIDE_RULES or len(cells) == 1:
         where = cells[0]
     else:
         where = f"{cells[0]}-{cells[-1]}"
-    value = clue["values"][0] if clue["values"] else None
-    return f"{CLUE_WORDS[clue['rule']](value)} {where}"
+    return f"{kind} {where}"
 
 
-def _step_line(rules, step):
-    named = [constraint_words(rules, name) for name in step["named"]]
-    return f"{describe_claim(step['claim'])}, from {join_words(named)}."
+def named_words(rules, named):
+    """A step's named constraints in words, each once, joined."""
+    return join_words(list(dict.fromkeys(constraint_words(rules, n) for n in named)))
 
 
-def _step_items(rules, record, numbers):
-    """A collapsed list's items: one line per step of `numbers`."""
-    return "".join(
-        f'<li class="step" data-step="{i}">'
-        f"{html.escape(_step_line(rules, record['steps'][i - 1]))}</li>"
-        for i in numbers
+def _removes_one(record, before, i):
+    """The one digit step `i` removes from its cell, or None."""
+    claim = record["steps"][i - 1]["claim"]
+    if "cell" not in claim:
+        return None
+    cell = tuple(claim["cell"])
+    gone = before[i][cell] - before[i + 1][cell]
+    return next(iter(gone)) if len(gone) == 1 else None
+
+
+def _sources(houses, record, before, i):
+    """(digit, cells): the one digit step `i` removes and the solved cells
+    holding it in the one house the step names, other than its own cell; or
+    (None, empty) when the step removes more or names more than one house."""
+    step = record["steps"][i - 1]
+    digit = _removes_one(record, before, i)
+    house = houses.get(step["named"][0]) if len(set(step["named"])) == 1 else None
+    if digit is None or house is None:
+        return None, set()
+    cell = tuple(step["claim"]["cell"])
+    return digit, {c for c in house if c != cell and before[i][c] == {digit}}
+
+
+def _runs(rules, record, before, numbers):
+    """Steps `numbers` as runs for one line each (Chris on #151). Cell claims
+    proved by the same set of constraints share a run, wherever they fall in
+    the list, placed where the set first appears; a claim on no cell is a run
+    of its own. Then neighbouring runs of single houses that each remove only
+    the digit of one solved cell in all of them join (a given clearing its
+    row, column and box). Each run is `{"steps", "named", "sources",
+    "digit"}`: `named` the one set of constraints, or None once the run spans
+    houses; `sources` the solved cells holding `digit` in every house of the
+    run, empty when there is none."""
+    houses = rules_file.house_names(rules)
+    runs, by_named = [], {}
+    for i in numbers:
+        step = record["steps"][i - 1]
+        named = frozenset(step["named"])
+        digit, sources = _sources(houses, record, before, i)
+        run = by_named.get(named) if "cell" in step["claim"] else None
+        if run is None:
+            run = {"steps": [], "named": named, "sources": sources, "digit": digit}
+            runs.append(run)
+            if "cell" in step["claim"]:
+                by_named[named] = run
+        elif run["digit"] == digit:
+            run["sources"] = run["sources"] & sources
+        else:
+            run["sources"] = set()
+        run["steps"].append(i)
+    joined = []
+    for run in runs:
+        last = joined[-1] if joined else None
+        shared = (
+            last["sources"] & run["sources"]
+            if last is not None and last["digit"] == run["digit"]
+            else set()
+        )
+        if shared:
+            last["steps"] += run["steps"]
+            last["named"] = None
+            last["sources"] = shared
+        else:
+            joined.append(dict(run))
+    return joined
+
+
+def _run_line(rules, record, before, run):
+    """One run's line: a constraint's run says what goes and from what; a
+    solved cell clearing its houses names the cell and its digit first."""
+    steps = run["steps"]
+    if run["named"] is not None:
+        named = record["steps"][steps[0] - 1]["named"]
+        what = describe_steps(record, before, steps)
+        return f"{what}, from {named_words(rules, named)}."
+    source = min(run["sources"])
+    digit = run["digit"]
+    by_house = {}
+    for i in steps:
+        step = record["steps"][i - 1]
+        by_house.setdefault(step["named"][0], []).append(step["claim"]["cell"])
+    blocks = [
+        b
+        for cells in by_house.values()
+        for b in rules_file.cell_list(cells).split(", ")
+    ]
+    changes = _changes(record, before, steps)
+    placed = [
+        f"{rules_file.cell_name(c)} is {next(iter(left))}"
+        for c, (_, left) in changes.items()
+        if len(left) == 1
+    ]
+    then = f", so {join_words(placed)}" if placed else ""
+    return (
+        f"The {digit} in {rules_file.cell_name(source)}: "
+        f"{join_words(blocks)} lose {digit}{then}."
     )
 
 
-def _fill(rules, entry, record):
-    """One stretch of fill: the skill's sentence, then a line per step."""
+def _step_items(rules, record, before, numbers):
+    """A collapsed list's items: one line per run of `numbers` (`_runs`)."""
+    return "".join(
+        f'<li class="step" data-steps="{" ".join(map(str, run["steps"]))}">'
+        f"{html.escape(_run_line(rules, record, before, run))}</li>"
+        for run in _runs(rules, record, before, numbers)
+    )
+
+
+def _fill(rules, entry, record, before):
+    """One stretch of fill: the skill's sentence, then its steps' lines."""
     numbers = range(entry["first"], entry["last"] + 1)
     return (
         f'<div class="fill" data-steps="{entry["first"]}-{entry["last"]}">'
         f'<p class="fill">{html.escape(entry["sentence"])}</p><details><summary>'
         f"Show all {plural(len(numbers), 'step')}</summary>"
-        f"<ul>{_step_items(rules, record, numbers)}</ul></details></div>"
+        f"<ul>{_step_items(rules, record, before, numbers)}</ul></details></div>"
     )
 
 
@@ -745,6 +923,7 @@ def _key_section(rules, entry, record, before, early, solution, *, key, entry_nu
     early removals, remove."""
     first, last = entry["first"], entry["last"]
     numbers = range(first, last + 1)
+    states = before
     before = {i: _less(before[i], early) for i in range(first, last + 2)}
     explained = entry.get("explains") or list(numbers)
     also = [i for i in numbers if i not in explained]
@@ -796,7 +975,7 @@ def _key_section(rules, entry, record, before, early, solution, *, key, entry_nu
     if also:
         parts.append(
             '<details class="also"><summary>Also in this stretch</summary>'
-            f"<ul>{_step_items(rules, record, also)}</ul></details>"
+            f"<ul>{_step_items(rules, record, states, also)}</ul></details>"
         )
     parts.append("</div></section>")
     return "".join(parts), added
@@ -850,7 +1029,7 @@ def guide_page(rules, record, guide, image=None):
     """The solve guide `guide`, a guide file as JSON parses it, draws for
     `record`, the image once at the top when given."""
     guide = guide_file.check(rules, record, guide)
-    before = _states(rules, record)
+    before = states(rules, record)
     body = [
         '<header class="intro"><div class="introtext">'
         '<div class="overline">Solve guide</div>'
@@ -867,7 +1046,7 @@ def guide_page(rules, record, guide, image=None):
     solution = _known_solution(rules, before[len(record["steps"]) + 1])
     for k, entry in enumerate(guide["entries"], 1):
         if entry["type"] == "fill":
-            body.append(_fill(rules, entry, record))
+            body.append(_fill(rules, entry, record, before))
             continue
         keys += 1
         section, added = _key_section(

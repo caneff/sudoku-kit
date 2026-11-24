@@ -109,7 +109,8 @@ _Avoid_: Extra elimination, manual elimination
 
 **Fill**:
 A run of steps between key ideas, shown as one sentence the skill writes,
-with one plain line per step in a collapsed list: the claim, then its named
+with its steps in a collapsed list, one plain line per set of constraints
+the steps name, or per solved cell clearing its houses: what each cell loses or is, then the
 constraints in words, never a clue id. Fill carries no numbers.
 _Avoid_: Singles, routine steps
 
