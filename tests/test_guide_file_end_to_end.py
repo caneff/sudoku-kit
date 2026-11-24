@@ -150,3 +150,23 @@ def test_the_command_draws_a_guide_file_built_from_its_own_step_record(
     assert _run(tmp_path, "--guide", str(guide)) == 0
     assert _run(tmp_path) == 0
     assert not (out / "guide.html").exists()
+
+
+def test_the_command_refuses_an_early_removal_that_does_not_hold(tmp_path, capsys):
+    out = tmp_path / "out"
+    assert _run(tmp_path) == 0
+    record = json.loads((out / "steps.json").read_text())
+    guide = tmp_path / "guide.json"
+
+    # r2c3 is given 1: 1 is its solution digit and 2 was never a candidate.
+    for digit, cause in [
+        (1, r"key idea 1 \(entry 2\) removes 1 from r2c3 early.*solution digit"),
+        (2, r"key idea 1 \(entry 2\) removes 2 from r2c3 early.*not a candidate"),
+    ]:
+        early = _guide_for(record)
+        early["entries"][1]["early_removals"] = [{"cell": "r2c3", "digits": [digit]}]
+        guide.write_text(json.dumps(early))
+        capsys.readouterr()
+        assert _run(tmp_path, "--guide", str(guide)) == 2
+        assert re.search(cause, capsys.readouterr().err)
+        assert not (out / "guide.html").exists()

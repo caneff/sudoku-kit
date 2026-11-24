@@ -41,7 +41,7 @@ Exit codes:
   node, or no recording of its app), or the guide file's shape is wrong
   whatever the record holds (`guide_file.parse`). Nothing is written. A guide
   file that is well formed but does not cover the step record, or whose
-  supposition does not fit it, is refused after the search: every file but
+  supposition or early removals do not fit it, is refused after the search: every file but
   `guide.html` is written.
 - 3: the search is stuck: no claim proved and no proof timed out.
 - 4: a hint was not proved.

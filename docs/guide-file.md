@@ -45,7 +45,10 @@ A **key idea** entry:
   `{"type": "arrow", "from": "r1c1", "to": "r2c2"}`,
   `{"type": "circle", "cell": "r1c1"}`,
   `{"type": "label", "cell": "r1c1", "text": "pair"}` and
-  `{"type": "highlight", "cell": "r1c1"}`.
+  `{"type": "highlight", "cell": "r1c1"}`. A label never prints over a pencil
+  mark: in a cell that draws pencil marks it takes the widest run of empty
+  pencil-mark spots in one row, squeezed to fit, or sits just outside the
+  cell when every spot is drawn.
 - `supposition` (optional): the idea argues "suppose this cell were X". An
   object with `assume`, `forces` and `breaks`. `assume` is `{"cell": "r1c1",
   "digit": 4}`, a digit the idea's explained steps eliminate. `forces` is a
@@ -55,6 +58,17 @@ A **key idea** entry:
   pencil marks: the givens, the assumed and forced digits in their own
   colour, the forced ones numbered in order, and the clash cells circled.
   Every digit drawn must be among the idea's starting candidates in its cell.
+- `early_removals` (optional): digits the idea's words rule out before the
+  step record does, a list of `{"cell": "r1c2", "digits": [4]}`, each a cell
+  and a non-empty list of digits 1 to the board size. Each digit must be a
+  candidate in its cell after the idea's run of steps, with the early
+  removals before it (this idea's earlier ones and every earlier idea's)
+  already taken off, and must not be the cell's solution digit: the rules
+  file's stored `solution` (or `solution_outside`) when it has one, else the
+  digit the step record solves the cell to. The idea's grid strikes them out
+  as it strikes its explained steps' removals and marks their cells as
+  changed; every later grid, the stuck-point grid included, starts without
+  them, so a later step that removes the same digit draws nothing for it.
 
 A **fill** entry:
 
@@ -78,7 +92,8 @@ loudly rather than going missing from the page.
   `explains`), each digit's pencil mark in the same spot in every cell. It
   strikes out what the explained steps remove (grey, with a red slash) and
   marks the
-  cells those steps use or change. It draws candidates only in marked cells.
+  cells those steps use or change. It also strikes out the idea's early
+  removals and marks their cells, and starts without every earlier idea's. It draws candidates only in marked cells.
   Every other cell shows its placed digit or stays blank.
 - A fill stretch is its sentence over the list of step lines, collapsed
   behind a "Show all N steps" button.
@@ -89,8 +104,8 @@ loudly rather than going missing from the page.
 
 The command writes no `guide.html` and exits 2, naming the problem, when the
 guide file fails one of the checks below. A file that is wrong whatever the
-step record holds (all but the coverage and supposition-digit checks) is
-refused before the search; the others after it. Either way a `guide.html`
+step record holds (all but the coverage, supposition-digit and early-removal
+digit checks) is refused before the search; the others after it. Either way a `guide.html`
 an earlier run left is removed. The guide file:
 
 - is not JSON, or is not an object with `version` 1 (the integer) and an
@@ -107,7 +122,15 @@ an earlier run left is removed. The guide file:
   size, or has an empty `breaks`;
 - has a supposition whose assumed digit the idea's explained steps do not
   eliminate, or that draws a digit which is not among the idea's starting
-  candidates in its cell. The message names the cell and digit.
+  candidates in its cell. The message names the cell and digit;
+- has an early removal that is not an object with `cell` and `digits`, names
+  a cell outside the grid, or has an empty `digits` or a digit outside 1 to
+  the board size;
+- has an early removal whose digit is not a candidate in its cell after the
+  idea's steps and the early removals before it, is the cell's solution
+  digit, or falls in a cell whose solution digit neither the rules file nor
+  the step record gives. The message names the key idea, its entry, the cell
+  and the digit.
 
 Without `--guide` the command still checks the rules file and runs the
 search, but it writes no guide, removes a `guide.html` an earlier run left,
