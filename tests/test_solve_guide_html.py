@@ -307,8 +307,10 @@ def test_a_digits_pencil_mark_sits_in_the_same_spot_in_every_cell():
             make_step(["row 1"], (0, 0), [2, 3]),
             make_step(["row 1"], (0, 1), [1, 2, 3]),
             make_step(["row 1"], (0, 2), [3, 4]),
+            make_step(["row 1"], (0, 3), [1, 2]),
         ],
-        _key(1, 3),
+        _fill(1, 3),
+        _key(4, 4),
     )
 
     offsets = _offsets(page, page.grids()[1])
