@@ -45,7 +45,7 @@ def test_an_invented_board_lists_every_step_once_merging_across_a_step_elsewhere
     assert code == 0
     assert lines == [
         "D1 (step 2): r4c4 keeps 1 2 3, from row 4.",
-        "D2 (steps 1, 3): r1c1 keeps 1 2 3; r1c2 keeps 1 2 3, from white dot r1c1-r1c2.",
+        "D2 (steps 1, 3): r1c12 keep 1 2 3, from white dot r1c1-r1c2.",
         "D3 (step 4): r1c1 keeps 1 2, from row 1.",
     ]
 
