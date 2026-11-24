@@ -87,6 +87,12 @@ img.original { max-width: 24rem; }
 .cand.forced, .solved.forced { fill: #07a; font-weight: bold; }
 .order { font-size: 11px; font-weight: bold; fill: #07a; }
 .arrow, .circle { stroke: #c22; fill: none; stroke-width: 3; }
+div.fill { break-inside: avoid; }
+p.fill { break-after: avoid; }
+@page { size: A4; margin: 15mm; }
+@media print {
+  body { max-width: none; margin: 0; }
+}
 """
 
 

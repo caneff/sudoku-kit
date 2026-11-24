@@ -918,3 +918,46 @@ def test_a_malformed_supposition_is_refused_naming_its_cause(supposition, cause)
             make_record(*SUBSET_STEPS[:1]),
             _guide(_key(1, 1, supposition=supposition)),
         )
+
+
+def _stylesheet():
+    page = guide_html.guide_page(TOY, make_record(*SIX), _guide(_fill(1, 6)))
+    return re.search(r"<style>(.*?)</style>", page, re.S).group(1)
+
+
+def _rules(css, selector):
+    """The declarations of every top-level rule whose selector list names
+    `selector` exactly."""
+    found = [
+        body
+        for names, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css)
+        if selector in [n.strip() for n in names.split(",")]
+    ]
+    return " ".join(found)
+
+
+def test_the_print_stylesheet_sets_an_a4_page_with_margins_about_15_mm():
+    page_rule = re.search(r"@page\s*\{([^}]*)\}", _stylesheet())
+    assert page_rule, "no @page rule"
+    assert re.search(r"size:\s*A4", page_rule.group(1))
+    margin = re.search(r"margin:\s*(\d+)mm\s*;", page_rule.group(1))
+    assert margin and 12 <= int(margin.group(1)) <= 18
+
+
+def test_in_print_the_body_has_no_fixed_width_wider_than_the_printable_area():
+    css = _stylesheet()
+    print_css = re.search(r"@media print\s*\{(.*)\}", css, re.S).group(1)
+    body = _rules(print_css, "body")
+    assert re.search(r"max-width:\s*none", body), body
+
+
+def test_the_screen_layout_keeps_a_centred_column():
+    body = _rules(_stylesheet().split("@media print")[0], "body")
+    assert "max-width: 52rem" in body
+    assert re.search(r"margin:\s*2rem auto", body)
+
+
+def test_the_closing_fill_line_is_kept_with_what_it_belongs_to():
+    css = _stylesheet()
+    assert "break-inside: avoid" in _rules(css, "div.fill")
+    assert "break-after: avoid" in _rules(css, "p.fill")
