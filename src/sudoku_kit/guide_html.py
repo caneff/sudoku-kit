@@ -151,6 +151,9 @@ text { font-family: "Segoe UI", "Ubuntu Sans", Ubuntu, Roboto, Arial, sans-serif
 @page { size: A4; margin: 15mm; }
 @media print {
   body { max-width: none; margin: 0; padding: 0; }
+  section.key { margin: 0.5rem 0; padding: 0.8rem 0.85rem; }
+  div.fill { margin: 0.5rem 0; }
+  .grids { margin-bottom: 0.5rem; }
 }
 """
 
@@ -567,6 +570,28 @@ def describe_claim(claim):
     if "chain" in claim:
         return "chain " + " < ".join(rules_file.cell_name(c) for c in claim["chain"])
     return "at least one of several patterns holds"
+
+
+def describe_claims(claims):
+    """Claims in words, joined by `;`. Cell claims leaving the same digits
+    share one phrase over their cells in block notation (r12c34 = 3)."""
+    slots = {}
+    for claim in claims:
+        key = tuple(claim["digits"]) if "cell" in claim else id(claim)
+        slots.setdefault(key, []).append(claim)
+    out = []
+    for group in slots.values():
+        if len(group) == 1:
+            out.append(describe_claim(group[0]))
+            continue
+        cells = rules_file.cell_list(c["cell"] for c in group)
+        digits = group[0]["digits"]
+        out.append(
+            f"{cells} = {digits[0]}"
+            if len(digits) == 1
+            else f"{cells} keep {' '.join(map(str, digits))}"
+        )
+    return "; ".join(out)
 
 
 CLUE_WORDS = {

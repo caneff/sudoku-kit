@@ -28,7 +28,7 @@ def lines(rules, record):
     out = []
     for k, group in enumerate(guide_html.deductions(rules, record), 1):
         steps = ", ".join(map(str, group["steps"]))
-        claims = "; ".join(guide_html.describe_claim(c) for c in group["claims"])
+        claims = guide_html.describe_claims(group["claims"])
         named = guide_file.join_words(
             [guide_html.constraint_words(rules, n) for n in group["named"]]
         )

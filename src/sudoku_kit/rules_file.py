@@ -44,6 +44,41 @@ def cell_name(cell):
     return f"r{cell[0] + 1}c{cell[1] + 1}"
 
 
+def _numbers(counts):
+    """1-based numbers run together, comma-separated once one has two digits."""
+    words = [str(n + 1) for n in sorted(counts)]
+    return ",".join(words) if any(len(w) > 1 for w in words) else "".join(words)
+
+
+def cell_list(cells):
+    """Cells in words, in the standard notation: a block of rows by columns is
+    one name (r12c34), a single cell stays r1c5. Rows holding the same columns
+    form one block; the blocks come in reading order of their first cell."""
+    columns = {}
+    for r, c in sorted(set(map(tuple, cells))):
+        columns.setdefault(r, set()).add(c)
+    blocks = {}
+    for r, cols in columns.items():
+        blocks.setdefault(frozenset(cols), []).append(r)
+    return ", ".join(
+        f"r{_numbers(rows)}c{_numbers(cols)}"
+        for cols, rows in sorted(blocks.items(), key=lambda b: (b[1][0], sorted(b[0])))
+    )
+
+
+def witness_words(witness):
+    """{cell: digit} in words: the cells taking one digit share a block name
+    (r12c34=3, one per block), the digits in order of their first cell."""
+    by_digit = {}
+    for cell, digit in witness.items():
+        by_digit.setdefault(digit, []).append(cell)
+    return " ".join(
+        f"{block}={d}"
+        for d, cells in by_digit.items()
+        for block in cell_list(cells).split(", ")
+    )
+
+
 def holes(rules):
     """The grid cells that are not part of the puzzle, as tuples."""
     return {tuple(cell) for cell in rules.get("holes") or []}
