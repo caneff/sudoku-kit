@@ -29,7 +29,9 @@ jobs:
       # version and downloaded only on a cache miss, never on every run.
       - name: Playwright version
         id: playwright
-        run: echo "version=$(python3 -c "import tomllib;print(next(p['version'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name']=='playwright'))")" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(python3 -c "import tomllib;print(next(p['version'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name']=='playwright'))")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Cache Chromium
         id: chromium

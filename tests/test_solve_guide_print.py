@@ -12,8 +12,15 @@ import re
 import zlib
 
 import pytest
-from guide_helpers import TOY, make_record
-from test_solve_guide_html import SIX, _fill, _guide, _key
+from guide_helpers import (
+    SIX,
+    TOY,
+    fill_entry,
+    guide_file,
+    key_entry,
+    make_record,
+)
+from playwright.sync_api import sync_playwright
 
 from sudoku_kit import guide_html
 
@@ -29,8 +36,11 @@ def _card_colour(k):
 
 
 def _guide_html():
-    entries = [_key(k, k) for k in (1, 2, 3, 4)] + [_fill(5, 5), _key(6, 6)]
-    return guide_html.guide_page(TOY, make_record(*SIX), _guide(*entries))
+    entries = [key_entry(k, k) for k in (1, 2, 3, 4)] + [
+        fill_entry(5, 5),
+        key_entry(6, 6),
+    ]
+    return guide_html.guide_page(TOY, make_record(*SIX), guide_file(*entries))
 
 
 def _tint_cards(page):
@@ -43,30 +53,29 @@ def _tint_cards(page):
 
 @pytest.fixture(scope="module")
 def chromium():
-    from playwright.sync_api import sync_playwright
-
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         yield browser
         browser.close()
 
 
+_DISPLAYS = (
+    "() => [...document.querySelectorAll('details')]"
+    ".map(d => getComputedStyle(d).display)"
+)
+
+
 @pytest.fixture(scope="module")
 def printed(chromium):
+    """(the PDF, each `details` display on screen, each one in print)."""
     page = chromium.new_page()
     page.set_content(_tint_cards(_guide_html()))
     pdf = page.pdf(prefer_css_page_size=True, print_background=True)
-    flags = page.evaluate(
-        "() => [...document.querySelectorAll('details')]"
-        ".map(d => getComputedStyle(d).display)"
-    )
+    on_screen = page.evaluate(_DISPLAYS)
     page.emulate_media(media="print")
-    hidden = page.evaluate(
-        "() => [...document.querySelectorAll('details')]"
-        ".map(d => getComputedStyle(d).display)"
-    )
+    in_print = page.evaluate(_DISPLAYS)
     page.close()
-    return pdf, flags, hidden
+    return pdf, on_screen, in_print
 
 
 def _pages(pdf):
@@ -98,11 +107,12 @@ def test_the_guide_prints_on_an_a4_page_with_15mm_margins(printed):
         for v in re.search(rb"/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]", pdf).groups()
     ]
     assert box == pytest.approx(A4_POINTS, abs=0.5)
-    for stream in _pages(pdf):
-        # the clip is in 1/4-point units under the page's .24 scale
-        x, y, width, height = (
-            float(v) * 0.24 / 1 for v in CLIP.search(stream).groups()
-        )
+    pages = _pages(pdf)
+    # every page was read: a clip this reader misses must fail here, not pass
+    assert len(pages) == len(re.findall(rb"/Type\s*/Page\b", pdf)) >= 1
+    for stream in pages:
+        # the page's content is drawn under a .24 scale, in 1/.24-point units
+        x, y, width, height = (float(v) * 0.24 for v in CLIP.search(stream).groups())
         assert x == pytest.approx(MARGIN_POINTS, abs=0.5)
         assert y == pytest.approx(MARGIN_POINTS, abs=0.5)
         assert width == pytest.approx(A4_POINTS[0] - 2 * MARGIN_POINTS, abs=0.5)

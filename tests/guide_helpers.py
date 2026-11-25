@@ -44,3 +44,32 @@ def make_step(named, cell, digits):
 
 def make_record(*steps):
     return {"steps": list(steps), "timeouts": [], "stuck": None}
+
+
+def key_entry(first, last, heading="An idea", paragraphs=("Why it holds.",), **extra):
+    return {
+        "type": "key",
+        "first": first,
+        "last": last,
+        "heading": heading,
+        "paragraphs": list(paragraphs),
+        **extra,
+    }
+
+
+def fill_entry(first, last, sentence="The grid fills on."):
+    return {"type": "fill", "first": first, "last": last, "sentence": sentence}
+
+
+def guide_file(*entries):
+    return {"version": 1, "entries": list(entries)}
+
+
+SIX = [
+    make_step(["row 1"], (0, 2), [1, 2, 3]),
+    make_step(["white-a"], (0, 0), [1, 2, 3]),
+    make_step(["row 2", "column 3"], (1, 2), [1, 2]),
+    make_step(["black-a"], (3, 0), [1, 2, 4]),
+    make_step(["white-b"], (2, 2), [1, 2, 3]),
+    make_step(["white-b", "row 3", "column 3", "region 4"], (2, 3), [2, 3]),
+]
