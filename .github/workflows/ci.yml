@@ -25,5 +25,25 @@ jobs:
         with:
           enable-cache: true
 
+      # The print test needs Chromium. It is cached on the locked Playwright
+      # version and downloaded only on a cache miss, never on every run.
+      - name: Playwright version
+        id: playwright
+        run: echo "version=$(python3 -c "import tomllib;print(next(p['version'] for p in tomllib.load(open('uv.lock','rb'))['package'] if p['name']=='playwright'))")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Chromium
+        id: chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: chromium-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Chromium (cache miss)
+        if: steps.chromium.outputs.cache-hit != 'true'
+        run: uv run playwright install chromium
+
+      - name: Install Chromium's system libraries
+        run: uv run playwright install-deps chromium
+
       - name: Gate (Python ${{ matrix.python }})
         run: uvx --from rust-just just check

@@ -11,7 +11,12 @@ solve-guide = "sudoku_kit.solve_guide:main"
 solve-deductions = "sudoku_kit.deduction_lines:main"
 
 [dependency-groups]
-dev = ["pytest", "ruff", "shellcheck-py"]
+dev = [
+    "playwright>=1.65.2",
+    "pytest",
+    "ruff",
+    "shellcheck-py",
+]
 
 [build-system]
 requires = ["hatchling"]
