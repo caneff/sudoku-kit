@@ -18,7 +18,16 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-from guide_helpers import TOY, cell_name, make_record, make_step
+from guide_helpers import (
+    SIX,
+    TOY,
+    cell_name,
+    make_record,
+    make_step,
+)
+from guide_helpers import fill_entry as _fill
+from guide_helpers import guide_file as _guide
+from guide_helpers import key_entry as _key
 from link_helpers import DIAMOND
 
 from sudoku_kit import clue_rules, guide_html, rules_file, step_search, sudokupad_import
@@ -83,39 +92,10 @@ class Page(HTMLParser):
         }
 
 
-def _key(first, last, heading="An idea", paragraphs=("Why it holds.",), **extra):
-    return {
-        "type": "key",
-        "first": first,
-        "last": last,
-        "heading": heading,
-        "paragraphs": list(paragraphs),
-        **extra,
-    }
-
-
-def _fill(first, last, sentence="The grid fills on."):
-    return {"type": "fill", "first": first, "last": last, "sentence": sentence}
-
-
-def _guide(*entries):
-    return {"version": 1, "entries": list(entries)}
-
-
 def _toy(steps, *entries, rules=TOY, image=None):
     return Page(
         guide_html.guide_page(rules, make_record(*steps), _guide(*entries), image)
     )
-
-
-SIX = [
-    make_step(["row 1"], (0, 2), [1, 2, 3]),
-    make_step(["white-a"], (0, 0), [1, 2, 3]),
-    make_step(["row 2", "column 3"], (1, 2), [1, 2]),
-    make_step(["black-a"], (3, 0), [1, 2, 4]),
-    make_step(["white-b"], (2, 2), [1, 2, 3]),
-    make_step(["white-b", "row 3", "column 3", "region 4"], (2, 3), [2, 3]),
-]
 
 
 def _keys(page):

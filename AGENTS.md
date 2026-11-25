@@ -34,7 +34,8 @@ failure; `--list` prints the suites. `just check` calls it, so CI runs it too.
 live layer.
 
 - **Seam**: `bash tests/all.sh`: ruff check, ruff format, the uv lock check
-  and pytest over `tests/`
+  and pytest over `tests/`. The print test needs Chromium: run
+  `uv run playwright install chromium` once per Playwright version (CI caches it)
 - **Blind to**: the consumers. grid-hunts and sudokumaker-custom-constraints
   both track main and each lock a commit in `uv.lock`, so a change here never
   runs against their code until one of them runs
